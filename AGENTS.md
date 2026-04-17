@@ -2,8 +2,6 @@
 
 Use NestJS + Prisma + PostgreSQL + Stripe.
 
-Nunca rodar comandos, apenas sugerir.
-
 Sempre:
 1. analisar código
 2. evitar duplicação
