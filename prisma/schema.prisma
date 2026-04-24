@@ -1,14 +1,483 @@
+// ================================================================
+// DENTALFLOW — PRISMA SCHEMA
+// Version:      1.0.0
+// Database:     PostgreSQL
+// ORM:          Prisma 7.7
+// Architecture: Multi-tenant SaaS (Clinic as tenant root)
+// Designed:     2026-04-24
+// ================================================================
+
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
+// ================================================================
+// ENUMS
+// ================================================================
+
+enum UserRole {
+  OWNER
+  ADMIN
+  DENTIST
+  ASSISTANT
+}
+
+enum LeadSource {
+  PROFILE_PAGE
+  MANUAL
+  IMPORT
+  REFERRAL
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  SCHEDULED
+  CONVERTED
+  LOST
+  ARCHIVED
+}
+
+enum LeadActivityAction {
+  CREATED
+  STATUS_CHANGED
+  NOTE_ADDED
+  CONTACTED
+  APPOINTMENT_SCHEDULED
+  WHATSAPP_SENT
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELED
+  COMPLETED
+  NO_SHOW
+}
+
+enum CanceledBy {
+  CLINIC
+  PATIENT
+  SYSTEM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+  INCOMPLETE
+}
+
+// ================================================================
+// DOMAIN 1 — IDENTITY, AUTH & RBAC
+// ================================================================
+
+model Clinic {
+  id           String    @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  logoUrl      String?
+  websiteUrl   String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  country      String    @default("BR")
+  postalCode   String?
+  timezone     String    @default("America/Sao_Paulo")
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  users        User[]
+  profiles     Profile[]
+  leads        Lead[]
+  subscription Subscription?
+  dailyMetrics DailyMetrics[]
+
+  @@map("clinics")
+}
+
 model User {
+  id                         String    @id @default(cuid())
+  clinicId                   String
+  email                      String
+  passwordHash               String
+  firstName                  String
+  lastName                   String
+  phone                      String?
+  avatarUrl                  String?
+  role                       UserRole  @default(DENTIST)
+  isEmailVerified            Boolean   @default(false)
+  emailVerificationToken     String?
+  emailVerificationExpiresAt DateTime?
+  passwordResetToken         String?
+  passwordResetExpiresAt     DateTime?
+  isActive                   Boolean   @default(true)
+  lastLoginAt                DateTime?
+  deletedAt                  DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  profile        Profile?
+  refreshTokens  RefreshToken[]
+  leadActivities LeadActivity[]
+  assignedLeads  Lead[]         @relation("AssignedLeads")
+
+  @@unique([clinicId, email])
+  @@index([clinicId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  deviceInfo String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ================================================================
+// DOMAIN 2 — PROFESSIONAL PROFILE
+// ================================================================
+
+model Profile {
+  id             String    @id @default(cuid())
+  clinicId       String
+  userId         String?   @unique
+  slug           String    @unique
+  displayName    String
+  bio            String?   @db.Text
+  avatarUrl      String?
+  crmNumber      String?
+  crmState       String?
+  phone          String?
+  whatsappNumber String?
+  publicEmail    String?
+  instagramUrl   String?
+  facebookUrl    String?
+  websiteUrl     String?
+  addressLine1   String?
+  city           String?
+  state          String?
+  country        String    @default("BR")
+  postalCode     String?
+  latitude       Decimal?  @db.Decimal(10, 8)
+  longitude      Decimal?  @db.Decimal(11, 8)
+  isPublished    Boolean   @default(false)
+  viewsCount     Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clinic                 Clinic                  @relation(fields: [clinicId], references: [id])
+  user                   User?                   @relation(fields: [userId], references: [id])
+  profileSpecialties     ProfileSpecialty[]
+  services               Service[]
+  leads                  Lead[]
+  availability           Availability[]
+  availabilityExceptions AvailabilityException[]
+  appointments           Appointment[]
+
+  @@index([clinicId])
+  @@index([isPublished])
+  @@map("profiles")
+}
+
+model Specialty {
   id        String   @id @default(cuid())
-  email     String   @unique
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  profileSpecialties ProfileSpecialty[]
+
+  @@map("specialties")
+}
+
+model ProfileSpecialty {
+  profileId   String
+  specialtyId String
+  createdAt   DateTime @default(now())
+
+  profile   Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, specialtyId])
+  @@map("profile_specialties")
+}
+
+model Service {
+  id               String   @id @default(cuid())
+  profileId        String
+  clinicId         String
+  name             String
+  description      String?  @db.Text
+  priceFrom        Decimal? @db.Decimal(10, 2)
+  priceTo          Decimal? @db.Decimal(10, 2)
+  durationMinutes  Int?
+  isPriceDisplayed Boolean  @default(true)
+  isActive         Boolean  @default(true)
+  displayOrder     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  leads        Lead[]
+  appointments Appointment[]
+
+  @@index([profileId])
+  @@index([clinicId])
+  @@map("services")
+}
+
+// ================================================================
+// DOMAIN 3 — LEAD MANAGEMENT
+// ================================================================
+
+model Lead {
+  id               String     @id @default(cuid())
+  clinicId         String
+  profileId        String
+  serviceId        String?
+  assignedToUserId String?
+  name             String
+  email            String?
+  phone            String?
+  whatsappNumber   String?
+  message          String?    @db.Text
+  source           LeadSource @default(PROFILE_PAGE)
+  status           LeadStatus @default(NEW)
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmContent       String?
+  referrerUrl      String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  clinic       Clinic         @relation(fields: [clinicId], references: [id])
+  profile      Profile        @relation(fields: [profileId], references: [id])
+  service      Service?       @relation(fields: [serviceId], references: [id])
+  assignedTo   User?          @relation("AssignedLeads", fields: [assignedToUserId], references: [id])
+  activities   LeadActivity[]
+  appointments Appointment[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([profileId])
+  @@index([status])
+  @@index([assignedToUserId])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+model LeadActivity {
+  id        String             @id @default(cuid())
+  leadId    String
+  userId    String?
+  action    LeadActivityAction
+  oldStatus LeadStatus?
+  newStatus LeadStatus?
+  note      String?            @db.Text
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+  @@index([createdAt])
+  @@map("lead_activities")
+}
+
+// ================================================================
+// DOMAIN 4 — APPOINTMENT SYSTEM
+// ================================================================
+
+model Availability {
+  id        String   @id @default(cuid())
+  profileId String
+  clinicId  String
+  dayOfWeek Int      // 0 = Sunday … 6 = Saturday
+  startTime DateTime @db.Time // wall-clock in clinic's timezone
+  endTime   DateTime @db.Time
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@index([clinicId])
+  @@map("availability")
+}
+
+model AvailabilityException {
+  id            String   @id @default(cuid())
+  profileId     String
+  clinicId      String
+  exceptionDate DateTime @db.Date
+  isDayOff      Boolean   @default(true)
+  startTime     DateTime? @db.Time
+  endTime       DateTime? @db.Time
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, exceptionDate])
+  @@index([exceptionDate])
+  @@map("availability_exceptions")
+}
+
+model Appointment {
+  id                 String            @id @default(cuid())
+  clinicId           String
+  profileId          String
+  leadId             String?
+  serviceId          String?
+  patientName        String
+  patientEmail       String?
+  patientPhone       String?
+  appointmentDate    DateTime          @db.Date
+  startTime          DateTime          @db.Time
+  endTime            DateTime          @db.Time
+  durationMinutes    Int
+  status             AppointmentStatus @default(PENDING)
+  notes              String?           @db.Text
+  patientNotes       String?           @db.Text
+  canceledBy         CanceledBy?
+  canceledAt         DateTime?
+  cancellationReason String?
+  confirmedAt        DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  profile Profile  @relation(fields: [profileId], references: [id])
+  lead    Lead?    @relation(fields: [leadId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@index([clinicId])
+  @@index([profileId])
+  @@index([appointmentDate])
+  @@index([status])
+  @@index([leadId])
+  @@map("appointments")
+}
+
+// ================================================================
+// DOMAIN 5 — BILLING & SUBSCRIPTIONS
+// ================================================================
+
+model Plan {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  description           String?  @db.Text
+  stripePriceIdMonthly  String?
+  stripePriceIdYearly   String?
+  priceMonthly          Int      // in cents — e.g. 9900 = R$99,00
+  priceYearly           Int      // in cents
+  maxProfiles           Int?     // NULL = unlimited
+  maxLeadsPerMonth      Int?     // NULL = unlimited
+  maxServicesPerProfile Int?     // NULL = unlimited
+  hasAppointments       Boolean  @default(false)
+  hasAnalytics          Boolean  @default(false)
+  hasCustomDomain       Boolean  @default(false)
+  hasPrioritySupport    Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  isPublic              Boolean  @default(true)
+  displayOrder          Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  clinicId             String             @unique
+  planId               String
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(TRIALING)
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model StripeEvent {
+  id           String    @id // Stripe event ID (evt_xxx) — idempotency PK
+  type         String
+  processed    Boolean   @default(false)
+  processedAt  DateTime?
+  errorMessage String?   @db.Text
+  rawPayload   Json
+  createdAt    DateTime
+  receivedAt   DateTime  @default(now())
+
+  @@index([type])
+  @@index([processed])
+  @@map("stripe_events")
+}
+
+// ================================================================
+// DOMAIN 6 — ANALYTICS
+// ================================================================
+
+model DailyMetrics {
+  id                    String   @id @default(cuid())
+  clinicId              String
+  date                  DateTime @db.Date
+  profileViews          Int      @default(0)
+  leadsNew              Int      @default(0)
+  leadsContacted        Int      @default(0)
+  leadsConverted        Int      @default(0)
+  leadsLost             Int      @default(0)
+  appointmentsScheduled Int      @default(0)
+  appointmentsCompleted Int      @default(0)
+  appointmentsCanceled  Int      @default(0)
+  appointmentsNoShow    Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, date])
+  @@index([clinicId])
+  @@index([date])
+  @@map("daily_metrics")
 }
