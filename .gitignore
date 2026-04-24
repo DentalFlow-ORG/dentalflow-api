@@ -70,6 +70,20 @@ web_modules/
 .env.*
 !.env.example
 
+# Secrets and private keys
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+service-account*.json
+*credentials*.json
+*secret*.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
