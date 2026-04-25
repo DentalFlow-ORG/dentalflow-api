@@ -6,6 +6,10 @@ import { appConfig } from './config/app.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableCors({
+    origin: appConfig.frontendOrigin,
+    credentials: true,
+  });
   app.setGlobalPrefix(appConfig.apiPrefix);
   app.enableShutdownHooks();
   app.useGlobalPipes(
@@ -18,4 +22,4 @@ async function bootstrap() {
 
   await app.listen(appConfig.port);
 }
-bootstrap();
+void bootstrap();

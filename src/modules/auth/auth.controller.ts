@@ -26,4 +26,9 @@ export class AuthController {
   me(@CurrentUser() user: AuthUser) {
     return user;
   }
+
+  @Post('logout')
+  logout() {
+    return { success: true };
+  }
 }
