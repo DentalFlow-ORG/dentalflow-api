@@ -1,5 +1,10 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,8 +21,13 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+    const clinicName = dto.clinicName.trim();
+    const firstName = dto.firstName.trim();
+    const lastName = dto.lastName.trim();
+
     const existing = await this.prisma.user.findFirst({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
       select: { id: true },
     });
     if (existing) {
@@ -28,16 +38,16 @@ export class AuthService {
 
     const user = await this.prisma.$transaction(async (tx) => {
       const clinic = await tx.clinic.create({
-        data: { name: dto.clinicName },
+        data: { name: clinicName },
       });
 
       return tx.user.create({
         data: {
           clinicId: clinic.id,
-          email: dto.email,
+          email: normalizedEmail,
           passwordHash,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
+          firstName,
+          lastName,
           role: 'OWNER',
         },
         select: {
@@ -55,8 +65,10 @@ export class AuthService {
   }
 
   async signIn(dto: SignInDto) {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
     const user = await this.prisma.user.findFirst({
-      where: { email: dto.email, isActive: true, deletedAt: null },
+      where: { email: normalizedEmail, isActive: true, deletedAt: null },
       select: {
         id: true,
         clinicId: true,
@@ -77,12 +89,23 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const { passwordHash: _, ...safeUser } = user;
-    return { accessToken: this.sign(user.id, user.clinicId, user.role), user: safeUser };
+    const safeUser = {
+      id: user.id,
+      clinicId: user.clinicId,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+    };
+
+    return {
+      accessToken: this.sign(user.id, user.clinicId, user.role),
+      user: safeUser,
+    };
   }
 
-  private sign(userId: string, clinicId: string, role: string): string {
-    const payload: JwtPayload = { sub: userId, clinicId, role: role as any };
+  private sign(userId: string, clinicId: string, role: UserRole): string {
+    const payload: JwtPayload = { sub: userId, clinicId, role };
     return this.jwt.sign(payload);
   }
 }
