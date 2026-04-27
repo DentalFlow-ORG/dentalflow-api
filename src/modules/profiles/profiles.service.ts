@@ -166,10 +166,7 @@ export class ProfilesService {
     dto: CreateServiceDto,
   ) {
     await this.assertClinicOwnership(clinicId, profileId);
-    await this.assertServiceDisplayOrderAvailable(
-      profileId,
-      dto.displayOrder,
-    );
+    await this.assertServiceDisplayOrderAvailable(profileId, dto.displayOrder);
 
     return this.prisma.service.create({
       data: {
