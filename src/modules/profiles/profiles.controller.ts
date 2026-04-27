@@ -26,7 +26,7 @@ export class ProfilesController {
   @Post()
   @Roles('OWNER', 'ADMIN')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProfileDto) {
-    return this.profilesService.create(user.clinicId, user.id, dto);
+    return this.profilesService.create(user.clinicId, dto);
   }
 
   @Get()
@@ -67,6 +67,13 @@ export class ProfilesController {
   @HttpCode(HttpStatus.OK)
   togglePublish(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.profilesService.togglePublish(user.clinicId, id);
+  }
+
+  @Delete(':id')
+  @Roles('OWNER', 'ADMIN')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.profilesService.remove(user.clinicId, id);
   }
 
   @Post(':id/services')

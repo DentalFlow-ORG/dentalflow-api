@@ -35,13 +35,12 @@ const PROFILE_DETAIL_INCLUDE = {
 export class ProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(clinicId: string, userId: string, dto: CreateProfileDto) {
+  async create(clinicId: string, dto: CreateProfileDto) {
     await this.assertSlugAvailable(dto.slug);
 
     return this.prisma.profile.create({
       data: {
         clinicId,
-        userId,
         displayName: dto.displayName,
         slug: dto.slug,
         bio: dto.bio,
@@ -104,7 +103,9 @@ export class ProfilesService {
     const profile = await this.assertClinicOwnership(clinicId, id);
 
     if (callerRole === 'DENTIST' && profile.userId !== callerId) {
-      throw new ForbiddenException('Dentists can only update their own profile');
+      throw new ForbiddenException(
+        'Dentists can only update their own profile',
+      );
     }
 
     if (dto.slug && dto.slug !== profile.slug) {
@@ -143,12 +144,33 @@ export class ProfilesService {
     });
   }
 
+  async remove(clinicId: string, id: string) {
+    await this.assertClinicOwnership(clinicId, id);
+
+    try {
+      await this.prisma.profile.delete({ where: { id } });
+    } catch (error) {
+      if (isForeignKeyError(error)) {
+        throw new ConflictException(
+          'Profile cannot be deleted because it has related records',
+        );
+      }
+
+      throw error;
+    }
+  }
+
   async createService(
     clinicId: string,
     profileId: string,
     dto: CreateServiceDto,
   ) {
     await this.assertClinicOwnership(clinicId, profileId);
+    await this.assertServiceDisplayOrderAvailable(
+      profileId,
+      dto.displayOrder,
+    );
+
     return this.prisma.service.create({
       data: {
         profileId,
@@ -173,6 +195,11 @@ export class ProfilesService {
   ) {
     await this.assertClinicOwnership(clinicId, profileId);
     await this.assertServiceOwnership(profileId, serviceId);
+    await this.assertServiceDisplayOrderAvailable(
+      profileId,
+      dto.displayOrder,
+      serviceId,
+    );
 
     return this.prisma.service.update({
       where: { id: serviceId },
@@ -220,4 +247,36 @@ export class ProfilesService {
     if (!service) throw new NotFoundException('Service not found');
     return service;
   }
+
+  private async assertServiceDisplayOrderAvailable(
+    profileId: string,
+    displayOrder: number | undefined,
+    ignoredServiceId?: string,
+  ) {
+    if (displayOrder === undefined) return;
+
+    const existing = await this.prisma.service.findFirst({
+      where: {
+        profileId,
+        displayOrder,
+        ...(ignoredServiceId ? { id: { not: ignoredServiceId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        'A service with this display order already exists for this profile',
+      );
+    }
+  }
+}
+
+function isForeignKeyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2003'
+  );
 }
