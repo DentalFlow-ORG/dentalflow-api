@@ -104,6 +104,26 @@ export class AuthService {
     };
   }
 
+  async me(userId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        clinicId: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Access denied');
+    }
+
+    return user;
+  }
+
   private sign(userId: string, clinicId: string, role: UserRole): string {
     const payload: JwtPayload = { sub: userId, clinicId, role };
     return this.jwt.sign(payload);
