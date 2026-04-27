@@ -1,8 +1,20 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/types/auth-user.type';
-import { AuthService } from './auth.service';
+import { AuthService, TokenMetadata } from './auth.service';
+import { LogoutDto } from './dto/logout.dto';
+import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SignInDto } from './dto/sign-in.dto';
 
@@ -12,14 +24,25 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  register(@Body() dto: RegisterDto, @Req() req: Request) {
+    return this.authService.register(dto, this.extractMetadata(req));
   }
 
   @Public()
   @Post('sign-in')
-  signIn(@Body() dto: SignInDto) {
-    return this.authService.signIn(dto);
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  signIn(@Body() dto: SignInDto, @Req() req: Request) {
+    return this.authService.signIn(dto, this.extractMetadata(req));
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  refresh(@Body() dto: RefreshDto, @Req() req: Request) {
+    return this.authService.refresh(dto.refreshToken, this.extractMetadata(req));
   }
 
   @Get('me')
@@ -28,7 +51,16 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout() {
-    return { success: true };
+  @HttpCode(HttpStatus.OK)
+  logout(@CurrentUser() user: AuthUser, @Body() dto: LogoutDto) {
+    return this.authService.logout(user.id, dto.refreshToken);
+  }
+
+  private extractMetadata(req: Request): TokenMetadata {
+    const rawUA = req.headers['user-agent'];
+    return {
+      ipAddress: req.ip,
+      deviceInfo: typeof rawUA === 'string' ? rawUA : undefined,
+    };
   }
 }
