@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -217,6 +218,47 @@ export class ProfilesService {
     await this.assertClinicOwnership(clinicId, profileId);
     await this.assertServiceOwnership(profileId, serviceId);
     await this.prisma.service.delete({ where: { id: serviceId } });
+  }
+
+  async setSpecialties(
+    clinicId: string,
+    callerId: string,
+    callerRole: UserRole,
+    profileId: string,
+    specialtyIds: string[],
+  ) {
+    const profile = await this.assertClinicOwnership(clinicId, profileId);
+
+    if (callerRole === 'DENTIST' && profile.userId !== callerId) {
+      throw new ForbiddenException(
+        'Dentists can only update their own profile',
+      );
+    }
+
+    if (specialtyIds.length > 0) {
+      const found = await this.prisma.specialty.findMany({
+        where: { id: { in: specialtyIds } },
+        select: { id: true },
+      });
+      if (found.length !== specialtyIds.length) {
+        throw new BadRequestException('One or more specialty IDs are invalid');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.profileSpecialty.deleteMany({ where: { profileId } });
+      if (specialtyIds.length > 0) {
+        await tx.profileSpecialty.createMany({
+          data: specialtyIds.map((specialtyId) => ({ profileId, specialtyId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    return this.prisma.profileSpecialty.findMany({
+      where: { profileId },
+      include: { specialty: true },
+    });
   }
 
   private async assertSlugAvailable(slug: string) {

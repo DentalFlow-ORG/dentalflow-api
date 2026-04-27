@@ -5,10 +5,14 @@ import { authConfig } from '../../config/auth.config';
 import { AuthUser } from '../../common/types/auth-user.type';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessPolicyService } from '../../common/services/access-policy.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -32,6 +36,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Access denied');
     }
 
-    return { id: user.id, clinicId: user.clinicId, role: user.role };
+    const authUser = { id: user.id, clinicId: user.clinicId, role: user.role };
+    this.accessPolicy.assertValidRoleTenantShape(authUser);
+
+    return authUser;
   }
 }

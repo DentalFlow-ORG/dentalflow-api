@@ -10,9 +10,16 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { authConfig } from '../../config/auth.config';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
+import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { SignInDto } from './dto/sign-in.dto';
+import {
+  AuthResponse,
+  AuthResponseUser,
+  LogoutResponse,
+  RefreshResponse,
+} from './types/auth-response.type';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -49,9 +56,13 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly accessPolicy: AccessPolicyService,
   ) {}
 
-  async register(dto: RegisterDto, metadata: TokenMetadata = {}) {
+  async register(
+    dto: RegisterDto,
+    metadata: TokenMetadata = {},
+  ): Promise<AuthResponse> {
     const normalizedEmail = dto.email.trim().toLowerCase();
     const clinicName = dto.clinicName.trim();
     const firstName = dto.firstName.trim();
@@ -108,14 +119,19 @@ export class AuthService {
       return created;
     });
 
+    const safeUser = this.toAuthResponseUser(user);
+
     return {
-      accessToken: this.sign(user.id, user.clinicId, user.role),
+      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role),
       refreshToken: rawRefreshToken,
-      user,
+      user: safeUser,
     };
   }
 
-  async signIn(dto: SignInDto, metadata: TokenMetadata = {}) {
+  async signIn(
+    dto: SignInDto,
+    metadata: TokenMetadata = {},
+  ): Promise<AuthResponse> {
     const normalizedEmail = dto.email.trim().toLowerCase();
 
     const user = await this.prisma.user.findFirst({
@@ -134,6 +150,12 @@ export class AuthService {
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.accessPolicy.assertValidRoleTenantShape({
+      id: user.id,
+      clinicId: user.clinicId,
+      role: user.role,
+    });
 
     const rawRefreshToken = generateRawToken();
     const refreshExpiresAt = new Date(
@@ -161,23 +183,19 @@ export class AuthService {
       });
     });
 
-    const safeUser = {
-      id: user.id,
-      clinicId: user.clinicId,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-    };
+    const safeUser = this.toAuthResponseUser(user);
 
     return {
-      accessToken: this.sign(user.id, user.clinicId, user.role),
+      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
   }
 
-  async refresh(rawToken: string, metadata: TokenMetadata = {}) {
+  async refresh(
+    rawToken: string,
+    metadata: TokenMetadata = {},
+  ): Promise<RefreshResponse> {
     const tokenHash = hashToken(rawToken);
 
     const stored = await this.prisma.refreshToken.findUnique({
@@ -234,6 +252,12 @@ export class AuthService {
       throw new UnauthorizedException('Access denied');
     }
 
+    this.accessPolicy.assertValidRoleTenantShape({
+      id: stored.user.id,
+      clinicId: stored.user.clinicId,
+      role: stored.user.role,
+    });
+
     // Rotate: revoke old, prune expired, issue new — atomically
     const newRawToken = generateRawToken();
     const expiresAt = new Date(
@@ -271,7 +295,7 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, rawToken: string): Promise<{ success: true }> {
+  async logout(userId: string, rawToken: string): Promise<LogoutResponse> {
     const tokenHash = hashToken(rawToken);
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, userId, revokedAt: null },
@@ -280,7 +304,22 @@ export class AuthService {
     return { success: true };
   }
 
-  private sign(userId: string, clinicId: string, role: UserRole): string {
+  private toAuthResponseUser(user: AuthResponseUser): AuthResponseUser {
+    return {
+      id: user.id,
+      clinicId: user.clinicId,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+    };
+  }
+
+  private sign(
+    userId: string,
+    clinicId: string | null,
+    role: UserRole,
+  ): string {
     const payload: JwtPayload = { sub: userId, clinicId, role };
     return this.jwt.sign(payload);
   }
