@@ -30,7 +30,7 @@ export class AuthController {
   }
 
   @Public()
-  @Post('sign-in')
+  @Post(['sign-in', 'login'])
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   signIn(@Body() dto: SignInDto, @Req() req: Request) {

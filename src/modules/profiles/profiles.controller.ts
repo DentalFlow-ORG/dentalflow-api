@@ -12,26 +12,38 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
+import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { AuthUser } from '../../common/types/auth-user.type';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { CreateServiceDto } from './dto/create-service.dto';
+import { SetProfileSpecialtiesDto } from './dto/set-profile-specialties.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { ProfilesService } from './profiles.service';
 
 @Controller('profiles')
+@TenantScoped()
 export class ProfilesController {
-  constructor(private readonly profilesService: ProfilesService) {}
+  constructor(
+    private readonly profilesService: ProfilesService,
+    private readonly accessPolicy: AccessPolicyService,
+  ) {}
 
   @Post()
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProfileDto) {
-    return this.profilesService.create(user.clinicId, dto);
+    return this.profilesService.create(
+      this.accessPolicy.assertOwnerAccess(user),
+      dto,
+    );
   }
 
   @Get()
   findAll(@CurrentUser() user: AuthUser) {
-    return this.profilesService.findAll(user.clinicId);
+    return this.profilesService.findAll(
+      this.accessPolicy.assertClinicMember(user),
+    );
   }
 
   // Must be declared before :id to avoid route shadowing
@@ -43,18 +55,21 @@ export class ProfilesController {
 
   @Get(':id')
   findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.profilesService.findById(user.clinicId, id);
+    return this.profilesService.findById(
+      this.accessPolicy.assertClinicMember(user),
+      id,
+    );
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ADMIN', 'DENTIST')
+  @Roles('OWNER', 'DENTIST')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateProfileDto,
   ) {
     return this.profilesService.update(
-      user.clinicId,
+      this.accessPolicy.assertClinicMember(user),
       user.id,
       user.role,
       id,
@@ -63,31 +78,57 @@ export class ProfilesController {
   }
 
   @Patch(':id/publish')
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   @HttpCode(HttpStatus.OK)
   togglePublish(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.profilesService.togglePublish(user.clinicId, id);
+    return this.profilesService.togglePublish(
+      this.accessPolicy.assertOwnerAccess(user),
+      id,
+    );
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.profilesService.remove(user.clinicId, id);
+    return this.profilesService.remove(
+      this.accessPolicy.assertOwnerAccess(user),
+      id,
+    );
+  }
+
+  @Post(':id/specialties')
+  @Roles('OWNER', 'DENTIST')
+  setSpecialties(
+    @CurrentUser() user: AuthUser,
+    @Param('id') profileId: string,
+    @Body() dto: SetProfileSpecialtiesDto,
+  ) {
+    return this.profilesService.setSpecialties(
+      this.accessPolicy.assertClinicMember(user),
+      user.id,
+      user.role,
+      profileId,
+      dto.specialtyIds,
+    );
   }
 
   @Post(':id/services')
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   createService(
     @CurrentUser() user: AuthUser,
     @Param('id') profileId: string,
     @Body() dto: CreateServiceDto,
   ) {
-    return this.profilesService.createService(user.clinicId, profileId, dto);
+    return this.profilesService.createService(
+      this.accessPolicy.assertOwnerAccess(user),
+      profileId,
+      dto,
+    );
   }
 
   @Patch(':id/services/:serviceId')
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   updateService(
     @CurrentUser() user: AuthUser,
     @Param('id') profileId: string,
@@ -95,7 +136,7 @@ export class ProfilesController {
     @Body() dto: UpdateServiceDto,
   ) {
     return this.profilesService.updateService(
-      user.clinicId,
+      this.accessPolicy.assertOwnerAccess(user),
       profileId,
       serviceId,
       dto,
@@ -103,7 +144,7 @@ export class ProfilesController {
   }
 
   @Delete(':id/services/:serviceId')
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeService(
     @CurrentUser() user: AuthUser,
@@ -111,7 +152,7 @@ export class ProfilesController {
     @Param('serviceId') serviceId: string,
   ) {
     return this.profilesService.removeService(
-      user.clinicId,
+      this.accessPolicy.assertOwnerAccess(user),
       profileId,
       serviceId,
     );
