@@ -53,8 +53,15 @@ export class AppointmentsService {
     return appointment;
   }
 
-  async createAppointment(clinicId: string, dto: CreateAppointmentDto) {
+  async createAppointment(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    dto: CreateAppointmentDto,
+  ) {
     const profile = await this.assertProfileInClinic(clinicId, dto.profileId);
+    this.assertDentistAppointmentAccess(role, userId, profile.userId);
+
     const service = dto.serviceId
       ? await this.assertServiceInProfile(clinicId, dto.profileId, dto.serviceId)
       : null;
@@ -116,14 +123,21 @@ export class AppointmentsService {
 
   async updateAppointment(
     clinicId: string,
+    userId: string,
+    role: UserRole,
     appointmentId: string,
     dto: UpdateAppointmentDto,
   ) {
     const existing = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, clinicId },
-      include: { service: true },
+      include: {
+        service: true,
+        profile: { select: { userId: true } },
+      },
     });
     if (!existing) throw new NotFoundException('Appointment not found');
+    this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
+
     if (dto.patientUserId) {
       await this.assertPatientUser(dto.patientUserId);
     }
@@ -208,9 +222,25 @@ export class AppointmentsService {
 
   async cancelAppointment(
     clinicId: string,
+    userId: string,
+    role: UserRole,
     appointmentId: string,
     dto?: Pick<UpdateAppointmentStatusDto, 'canceledBy' | 'cancellationReason'>,
   ) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, clinicId },
+      select: {
+        id: true,
+        profile: { select: { userId: true } },
+      },
+    });
+    if (!appointment) throw new NotFoundException('Appointment not found');
+    this.assertDentistAppointmentAccess(
+      role,
+      userId,
+      appointment.profile.userId,
+    );
+
     return this.updateAppointmentStatus(clinicId, appointmentId, {
       status: 'CANCELED',
       canceledBy: dto?.canceledBy ?? 'CLINIC',

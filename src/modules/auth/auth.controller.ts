@@ -50,7 +50,7 @@ export class AuthController {
 
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
-    return user;
+    return this.authService.getCurrentUser(user.id);
   }
 
   @Post('logout')

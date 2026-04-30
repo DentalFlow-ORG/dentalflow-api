@@ -20,7 +20,7 @@ export class AccessPolicyService {
     if (user.role === 'ADMIN' || user.role === 'PATIENT') {
       if (user.clinicId !== null) {
         throw new ForbiddenException(
-          'Platform/public users cannot belong to a clinic tenant',
+          'Usuários da plataforma ou públicos não podem pertencer a uma clínica',
         );
       }
       return;
@@ -28,7 +28,7 @@ export class AccessPolicyService {
 
     if (!user.clinicId) {
       throw new ForbiddenException(
-        'Clinic users must belong to a clinic tenant',
+        'Usuários da clínica devem estar vinculados a uma clínica',
       );
     }
   }
@@ -37,7 +37,7 @@ export class AccessPolicyService {
     this.assertValidRoleTenantShape(user);
 
     if (user.role !== 'ADMIN') {
-      throw new ForbiddenException('Platform administrator access required');
+      throw new ForbiddenException('Acesso de administrador da plataforma obrigatório');
     }
   }
 
@@ -45,7 +45,7 @@ export class AccessPolicyService {
     this.assertValidRoleTenantShape(user);
 
     if (!user.clinicId || !this.includesRole(CLINIC_MEMBER_ROLES, user.role)) {
-      throw new ForbiddenException('Clinic membership required');
+      throw new ForbiddenException('Vínculo com clínica obrigatório');
     }
 
     return user.clinicId;
@@ -59,7 +59,7 @@ export class AccessPolicyService {
     }
 
     if (!user.clinicId || user.clinicId !== clinicId) {
-      throw new ForbiddenException('Clinic access denied');
+      throw new ForbiddenException('Acesso à clínica negado');
     }
   }
 
@@ -67,7 +67,7 @@ export class AccessPolicyService {
     this.assertValidRoleTenantShape(user);
 
     if (!user.clinicId || !this.includesRole(OWNER_LEVEL_ROLES, user.role)) {
-      throw new ForbiddenException('Clinic owner access required');
+      throw new ForbiddenException('Acesso de proprietário da clínica obrigatório');
     }
 
     return user.clinicId;
@@ -80,7 +80,7 @@ export class AccessPolicyService {
       !user.clinicId ||
       !this.includesRole(CLINIC_OPERATIONS_ROLES, user.role)
     ) {
-      throw new ForbiddenException('Clinic operations access required');
+      throw new ForbiddenException('Acesso operacional da clínica obrigatório');
     }
 
     return user.clinicId;
@@ -98,7 +98,7 @@ export class AccessPolicyService {
 
     if (!profileUserId || profileUserId !== user.id) {
       throw new ForbiddenException(
-        'Dentists can only access their own profile',
+        'Profissionais podem acessar apenas o próprio perfil',
       );
     }
   }

@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsOptional,
@@ -43,4 +44,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsIn(['DENTIST', 'ASSISTANT'])
   role?: 'DENTIST' | 'ASSISTANT';
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

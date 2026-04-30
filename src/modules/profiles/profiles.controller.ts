@@ -43,6 +43,8 @@ export class ProfilesController {
   findAll(@CurrentUser() user: AuthUser) {
     return this.profilesService.findAll(
       this.accessPolicy.assertClinicMember(user),
+      user.id,
+      user.role,
     );
   }
 
@@ -57,6 +59,8 @@ export class ProfilesController {
   findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.profilesService.findById(
       this.accessPolicy.assertClinicMember(user),
+      user.id,
+      user.role,
       id,
     );
   }
