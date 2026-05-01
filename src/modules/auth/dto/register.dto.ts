@@ -7,7 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { normalizeEmail, trimValue } from './transform.helpers';
+import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
 
 const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
 

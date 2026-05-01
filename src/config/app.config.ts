@@ -16,5 +16,4 @@ export const appConfig = {
   port: toNumber(process.env.PORT, 3000),
   nodeEnv: (process.env.NODE_ENV ?? 'development') as NodeEnvironment,
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173',
-  frontendLocalPath: process.env.FRONTEND_LOCAL_PATH ?? '',
 } as const;

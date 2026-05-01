@@ -10,7 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { UserRole } from '@prisma/client';
-import { normalizeEmail, trimValue } from '../../auth/dto/transform.helpers';
+import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
 
 const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
 
