@@ -7,9 +7,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { normalizeEmail, trimValue } from './transform.helpers';
+import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
 
 const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
+const personNamePattern = /^[\p{L}\s.'-]+$/u;
 
 export class RegisterDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))
@@ -37,8 +38,8 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, {
-    message: 'firstName contains unsupported characters',
+  @Matches(personNamePattern, {
+    message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   firstName!: string;
 
@@ -47,8 +48,8 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, {
-    message: 'lastName contains unsupported characters',
+  @Matches(personNamePattern, {
+    message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   lastName!: string;
 }

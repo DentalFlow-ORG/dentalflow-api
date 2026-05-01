@@ -38,10 +38,15 @@ export class AppointmentsController {
   }
 
   @Post()
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAppointmentDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.appointmentsService.createAppointment(clinicId, dto);
+    return this.appointmentsService.createAppointment(
+      clinicId,
+      user.id,
+      user.role,
+      dto,
+    );
   }
 
   @Get(':id')
@@ -57,29 +62,41 @@ export class AppointmentsController {
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateAppointmentDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.appointmentsService.updateAppointment(clinicId, id, dto);
+    return this.appointmentsService.updateAppointment(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      dto,
+    );
   }
 
   @Patch(':id/status')
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   updateStatus(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateAppointmentStatusDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.appointmentsService.updateAppointmentStatus(clinicId, id, dto);
+    return this.appointmentsService.updateAppointmentStatus(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      dto,
+    );
   }
 
   @Post(':id/cancel')
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   @HttpCode(HttpStatus.OK)
   cancel(
     @CurrentUser() user: AuthUser,
@@ -87,6 +104,12 @@ export class AppointmentsController {
     @Body() dto: Pick<UpdateAppointmentStatusDto, 'canceledBy' | 'cancellationReason'>,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.appointmentsService.cancelAppointment(clinicId, id, dto);
+    return this.appointmentsService.cancelAppointment(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      dto,
+    );
   }
 }

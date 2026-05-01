@@ -62,9 +62,12 @@ export class ProfilesService {
     });
   }
 
-  findAll(clinicId: string) {
+  findAll(clinicId: string, callerId: string, callerRole: UserRole) {
     return this.prisma.profile.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(callerRole === 'DENTIST' ? { userId: callerId } : {}),
+      },
       select: PROFILE_LIST_SELECT,
       orderBy: { createdAt: 'asc' },
     });
@@ -81,16 +84,26 @@ export class ProfilesService {
         profileSpecialties: { include: { specialty: true } },
       },
     });
-    if (!profile) throw new NotFoundException('Profile not found');
+    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 
-  async findById(clinicId: string, id: string) {
+  async findById(
+    clinicId: string,
+    callerId: string,
+    callerRole: UserRole,
+    id: string,
+  ) {
     const profile = await this.prisma.profile.findFirst({
       where: { id, clinicId },
       include: PROFILE_DETAIL_INCLUDE,
     });
-    if (!profile) throw new NotFoundException('Profile not found');
+    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
+    if (callerRole === 'DENTIST' && profile.userId !== callerId) {
+      throw new ForbiddenException(
+        'Profissionais podem acessar apenas o próprio perfil',
+      );
+    }
     return profile;
   }
 
@@ -105,7 +118,7 @@ export class ProfilesService {
 
     if (callerRole === 'DENTIST' && profile.userId !== callerId) {
       throw new ForbiddenException(
-        'Dentists can only update their own profile',
+        'Profissionais podem atualizar apenas o próprio perfil',
       );
     }
 
@@ -153,7 +166,7 @@ export class ProfilesService {
     } catch (error) {
       if (isForeignKeyError(error)) {
         throw new ConflictException(
-          'Profile cannot be deleted because it has related records',
+          'Perfil não pode ser excluído porque possui registros relacionados',
         );
       }
 
@@ -231,7 +244,7 @@ export class ProfilesService {
 
     if (callerRole === 'DENTIST' && profile.userId !== callerId) {
       throw new ForbiddenException(
-        'Dentists can only update their own profile',
+        'Profissionais podem atualizar apenas o próprio perfil',
       );
     }
 
@@ -241,7 +254,7 @@ export class ProfilesService {
         select: { id: true },
       });
       if (found.length !== specialtyIds.length) {
-        throw new BadRequestException('One or more specialty IDs are invalid');
+        throw new BadRequestException('Uma ou mais especialidades são inválidas');
       }
     }
 
@@ -266,7 +279,7 @@ export class ProfilesService {
       where: { slug },
       select: { id: true },
     });
-    if (existing) throw new ConflictException('Slug is already taken');
+    if (existing) throw new ConflictException('Este slug já está em uso');
   }
 
   private async assertClinicOwnership(clinicId: string, profileId: string) {
@@ -274,7 +287,7 @@ export class ProfilesService {
       where: { id: profileId, clinicId },
       select: { id: true, userId: true, slug: true, isPublished: true },
     });
-    if (!profile) throw new NotFoundException('Profile not found');
+    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 
@@ -283,7 +296,7 @@ export class ProfilesService {
       where: { id: serviceId, profileId },
       select: { id: true },
     });
-    if (!service) throw new NotFoundException('Service not found');
+    if (!service) throw new NotFoundException('Serviço não encontrado');
     return service;
   }
 
@@ -305,7 +318,7 @@ export class ProfilesService {
 
     if (existing) {
       throw new ConflictException(
-        'A service with this display order already exists for this profile',
+        'Já existe um serviço com esta ordem de exibição para este perfil',
       );
     }
   }

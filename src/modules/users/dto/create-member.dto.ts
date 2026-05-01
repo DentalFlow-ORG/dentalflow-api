@@ -10,9 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsEmail } from 'class-validator';
-import { normalizeEmail, trimValue } from '../../auth/dto/transform.helpers';
+import { normalizeEmail, normalizePhone, trimValue } from '../../../common/utils/transform.helpers';
 
-const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
+const personNamePattern = /^[\p{L}\s.'-]+$/u;
+const brPhonePattern = /^\d{10,11}$/;
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export class CreateMemberDto {
@@ -21,7 +22,7 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, { message: 'firstName contains unsupported characters' })
+  @Matches(personNamePattern, { message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
   firstName!: string;
 
   @Transform(({ value }: { value: unknown }) => trimValue(value))
@@ -29,7 +30,7 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, { message: 'lastName contains unsupported characters' })
+  @Matches(personNamePattern, { message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
   lastName!: string;
 
   @Transform(({ value }: { value: unknown }) => normalizeEmail(value))
@@ -46,8 +47,9 @@ export class CreateMemberDto {
   role!: 'DENTIST' | 'ASSISTANT';
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @MaxLength(20)
+  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   phone?: string;
 
   // Profile fields — only used when role === 'DENTIST'

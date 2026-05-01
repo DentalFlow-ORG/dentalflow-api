@@ -104,7 +104,7 @@ export class UsersService {
       where: { email: dto.email },
       select: { id: true },
     });
-    if (existing) throw new ConflictException('Email already in use');
+    if (existing) throw new ConflictException('Este e-mail já está em uso');
 
     if (dto.role === 'DENTIST') {
       const profileDisplayName =
@@ -125,7 +125,7 @@ export class UsersService {
           select: { id: true },
         });
         if (found.length !== dto.specialtyIds.length) {
-          throw new BadRequestException('One or more specialty IDs are invalid');
+          throw new BadRequestException('Uma ou mais especialidades são inválidas');
         }
       }
     }
@@ -199,17 +199,21 @@ export class UsersService {
   }
 
   async updateMember(clinicId: string, userId: string, dto: UpdateUserDto) {
-    await this.assertClinicMembership(clinicId, userId);
+    const member = await this.assertClinicMembership(clinicId, userId);
 
     if (dto.email) {
       const conflict = await this.prisma.user.findFirst({
         where: { email: dto.email, NOT: { id: userId } },
         select: { id: true },
       });
-      if (conflict) throw new ConflictException('Email already in use');
+      if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
-    const updated = await this.prisma.user.update({
+    if (dto.isActive === true && !member.isActive) {
+      await this.checkPlanUserLimit(clinicId);
+    }
+
+    await this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
@@ -217,11 +221,18 @@ export class UsersService {
         ...(dto.email !== undefined && { email: dto.email }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.role !== undefined && { role: dto.role }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
-      select: MEMBER_LIST_SELECT,
     });
 
-    return updated;
+    if (dto.isActive === false) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    return this.findClinicMemberById(clinicId, userId);
   }
 
   async deleteMember(clinicId: string, userId: string) {
@@ -296,7 +307,7 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: USER_SAFE_SELECT,
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
     return user;
   }
 
@@ -310,7 +321,7 @@ export class UsersService {
 
     if ((dto.role === 'ADMIN' || dto.role === 'PATIENT') && dto.clinicId) {
       throw new BadRequestException(
-        `clinicId must be omitted for role ${dto.role}`,
+        `clinicId deve ser omitido para o papel ${dto.role}`,
       );
     }
 
@@ -319,14 +330,14 @@ export class UsersService {
         where: { id: dto.clinicId, deletedAt: null },
         select: { id: true },
       });
-      if (!clinic) throw new NotFoundException('Clinic not found');
+      if (!clinic) throw new NotFoundException('Clínica não encontrada');
     }
 
     const existing = await this.prisma.user.findFirst({
       where: { email: dto.email },
       select: { id: true },
     });
-    if (existing) throw new ConflictException('Email already in use');
+    if (existing) throw new ConflictException('Este e-mail já está em uso');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
@@ -349,14 +360,14 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: { id: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
 
     if (dto.email) {
       const conflict = await this.prisma.user.findFirst({
         where: { email: dto.email, NOT: { id: userId } },
         select: { id: true },
       });
-      if (conflict) throw new ConflictException('Email already in use');
+      if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
     if (dto.clinicId !== undefined && dto.clinicId !== null) {
@@ -364,7 +375,7 @@ export class UsersService {
         where: { id: dto.clinicId, deletedAt: null },
         select: { id: true },
       });
-      if (!clinic) throw new NotFoundException('Clinic not found');
+      if (!clinic) throw new NotFoundException('Clínica não encontrada');
     }
 
     const updated = await this.prisma.user.update({
@@ -397,7 +408,7 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: { id: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -417,7 +428,7 @@ export class UsersService {
       where: { id: userId, deletedAt: null },
       select: { id: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
@@ -444,16 +455,16 @@ export class UsersService {
         role: { in: ['DENTIST', 'ASSISTANT'] },
         deletedAt: null,
       },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
-    if (!member) throw new NotFoundException('User not found');
+    if (!member) throw new NotFoundException('Usuário não encontrado');
     return member;
   }
 
   private async checkPlanUserLimit(clinicId: string): Promise<void> {
     const [userCount, subscription] = await Promise.all([
       this.prisma.user.count({
-        where: { clinicId, deletedAt: null },
+        where: { clinicId, isActive: true, deletedAt: null },
       }),
       this.prisma.subscription.findUnique({
         where: { clinicId },
@@ -465,8 +476,39 @@ export class UsersService {
     const limit = PLAN_USER_LIMITS[planSlug] ?? DEFAULT_USER_LIMIT;
 
     if (userCount >= limit) {
-      throw new ForbiddenException('User limit reached for current plan');
+      throw new ForbiddenException('Limite de usuários atingido para o plano atual');
     }
+  }
+
+  private async findClinicMemberById(clinicId: string, userId: string) {
+    const [member, profile] = await Promise.all([
+      this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          clinicId,
+          role: { in: ['DENTIST', 'ASSISTANT'] },
+          deletedAt: null,
+        },
+        select: MEMBER_LIST_SELECT,
+      }),
+      this.prisma.profile.findFirst({
+        where: { clinicId, userId },
+        select: {
+          id: true,
+          userId: true,
+          slug: true,
+          displayName: true,
+          isPublished: true,
+        },
+      }),
+    ]);
+
+    if (!member) throw new NotFoundException('Usuário não encontrado');
+
+    return {
+      ...member,
+      profile,
+    };
   }
 }
 

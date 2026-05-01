@@ -33,7 +33,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user || !user.isActive || user.deletedAt !== null) {
-      throw new UnauthorizedException('Access denied');
+      throw new UnauthorizedException('Sessão inválida');
     }
 
     const authUser = { id: user.id, clinicId: user.clinicId, role: user.role };

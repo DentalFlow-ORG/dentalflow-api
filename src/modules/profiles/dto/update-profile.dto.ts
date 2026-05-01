@@ -8,8 +8,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { normalizePhone } from '../../../common/utils/transform.helpers';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const brPhonePattern = /^\d{10,11}$/;
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -51,13 +53,15 @@ export class UpdateProfileDto {
   crmState?: string;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @MaxLength(20)
+  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   phone?: string;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @MaxLength(20)
+  @Matches(brPhonePattern, { message: 'WhatsApp deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   whatsappNumber?: string;
 
   @IsOptional()

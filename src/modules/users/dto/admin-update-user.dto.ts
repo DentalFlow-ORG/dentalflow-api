@@ -10,9 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { UserRole } from '@prisma/client';
-import { normalizeEmail, trimValue } from '../../auth/dto/transform.helpers';
+import { normalizeEmail, normalizePhone, trimValue } from '../../../common/utils/transform.helpers';
 
-const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
+const personNamePattern = /^[\p{L}\s.'-]+$/u;
+const brPhonePattern = /^\d{10,11}$/;
 
 export class AdminUpdateUserDto {
   @IsOptional()
@@ -20,7 +21,7 @@ export class AdminUpdateUserDto {
   @IsString()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, { message: 'firstName contains unsupported characters' })
+  @Matches(personNamePattern, { message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
   firstName?: string;
 
   @IsOptional()
@@ -28,7 +29,7 @@ export class AdminUpdateUserDto {
   @IsString()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(safeTextPattern, { message: 'lastName contains unsupported characters' })
+  @Matches(personNamePattern, { message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
   lastName?: string;
 
   @IsOptional()
@@ -38,8 +39,9 @@ export class AdminUpdateUserDto {
   email?: string;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @MaxLength(20)
+  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   phone?: string;
 
   @IsOptional()

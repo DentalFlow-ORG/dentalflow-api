@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -27,6 +28,7 @@ export class UsersController {
 
   // ─── Current user ────────────────────────────────────────────────────────────
 
+  @AnyAuthenticated()
   @Get('me')
   getMe(@CurrentUser() user: AuthUser) {
     return this.usersService.findById(user.id);
@@ -116,6 +118,48 @@ export class UsersController {
   }
 
   // ─── ADMIN stub ──────────────────────────────────────────────────────────────
+
+  @Patch('clinic/members/:id')
+  @Roles('OWNER')
+  updateClinicMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.updateMember(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+      dto,
+    );
+  }
+
+  @Patch('clinic/members/:id/password')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  updateClinicMemberPassword(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+    @Body() dto: UpdatePasswordDto,
+  ) {
+    return this.usersService.updateMemberPassword(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+      dto,
+    );
+  }
+
+  @Delete('clinic/members/:id')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteClinicMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+  ) {
+    return this.usersService.deleteMember(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+    );
+  }
 
   @Get('admin-only')
   @Roles('ADMIN')
