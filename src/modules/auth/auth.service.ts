@@ -73,7 +73,7 @@ export class AuthService {
       select: { id: true },
     });
     if (existing) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException('Este e-mail já está em uso');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
@@ -148,7 +148,7 @@ export class AuthService {
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('E-mail ou senha inválidos');
     }
 
     this.accessPolicy.assertValidRoleTenantShape({
@@ -219,7 +219,7 @@ export class AuthService {
 
     if (!stored) {
       this.logger.warn('Invalid refresh token attempt — token not found');
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Sessão inválida');
     }
 
     // Revoked token reuse → possible theft; revoke all active sessions for safety
@@ -231,14 +231,14 @@ export class AuthService {
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Refresh token already used');
+      throw new UnauthorizedException('Sessão inválida');
     }
 
     if (stored.expiresAt < new Date()) {
       this.logger.log(
         `Expired refresh token presented — userId: ${stored.userId}`,
       );
-      throw new UnauthorizedException('Refresh token expired');
+      throw new UnauthorizedException('Sessão expirada');
     }
 
     if (!stored.user.isActive || stored.user.deletedAt !== null) {
@@ -249,7 +249,7 @@ export class AuthService {
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Access denied');
+      throw new UnauthorizedException('Acesso negado');
     }
 
     this.accessPolicy.assertValidRoleTenantShape({
@@ -302,6 +302,32 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { success: true };
+  }
+
+  async getCurrentUser(userId: string): Promise<AuthResponseUser> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        clinicId: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Sessão inválida');
+    }
+
+    this.accessPolicy.assertValidRoleTenantShape({
+      id: user.id,
+      clinicId: user.clinicId,
+      role: user.role,
+    });
+
+    return this.toAuthResponseUser(user);
   }
 
   private toAuthResponseUser(user: AuthResponseUser): AuthResponseUser {

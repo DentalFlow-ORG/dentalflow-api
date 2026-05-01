@@ -52,7 +52,7 @@ export class AuthController {
   @AnyAuthenticated()
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
-    return user;
+    return this.authService.getCurrentUser(user.id);
   }
 
   @AnyAuthenticated()

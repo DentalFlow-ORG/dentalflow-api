@@ -62,9 +62,12 @@ export class ProfilesService {
     });
   }
 
-  findAll(clinicId: string) {
+  findAll(clinicId: string, callerId: string, callerRole: UserRole) {
     return this.prisma.profile.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(callerRole === 'DENTIST' ? { userId: callerId } : {}),
+      },
       select: PROFILE_LIST_SELECT,
       orderBy: { createdAt: 'asc' },
     });
@@ -85,12 +88,22 @@ export class ProfilesService {
     return profile;
   }
 
-  async findById(clinicId: string, id: string) {
+  async findById(
+    clinicId: string,
+    callerId: string,
+    callerRole: UserRole,
+    id: string,
+  ) {
     const profile = await this.prisma.profile.findFirst({
       where: { id, clinicId },
       include: PROFILE_DETAIL_INCLUDE,
     });
     if (!profile) throw new NotFoundException('Profile not found');
+    if (callerRole === 'DENTIST' && profile.userId !== callerId) {
+      throw new ForbiddenException(
+        'Profissionais podem acessar apenas o próprio perfil',
+      );
+    }
     return profile;
   }
 

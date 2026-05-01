@@ -119,6 +119,48 @@ export class UsersController {
 
   // ─── ADMIN stub ──────────────────────────────────────────────────────────────
 
+  @Patch('clinic/members/:id')
+  @Roles('OWNER')
+  updateClinicMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.updateMember(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+      dto,
+    );
+  }
+
+  @Patch('clinic/members/:id/password')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  updateClinicMemberPassword(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+    @Body() dto: UpdatePasswordDto,
+  ) {
+    return this.usersService.updateMemberPassword(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+      dto,
+    );
+  }
+
+  @Delete('clinic/members/:id')
+  @Roles('OWNER')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteClinicMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id') userId: string,
+  ) {
+    return this.usersService.deleteMember(
+      this.accessPolicy.assertOwnerAccess(user),
+      userId,
+    );
+  }
+
   @Get('admin-only')
   @Roles('ADMIN')
   adminOnly(@CurrentUser() user: AuthUser) {
