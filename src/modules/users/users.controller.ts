@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -27,6 +28,7 @@ export class UsersController {
 
   // ─── Current user ────────────────────────────────────────────────────────────
 
+  @AnyAuthenticated()
   @Get('me')
   getMe(@CurrentUser() user: AuthUser) {
     return this.usersService.findById(user.id);

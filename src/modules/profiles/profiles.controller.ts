@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -39,6 +40,7 @@ export class ProfilesController {
     );
   }
 
+  @AnyAuthenticated()
   @Get()
   findAll(@CurrentUser() user: AuthUser) {
     return this.profilesService.findAll(
@@ -53,6 +55,7 @@ export class ProfilesController {
     return this.profilesService.findBySlug(slug);
   }
 
+  @AnyAuthenticated()
   @Get(':id')
   findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.profilesService.findById(

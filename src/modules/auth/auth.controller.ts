@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
+import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/types/auth-user.type';
@@ -48,11 +49,13 @@ export class AuthController {
     );
   }
 
+  @AnyAuthenticated()
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return user;
   }
 
+  @AnyAuthenticated()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   logout(@CurrentUser() user: AuthUser, @Body() dto: LogoutDto) {
