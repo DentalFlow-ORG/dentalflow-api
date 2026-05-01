@@ -9,11 +9,11 @@ export class CreateAvailabilityDto {
   dayOfWeek!: number;
 
   @IsString()
-  @Matches(timePattern, { message: 'startTime must be HH:mm' })
+  @Matches(timePattern, { message: 'Horário inicial deve estar no formato HH:mm' })
   startTime!: string;
 
   @IsString()
-  @Matches(timePattern, { message: 'endTime must be HH:mm' })
+  @Matches(timePattern, { message: 'Horário final deve estar no formato HH:mm' })
   endTime!: string;
 
   @IsOptional()

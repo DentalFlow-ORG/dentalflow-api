@@ -125,7 +125,7 @@ export class UsersService {
           select: { id: true },
         });
         if (found.length !== dto.specialtyIds.length) {
-          throw new BadRequestException('One or more specialty IDs are invalid');
+          throw new BadRequestException('Uma ou mais especialidades são inválidas');
         }
       }
     }
@@ -321,7 +321,7 @@ export class UsersService {
 
     if ((dto.role === 'ADMIN' || dto.role === 'PATIENT') && dto.clinicId) {
       throw new BadRequestException(
-        `clinicId must be omitted for role ${dto.role}`,
+        `clinicId deve ser omitido para o papel ${dto.role}`,
       );
     }
 

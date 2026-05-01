@@ -48,7 +48,7 @@ export class AppointmentsService {
       where: { id: appointmentId, clinicId },
       include: APPOINTMENT_INCLUDE,
     });
-    if (!appointment) throw new NotFoundException('Appointment not found');
+    if (!appointment) throw new NotFoundException('Consulta não encontrada');
     this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
     return appointment;
   }
@@ -135,7 +135,7 @@ export class AppointmentsService {
         profile: { select: { userId: true } },
       },
     });
-    if (!existing) throw new NotFoundException('Appointment not found');
+    if (!existing) throw new NotFoundException('Consulta não encontrada');
     this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
 
     if (dto.patientUserId) {
@@ -174,6 +174,9 @@ export class AppointmentsService {
       appointmentId,
     );
 
+    const scheduleChanged =
+      Boolean(dto.appointmentDate || dto.startTime || dto.durationMinutes);
+
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data: {
@@ -186,6 +189,7 @@ export class AppointmentsService {
         startTime,
         endTime,
         durationMinutes,
+        status: existing.status === 'NO_SHOW' && scheduleChanged ? 'PENDING' : undefined,
         notes: dto.notes,
         patientNotes: dto.patientNotes,
       },
@@ -195,14 +199,20 @@ export class AppointmentsService {
 
   async updateAppointmentStatus(
     clinicId: string,
+    userId: string,
+    role: UserRole,
     appointmentId: string,
     dto: UpdateAppointmentStatusDto,
   ) {
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, clinicId },
-      select: { id: true },
+      select: {
+        id: true,
+        profile: { select: { userId: true } },
+      },
     });
-    if (!appointment) throw new NotFoundException('Appointment not found');
+    if (!appointment) throw new NotFoundException('Consulta não encontrada');
+    this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
 
     const now = new Date();
     return this.prisma.appointment.update({
@@ -234,14 +244,14 @@ export class AppointmentsService {
         profile: { select: { userId: true } },
       },
     });
-    if (!appointment) throw new NotFoundException('Appointment not found');
+    if (!appointment) throw new NotFoundException('Consulta não encontrada');
     this.assertDentistAppointmentAccess(
       role,
       userId,
       appointment.profile.userId,
     );
 
-    return this.updateAppointmentStatus(clinicId, appointmentId, {
+    return this.updateAppointmentStatus(clinicId, userId, role, appointmentId, {
       status: 'CANCELED',
       canceledBy: dto?.canceledBy ?? 'CLINIC',
       cancellationReason: dto?.cancellationReason,
@@ -353,7 +363,7 @@ export class AppointmentsService {
     const endTime = dto.endTime ? parseTime(dto.endTime) : undefined;
     if (!isDayOff) {
       if (!startTime || !endTime) {
-        throw new ConflictException('Working exceptions require startTime and endTime');
+        throw new ConflictException('Exceções de atendimento exigem horário inicial e final');
       }
       assertValidTimeRange(startTime, endTime);
     }
@@ -390,7 +400,7 @@ export class AppointmentsService {
     const endTime = dto.endTime ? parseTime(dto.endTime) : existing.endTime;
     if (!isDayOff) {
       if (!startTime || !endTime) {
-        throw new ConflictException('Working exceptions require startTime and endTime');
+        throw new ConflictException('Exceções de atendimento exigem horário inicial e final');
       }
       assertValidTimeRange(startTime, endTime);
     }
@@ -438,7 +448,7 @@ export class AppointmentsService {
       where: { id: profileId, clinicId },
       select: { id: true, userId: true },
     });
-    if (!profile) throw new NotFoundException('Profile not found');
+    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 
@@ -451,7 +461,7 @@ export class AppointmentsService {
       where: { id: serviceId, clinicId, profileId, isActive: true },
       select: { id: true, durationMinutes: true },
     });
-    if (!service) throw new NotFoundException('Service not found');
+    if (!service) throw new NotFoundException('Serviço não encontrado');
     return service;
   }
 
@@ -460,7 +470,7 @@ export class AppointmentsService {
       where: { id: leadId, clinicId },
       select: { id: true },
     });
-    if (!lead) throw new NotFoundException('Lead not found');
+    if (!lead) throw new NotFoundException('Lead não encontrado');
   }
 
   private async assertPatientUser(patientUserId: string) {
@@ -474,7 +484,7 @@ export class AppointmentsService {
       },
       select: { id: true },
     });
-    if (!patient) throw new NotFoundException('Patient user not found');
+    if (!patient) throw new NotFoundException('Paciente não encontrado');
   }
 
   private async assertAvailabilityInProfile(
@@ -485,7 +495,7 @@ export class AppointmentsService {
     const availability = await this.prisma.availability.findFirst({
       where: { id: availabilityId, clinicId, profileId },
     });
-    if (!availability) throw new NotFoundException('Availability not found');
+    if (!availability) throw new NotFoundException('Disponibilidade não encontrada');
     return availability;
   }
 
@@ -498,7 +508,7 @@ export class AppointmentsService {
       where: { id: exceptionId, clinicId, profileId },
     });
     if (!exception) {
-      throw new NotFoundException('Availability exception not found');
+      throw new NotFoundException('Exceção de disponibilidade não encontrada');
     }
     return exception;
   }
@@ -509,7 +519,7 @@ export class AppointmentsService {
     profileUserId: string | null,
   ): void {
     if (role === 'DENTIST' && profileUserId !== userId) {
-      throw new ForbiddenException('Dentists can only access their own schedule');
+      throw new ForbiddenException('Profissionais podem acessar apenas a própria agenda');
     }
   }
 
@@ -525,14 +535,14 @@ export class AppointmentsService {
     });
 
     if (exception?.isDayOff) {
-      throw new ConflictException('Profile is unavailable on this date');
+      throw new ConflictException('Profissional indisponível nesta data');
     }
 
     if (exception && exception.startTime && exception.endTime) {
       if (isWithinRange(startTime, endTime, exception.startTime, exception.endTime)) {
         return;
       }
-      throw new ConflictException('Appointment is outside exception availability');
+      throw new ConflictException('Consulta fora da disponibilidade excepcional');
     }
 
     const availability = await this.prisma.availability.findMany({
@@ -545,7 +555,7 @@ export class AppointmentsService {
     });
 
     if (availability.length === 0) {
-      throw new ConflictException('Profile has no availability for this day');
+      throw new ConflictException('Profissional sem disponibilidade para este dia');
     }
 
     const matchingAvailability = availability.some((item) =>
@@ -553,7 +563,7 @@ export class AppointmentsService {
     );
 
     if (!matchingAvailability) {
-      throw new ConflictException('Appointment is outside profile availability');
+      throw new ConflictException('Consulta fora da disponibilidade do profissional');
     }
   }
 
@@ -579,7 +589,7 @@ export class AppointmentsService {
     });
 
     if (existing) {
-      throw new ConflictException('Appointment overlaps an existing appointment');
+      throw new ConflictException('Consulta conflita com outro agendamento');
     }
   }
 
@@ -601,16 +611,29 @@ export class AppointmentsService {
       appointmentDate < now.date ||
       (appointmentDate === now.date && startTime < now.time)
     ) {
-      throw new BadRequestException('Appointment cannot be scheduled in the past');
+      throw new BadRequestException('Consulta não pode ser agendada no passado');
     }
   }
 }
 
 function parseDate(value: string): Date {
-  return new Date(`${value}T00:00:00.000Z`);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || formatDateInputValue(date) !== value) {
+    throw new BadRequestException('Data da consulta inválida');
+  }
+  return date;
 }
 
 function parseTime(value: string): Date {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    throw new BadRequestException('Horário da consulta inválido');
+  }
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) {
+    throw new BadRequestException('Horário da consulta inválido');
+  }
   return new Date(`1970-01-01T${value}:00.000Z`);
 }
 
@@ -624,7 +647,7 @@ function timeToMinutes(time: Date): number {
 
 function assertValidTimeRange(startTime: Date, endTime: Date): void {
   if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
-    throw new ConflictException('startTime must be before endTime');
+    throw new ConflictException('Horário inicial deve ser anterior ao horário final');
   }
 }
 

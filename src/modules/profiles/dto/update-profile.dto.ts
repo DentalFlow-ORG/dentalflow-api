@@ -55,13 +55,13 @@ export class UpdateProfileDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, { message: 'phone must be a valid Brazilian number with DDD (10 or 11 digits)' })
+  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   phone?: string;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, { message: 'whatsappNumber must be a valid Brazilian number with DDD (10 or 11 digits)' })
+  @Matches(brPhonePattern, { message: 'WhatsApp deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   whatsappNumber?: string;
 
   @IsOptional()

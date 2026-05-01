@@ -5,7 +5,7 @@ const timePattern = /^\d{2}:\d{2}$/;
 
 export class CreateAvailabilityExceptionDto {
   @IsString()
-  @Matches(datePattern, { message: 'exceptionDate must be YYYY-MM-DD' })
+  @Matches(datePattern, { message: 'Data da exceção deve estar no formato AAAA-MM-DD' })
   exceptionDate!: string;
 
   @IsOptional()
@@ -14,12 +14,12 @@ export class CreateAvailabilityExceptionDto {
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'startTime must be HH:mm' })
+  @Matches(timePattern, { message: 'Horário inicial deve estar no formato HH:mm' })
   startTime?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'endTime must be HH:mm' })
+  @Matches(timePattern, { message: 'Horário final deve estar no formato HH:mm' })
   endTime?: string;
 
   @IsOptional()

@@ -42,12 +42,12 @@ export class UpdateAppointmentDto {
 
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'appointmentDate must be YYYY-MM-DD' })
+  @Matches(datePattern, { message: 'Data da consulta deve estar no formato AAAA-MM-DD' })
   appointmentDate?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'startTime must be HH:mm' })
+  @Matches(timePattern, { message: 'Horário da consulta deve estar no formato HH:mm' })
   startTime?: string;
 
   @IsOptional()

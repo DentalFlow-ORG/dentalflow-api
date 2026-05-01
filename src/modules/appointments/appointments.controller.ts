@@ -79,14 +79,20 @@ export class AppointmentsController {
   }
 
   @Patch(':id/status')
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   updateStatus(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateAppointmentStatusDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.appointmentsService.updateAppointmentStatus(clinicId, id, dto);
+    return this.appointmentsService.updateAppointmentStatus(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      dto,
+    );
   }
 
   @Post(':id/cancel')

@@ -49,7 +49,7 @@ export class CreateMemberDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, { message: 'phone must be a valid Brazilian number with DDD (10 or 11 digits)' })
+  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
   phone?: string;
 
   // Profile fields — only used when role === 'DENTIST'

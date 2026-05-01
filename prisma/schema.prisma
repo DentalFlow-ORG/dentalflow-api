@@ -381,6 +381,7 @@ model Appointment {
   cancellationReason String?
   confirmedAt        DateTime?
   completedAt        DateTime?
+  googleCalendarEventId String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -397,6 +398,38 @@ model Appointment {
   @@index([status])
   @@index([leadId])
   @@map("appointments")
+}
+
+model GoogleCalendarIntegration {
+  id                    String    @id @default(cuid())
+  clinicId              String    @unique
+  connectedByUserId     String
+  googleCalendarId      String    @default("primary")
+  googleCalendarSummary String?
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String
+  tokenExpiresAt        DateTime
+  syncToken             String?
+  connectedAt           DateTime  @default(now())
+  lastSyncedAt          DateTime?
+  disconnectedAt        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([connectedByUserId])
+  @@map("google_calendar_integrations")
+}
+
+model GoogleCalendarOAuthState {
+  id        String   @id
+  clinicId  String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([clinicId])
+  @@index([userId])
+  @@map("google_calendar_oauth_states")
 }
 
 // ================================================================
