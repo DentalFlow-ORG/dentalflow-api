@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -18,6 +19,7 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
+import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 
 @Controller('appointments')
 @TenantScoped()
@@ -48,6 +50,16 @@ export class AppointmentsController {
       user.role,
       dto,
     );
+  }
+
+  @Get('slots')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  getAvailableSlots(
+    @CurrentUser() user: AuthUser,
+    @Query() dto: GetAvailableSlotsDto,
+  ) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.appointmentsService.getAvailableSlots(clinicId, dto);
   }
 
   @Get(':id')

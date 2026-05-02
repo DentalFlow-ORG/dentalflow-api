@@ -14,6 +14,7 @@ import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { CreateAvailabilityExceptionDto } from './dto/create-availability-exception.dto';
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
+import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 import { CalendarIntegrationsService } from '../calendar-integrations/calendar-integrations.service';
 
 const APPOINTMENT_INCLUDE = {
@@ -492,6 +493,113 @@ export class AppointmentsService {
     });
   }
 
+  async getAvailableSlots(
+    clinicId: string,
+    dto: GetAvailableSlotsDto,
+  ): Promise<{ time: string; available: boolean; reason: string | null }[]> {
+    await this.assertProfileInClinic(clinicId, dto.profileId);
+
+    let durationMinutes = dto.durationMinutes;
+    if (!durationMinutes && dto.serviceId) {
+      const service = await this.assertServiceInProfile(
+        clinicId,
+        dto.profileId,
+        dto.serviceId,
+      );
+      durationMinutes = service.durationMinutes ?? undefined;
+    }
+    durationMinutes ??= 30;
+
+    const date = parseDate(dto.date);
+    const workingRanges = await this.resolveWorkingRanges(
+      clinicId,
+      dto.profileId,
+      date,
+    );
+
+    if (workingRanges.length === 0) return [];
+
+    const existingAppointments = await this.prisma.appointment.findMany({
+      where: {
+        clinicId,
+        profileId: dto.profileId,
+        appointmentDate: date,
+        status: { notIn: ['CANCELED', 'NO_SHOW'] },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    const SLOT_INCREMENT = 30;
+    const slots: { time: string; available: boolean; reason: string | null }[] =
+      [];
+
+    for (const range of workingRanges) {
+      const rangeStartMin = timeToMinutes(range.start);
+      const rangeEndMin = timeToMinutes(range.end);
+
+      for (
+        let t = rangeStartMin;
+        t + durationMinutes <= rangeEndMin;
+        t += SLOT_INCREMENT
+      ) {
+        const slotEnd = t + durationMinutes;
+        const conflict = existingAppointments.some(
+          (a) =>
+            timeToMinutes(a.startTime) < slotEnd &&
+            timeToMinutes(a.endTime) > t,
+        );
+        slots.push({
+          time: formatTimeValue(t),
+          available: !conflict,
+          reason: conflict ? 'Horário ocupado' : null,
+        });
+      }
+    }
+
+    return slots;
+  }
+
+  private async resolveWorkingRanges(
+    clinicId: string,
+    profileId: string,
+    date: Date,
+  ): Promise<{ start: Date; end: Date }[]> {
+    const exception = await this.prisma.availabilityException.findFirst({
+      where: { clinicId, profileId, exceptionDate: date },
+    });
+
+    if (exception?.isDayOff) return [];
+
+    if (exception?.startTime && exception.endTime) {
+      return [{ start: exception.startTime, end: exception.endTime }];
+    }
+
+    const availability = await this.prisma.availability.findMany({
+      where: {
+        clinicId,
+        profileId,
+        dayOfWeek: date.getUTCDay(),
+        isActive: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    if (availability.length > 0) {
+      return availability.map((a) => ({ start: a.startTime, end: a.endTime }));
+    }
+
+    const dow = date.getUTCDay();
+    if (!(DEFAULT_BUSINESS_HOURS.weekdays as readonly number[]).includes(dow)) {
+      return [];
+    }
+    return [
+      {
+        start: DEFAULT_BUSINESS_HOURS.startTime,
+        end: DEFAULT_BUSINESS_HOURS.endTime,
+      },
+    ];
+  }
+
   private async assertProfileAccess(
     clinicId: string,
     userId: string,
@@ -761,6 +869,12 @@ function isWithinRange(
     timeToMinutes(startTime) >= timeToMinutes(rangeStart) &&
     timeToMinutes(endTime) <= timeToMinutes(rangeEnd)
   );
+}
+
+function formatTimeValue(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function formatDateInputValue(date: Date): string {
