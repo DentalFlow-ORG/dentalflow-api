@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(pnpm run *)",
+      "Bash(Start-Sleep -Seconds 8)",
+      "Bash(Get-Content \"C:\\\\Users\\\\USURIO~2\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Usu-rio-Desktop-DentalFlow-dentalflow-api\\\\ec3ac277-7816-4c17-8d25-83280e9ae844\\\\tasks\\\\bij1begl2.output\" -Tail 20)",
+      "PowerShell(curl.exe -s -o NUL -w \"%{http_code}\" http://localhost:3000 2>&1)",
+      "PowerShell($ownerLogin = curl.exe -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"owner@dentalflow.local\",\"password\":\"DentalFlow@123\"}'; Write-Host \"OWNER login: $ownerLogin\")",
+      "PowerShell(Set-Content *)",
+      "PowerShell($OWNER_TOKEN = \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbW9ob3huNzIwMDBvOGdjMG5lZ2t2aDJxIiwiY2xpbmljSWQiOiJzZWVkLWNsaW5pYy1kZW50YWxmbG93Iiwicm9sZSI6Ik9XTkVSIiwiaWF0IjoxNzc3Njk3NDMwLCJleHAiOjE3Nzc2OTgzMzB9.QlbskELU7fz6DGN2_aXyc8kvSsGEe3DXEWRp9WtY-V4\"; curl.exe -s http://localhost:3000/api/appointments -H \"Authorization: Bearer $OWNER_TOKEN\")",
+      "PowerShell($OWNER_TOKEN = \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbW9ob3huNzIwMDBvOGdjMG5lZ2t2aDJxIiwiY2xpbmljSWQiOiJzZWVkLWNsaW5pYy1kZW50YWxmbG93Iiwicm9sZSI6Ik9XTkVSIiwiaWF0IjoxNzc3Njk3NDMwLCJleHAiOjE3Nzc2OTgzMzB9.QlbskELU7fz6DGN2_aXyc8kvSsGEe3DXEWRp9WtY-V4\"; curl.exe -s http://localhost:3000/api/profiles -H \"Authorization: Bearer $OWNER_TOKEN\")",
+      "PowerShell(node -e \"const d = new Date\\('2026-05-03T00:00:00.000Z'\\); console.log\\('Day:', d.getUTCDay\\(\\), 'Date:', d.toUTCString\\(\\)\\)\")"
     ]
   }
 }

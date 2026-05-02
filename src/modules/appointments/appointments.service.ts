@@ -214,6 +214,15 @@ export class AppointmentsService {
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
     this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
 
+    if (
+      role === 'DENTIST' &&
+      (dto.status === 'CONFIRMED' || dto.status === 'CANCELED')
+    ) {
+      throw new ForbiddenException(
+        'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
+      );
+    }
+
     const now = new Date();
     return this.prisma.appointment.update({
       where: { id: appointmentId },
