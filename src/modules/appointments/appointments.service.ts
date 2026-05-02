@@ -14,6 +14,7 @@ import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { CreateAvailabilityExceptionDto } from './dto/create-availability-exception.dto';
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
+import { CalendarIntegrationsService } from '../calendar-integrations/calendar-integrations.service';
 
 const APPOINTMENT_INCLUDE = {
   profile: { select: { id: true, displayName: true, userId: true } },
@@ -23,7 +24,10 @@ const APPOINTMENT_INCLUDE = {
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendarIntegrations: CalendarIntegrationsService,
+  ) {}
 
   async listAppointments(clinicId: string, userId: string, role: UserRole) {
     return this.prisma.appointment.findMany({
@@ -213,6 +217,10 @@ export class AppointmentsService {
     });
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
     this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
+
+    if (dto.status === 'CANCELED') {
+      await this.calendarIntegrations.deleteAppointmentEvent(clinicId, appointmentId);
+    }
 
     const now = new Date();
     return this.prisma.appointment.update({

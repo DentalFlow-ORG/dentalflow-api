@@ -10,6 +10,7 @@ import { googleCalendarConfig } from '../../config/google-calendar.config';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const GOOGLE_CALENDAR_API_URL = 'https://www.googleapis.com/calendar/v3';
 const GOOGLE_CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
@@ -69,6 +70,11 @@ type AppointmentSyncRow = {
   profileName: string;
   serviceName: string | null;
   timezone: string;
+}
+
+type AppointmentGoogleEventRow = {
+  id: string;
+  googleCalendarEventId: string | null;
 }
 
 type GoogleEventResponse = {
@@ -190,16 +196,64 @@ export class CalendarIntegrationsService {
     await this.prisma.$executeRaw`
       DELETE FROM "google_calendar_oauth_states" WHERE "id" = ${state}
     `;
+
+    await this.sync(storedState.clinicId);
   }
 
   async disconnect(clinicId: string) {
+    const integration = await this.findActiveIntegration(clinicId);
+    if (!integration) {
+      return {
+        connected: false,
+        calendarSummary: null,
+        connectedAt: null,
+        lastSyncedAt: null,
+      };
+    }
+
+    const accessToken = await this.getValidAccessToken(integration);
+    await this.deleteSyncedGoogleEvents(clinicId, integration.googleCalendarId, accessToken);
+    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+
     await this.prisma.$executeRaw`
       UPDATE "google_calendar_integrations"
       SET "disconnectedAt" = NOW(), "updatedAt" = NOW()
       WHERE "clinicId" = ${clinicId}
     `;
 
-    return { connected: false };
+    return {
+      connected: false,
+      calendarSummary: null,
+      connectedAt: null,
+      lastSyncedAt: null,
+    };
+  }
+
+  async deleteAppointmentEvent(clinicId: string, appointmentId: string) {
+    const integration = await this.findActiveIntegration(clinicId);
+    if (!integration) return;
+
+    const [appointment] = await this.prisma.$queryRaw<AppointmentGoogleEventRow[]>`
+      SELECT "id", "googleCalendarEventId"
+      FROM "appointments"
+      WHERE "id" = ${appointmentId} AND "clinicId" = ${clinicId}
+      LIMIT 1
+    `;
+
+    if (!appointment?.googleCalendarEventId) return;
+
+    const accessToken = await this.getValidAccessToken(integration);
+    await this.deleteGoogleEvent(
+      accessToken,
+      integration.googleCalendarId,
+      appointment.googleCalendarEventId,
+    );
+
+    await this.prisma.$executeRaw`
+      UPDATE "appointments"
+      SET "googleCalendarEventId" = NULL
+      WHERE "id" = ${appointmentId} AND "clinicId" = ${clinicId}
+    `;
   }
 
   async sync(clinicId: string) {
@@ -281,6 +335,19 @@ export class CalendarIntegrationsService {
     return this.postTokenRequest(body);
   }
 
+  private async revokeGoogleToken(token: string) {
+    const body = new URLSearchParams({ token });
+    const response = await fetch(GOOGLE_REVOKE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException('Não foi possível revogar o acesso ao Google Agenda.');
+    }
+  }
+
   private async postTokenRequest(body: URLSearchParams): Promise<TokenResponse> {
     const response = await fetch(GOOGLE_TOKEN_URL, {
       method: 'POST',
@@ -358,6 +425,33 @@ export class CalendarIntegrationsService {
     `;
   }
 
+  private async findAppointmentsWithGoogleEvents(clinicId: string) {
+    return this.prisma.$queryRaw<AppointmentGoogleEventRow[]>`
+      SELECT "id", "googleCalendarEventId"
+      FROM "appointments"
+      WHERE "clinicId" = ${clinicId} AND "googleCalendarEventId" IS NOT NULL
+    `;
+  }
+
+  private async deleteSyncedGoogleEvents(
+    clinicId: string,
+    calendarId: string,
+    accessToken: string,
+  ) {
+    const appointments = await this.findAppointmentsWithGoogleEvents(clinicId);
+
+    for (const appointment of appointments) {
+      if (!appointment.googleCalendarEventId) continue;
+      await this.deleteGoogleEvent(accessToken, calendarId, appointment.googleCalendarEventId);
+    }
+
+    await this.prisma.$executeRaw`
+      UPDATE "appointments"
+      SET "googleCalendarEventId" = NULL
+      WHERE "clinicId" = ${clinicId} AND "googleCalendarEventId" IS NOT NULL
+    `;
+  }
+
   private async upsertGoogleEvent(
     accessToken: string,
     calendarId: string,
@@ -424,6 +518,23 @@ export class CalendarIntegrationsService {
     }
 
     return payload;
+  }
+
+  private async deleteGoogleEvent(accessToken: string, calendarId: string, eventId: string) {
+    const encodedCalendarId = encodeURIComponent(calendarId);
+    const response = await fetch(
+      `${GOOGLE_CALENDAR_API_URL}/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+
+    if (response.ok || response.status === 404 || response.status === 410) {
+      return;
+    }
+
+    throw new BadRequestException('Não foi possível remover evento no Google Agenda.');
   }
 
   private assertConfig() {
