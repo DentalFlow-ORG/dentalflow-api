@@ -14,24 +14,28 @@ import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { CreateAvailabilityExceptionDto } from './dto/create-availability-exception.dto';
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
+import { CalendarIntegrationsService } from '../calendar-integrations/calendar-integrations.service';
 
 const APPOINTMENT_INCLUDE = {
   profile: { select: { id: true, displayName: true, userId: true } },
   service: { select: { id: true, name: true, durationMinutes: true } },
-  patient: { select: { id: true, firstName: true, lastName: true, email: true } },
+  patient: {
+    select: { id: true, firstName: true, lastName: true, email: true },
+  },
 } as const;
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendarIntegrations: CalendarIntegrationsService,
+  ) {}
 
   async listAppointments(clinicId: string, userId: string, role: UserRole) {
     return this.prisma.appointment.findMany({
       where: {
         clinicId,
-        ...(role === 'DENTIST'
-          ? { profile: { userId } }
-          : {}),
+        ...(role === 'DENTIST' ? { profile: { userId } } : {}),
       },
       include: APPOINTMENT_INCLUDE,
       orderBy: [{ appointmentDate: 'asc' }, { startTime: 'asc' }],
@@ -49,7 +53,11 @@ export class AppointmentsService {
       include: APPOINTMENT_INCLUDE,
     });
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
-    this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
+    this.assertDentistAppointmentAccess(
+      role,
+      userId,
+      appointment.profile.userId,
+    );
     return appointment;
   }
 
@@ -63,7 +71,11 @@ export class AppointmentsService {
     this.assertDentistAppointmentAccess(role, userId, profile.userId);
 
     const service = dto.serviceId
-      ? await this.assertServiceInProfile(clinicId, dto.profileId, dto.serviceId)
+      ? await this.assertServiceInProfile(
+          clinicId,
+          dto.profileId,
+          dto.serviceId,
+        )
       : null;
 
     if (dto.leadId) {
@@ -143,14 +155,22 @@ export class AppointmentsService {
     }
 
     const service = dto.serviceId
-      ? await this.assertServiceInProfile(clinicId, existing.profileId, dto.serviceId)
+      ? await this.assertServiceInProfile(
+          clinicId,
+          existing.profileId,
+          dto.serviceId,
+        )
       : existing.service;
     const durationMinutes =
-      dto.durationMinutes ?? service?.durationMinutes ?? existing.durationMinutes;
+      dto.durationMinutes ??
+      service?.durationMinutes ??
+      existing.durationMinutes;
     const appointmentDate = dto.appointmentDate
       ? parseDate(dto.appointmentDate)
       : existing.appointmentDate;
-    const startTime = dto.startTime ? parseTime(dto.startTime) : existing.startTime;
+    const startTime = dto.startTime
+      ? parseTime(dto.startTime)
+      : existing.startTime;
     const endTime = addMinutes(startTime, durationMinutes);
     await this.assertAppointmentIsNotInPast(
       clinicId,
@@ -174,8 +194,9 @@ export class AppointmentsService {
       appointmentId,
     );
 
-    const scheduleChanged =
-      Boolean(dto.appointmentDate || dto.startTime || dto.durationMinutes);
+    const scheduleChanged = Boolean(
+      dto.appointmentDate || dto.startTime || dto.durationMinutes,
+    );
 
     return this.prisma.appointment.update({
       where: { id: appointmentId },
@@ -189,7 +210,10 @@ export class AppointmentsService {
         startTime,
         endTime,
         durationMinutes,
-        status: existing.status === 'NO_SHOW' && scheduleChanged ? 'PENDING' : undefined,
+        status:
+          existing.status === 'NO_SHOW' && scheduleChanged
+            ? 'PENDING'
+            : undefined,
         notes: dto.notes,
         patientNotes: dto.patientNotes,
       },
@@ -212,7 +236,27 @@ export class AppointmentsService {
       },
     });
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
-    this.assertDentistAppointmentAccess(role, userId, appointment.profile.userId);
+    this.assertDentistAppointmentAccess(
+      role,
+      userId,
+      appointment.profile.userId,
+    );
+
+    if (
+      role === 'DENTIST' &&
+      (dto.status === 'CONFIRMED' || dto.status === 'CANCELED')
+    ) {
+      throw new ForbiddenException(
+        'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
+      );
+    }
+
+    if (dto.status === 'CANCELED') {
+      await this.calendarIntegrations.deleteAppointmentEvent(
+        clinicId,
+        appointmentId,
+      );
+    }
 
     const now = new Date();
     return this.prisma.appointment.update({
@@ -222,7 +266,8 @@ export class AppointmentsService {
         confirmedAt: dto.status === 'CONFIRMED' ? now : undefined,
         completedAt: dto.status === 'COMPLETED' ? now : undefined,
         canceledAt: dto.status === 'CANCELED' ? now : undefined,
-        canceledBy: dto.status === 'CANCELED' ? dto.canceledBy ?? 'CLINIC' : undefined,
+        canceledBy:
+          dto.status === 'CANCELED' ? (dto.canceledBy ?? 'CLINIC') : undefined,
         cancellationReason:
           dto.status === 'CANCELED' ? dto.cancellationReason : undefined,
       },
@@ -310,7 +355,9 @@ export class AppointmentsService {
       availabilityId,
     );
 
-    const startTime = dto.startTime ? parseTime(dto.startTime) : existing.startTime;
+    const startTime = dto.startTime
+      ? parseTime(dto.startTime)
+      : existing.startTime;
     const endTime = dto.endTime ? parseTime(dto.endTime) : existing.endTime;
     assertValidTimeRange(startTime, endTime);
 
@@ -363,7 +410,9 @@ export class AppointmentsService {
     const endTime = dto.endTime ? parseTime(dto.endTime) : undefined;
     if (!isDayOff) {
       if (!startTime || !endTime) {
-        throw new ConflictException('Exceções de atendimento exigem horário inicial e final');
+        throw new ConflictException(
+          'Exceções de atendimento exigem horário inicial e final',
+        );
       }
       assertValidTimeRange(startTime, endTime);
     }
@@ -396,11 +445,15 @@ export class AppointmentsService {
       exceptionId,
     );
     const isDayOff = dto.isDayOff ?? existing.isDayOff;
-    const startTime = dto.startTime ? parseTime(dto.startTime) : existing.startTime;
+    const startTime = dto.startTime
+      ? parseTime(dto.startTime)
+      : existing.startTime;
     const endTime = dto.endTime ? parseTime(dto.endTime) : existing.endTime;
     if (!isDayOff) {
       if (!startTime || !endTime) {
-        throw new ConflictException('Exceções de atendimento exigem horário inicial e final');
+        throw new ConflictException(
+          'Exceções de atendimento exigem horário inicial e final',
+        );
       }
       assertValidTimeRange(startTime, endTime);
     }
@@ -429,7 +482,9 @@ export class AppointmentsService {
       profileId,
       exceptionId,
     );
-    await this.prisma.availabilityException.delete({ where: { id: exceptionId } });
+    await this.prisma.availabilityException.delete({
+      where: { id: exceptionId },
+    });
   }
 
   private async assertProfileAccess(
@@ -448,7 +503,8 @@ export class AppointmentsService {
       where: { id: profileId, clinicId },
       select: { id: true, userId: true },
     });
-    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
+    if (!profile)
+      throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 
@@ -495,7 +551,8 @@ export class AppointmentsService {
     const availability = await this.prisma.availability.findFirst({
       where: { id: availabilityId, clinicId, profileId },
     });
-    if (!availability) throw new NotFoundException('Disponibilidade não encontrada');
+    if (!availability)
+      throw new NotFoundException('Disponibilidade não encontrada');
     return availability;
   }
 
@@ -519,7 +576,9 @@ export class AppointmentsService {
     profileUserId: string | null,
   ): void {
     if (role === 'DENTIST' && profileUserId !== userId) {
-      throw new ForbiddenException('Profissionais podem acessar apenas a própria agenda');
+      throw new ForbiddenException(
+        'Profissionais podem acessar apenas a própria agenda',
+      );
     }
   }
 
@@ -539,10 +598,19 @@ export class AppointmentsService {
     }
 
     if (exception && exception.startTime && exception.endTime) {
-      if (isWithinRange(startTime, endTime, exception.startTime, exception.endTime)) {
+      if (
+        isWithinRange(
+          startTime,
+          endTime,
+          exception.startTime,
+          exception.endTime,
+        )
+      ) {
         return;
       }
-      throw new ConflictException('Consulta fora da disponibilidade excepcional');
+      throw new ConflictException(
+        'Consulta fora da disponibilidade excepcional',
+      );
     }
 
     const availability = await this.prisma.availability.findMany({
@@ -555,7 +623,9 @@ export class AppointmentsService {
     });
 
     if (availability.length === 0) {
-      throw new ConflictException('Profissional sem disponibilidade para este dia');
+      throw new ConflictException(
+        'Profissional sem disponibilidade para este dia',
+      );
     }
 
     const matchingAvailability = availability.some((item) =>
@@ -563,7 +633,9 @@ export class AppointmentsService {
     );
 
     if (!matchingAvailability) {
-      throw new ConflictException('Consulta fora da disponibilidade do profissional');
+      throw new ConflictException(
+        'Consulta fora da disponibilidade do profissional',
+      );
     }
   }
 
@@ -611,7 +683,9 @@ export class AppointmentsService {
       appointmentDate < now.date ||
       (appointmentDate === now.date && startTime < now.time)
     ) {
-      throw new BadRequestException('Consulta não pode ser agendada no passado');
+      throw new BadRequestException(
+        'Consulta não pode ser agendada no passado',
+      );
     }
   }
 }
@@ -647,7 +721,9 @@ function timeToMinutes(time: Date): number {
 
 function assertValidTimeRange(startTime: Date, endTime: Date): void {
   if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
-    throw new ConflictException('Horário inicial deve ser anterior ao horário final');
+    throw new ConflictException(
+      'Horário inicial deve ser anterior ao horário final',
+    );
   }
 }
 
