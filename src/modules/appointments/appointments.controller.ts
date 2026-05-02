@@ -16,6 +16,7 @@ import { AuthUser } from '../../common/types/auth-user.type';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
+import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 
 @Controller('appointments')
@@ -101,7 +102,8 @@ export class AppointmentsController {
   cancel(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body() dto: Pick<UpdateAppointmentStatusDto, 'canceledBy' | 'cancellationReason'>,
+    @Body()
+    dto: Pick<UpdateAppointmentStatusDto, 'canceledBy' | 'cancellationReason'>,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.cancelAppointment(
@@ -110,6 +112,62 @@ export class AppointmentsController {
       user.role,
       id,
       dto,
+    );
+  }
+
+  @Patch(':id/confirm')
+  @Roles('OWNER', 'ASSISTANT')
+  confirmAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.appointmentsService.updateAppointmentStatus(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      { status: 'CONFIRMED' },
+    );
+  }
+
+  @Patch(':id/cancel')
+  @Roles('OWNER', 'ASSISTANT')
+  cancelAction(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.appointmentsService.cancelAppointment(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      { cancellationReason: dto.cancellationReason, canceledBy: 'CLINIC' },
+    );
+  }
+
+  @Patch(':id/complete')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  completeAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.appointmentsService.updateAppointmentStatus(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      { status: 'COMPLETED' },
+    );
+  }
+
+  @Patch(':id/no-show')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  noShowAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.appointmentsService.updateAppointmentStatus(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      { status: 'NO_SHOW' },
     );
   }
 }
