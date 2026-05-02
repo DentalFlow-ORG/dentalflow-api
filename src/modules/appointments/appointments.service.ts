@@ -24,6 +24,14 @@ const APPOINTMENT_INCLUDE = {
   },
 } as const;
 
+// Default working hours applied when a professional has no availability configured.
+// Mon=1 … Fri=5; weekends (0=Sun, 6=Sat) are unavailable.
+const DEFAULT_BUSINESS_HOURS = {
+  startTime: new Date('1970-01-01T08:00:00.000Z'),
+  endTime: new Date('1970-01-01T18:00:00.000Z'),
+  weekdays: [1, 2, 3, 4, 5],
+} as const;
+
 @Injectable()
 export class AppointmentsService {
   constructor(
@@ -242,10 +250,7 @@ export class AppointmentsService {
       appointment.profile.userId,
     );
 
-    if (
-      role === 'DENTIST' &&
-      (dto.status === 'CONFIRMED' || dto.status === 'CANCELED')
-    ) {
+    if (role === 'DENTIST' && !['COMPLETED', 'NO_SHOW'].includes(dto.status)) {
       throw new ForbiddenException(
         'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
       );
@@ -623,9 +628,28 @@ export class AppointmentsService {
     });
 
     if (availability.length === 0) {
-      throw new ConflictException(
-        'Profissional sem disponibilidade para este dia',
-      );
+      // No availability configured → fall back to default Mon-Fri 08:00-18:00
+      const dow = appointmentDate.getUTCDay();
+      if (
+        !(DEFAULT_BUSINESS_HOURS.weekdays as readonly number[]).includes(dow)
+      ) {
+        throw new ConflictException(
+          'Profissional não atende neste dia da semana',
+        );
+      }
+      if (
+        !isWithinRange(
+          startTime,
+          endTime,
+          DEFAULT_BUSINESS_HOURS.startTime,
+          DEFAULT_BUSINESS_HOURS.endTime,
+        )
+      ) {
+        throw new ConflictException(
+          'Consulta fora do horário padrão do profissional (08:00 – 18:00)',
+        );
+      }
+      return;
     }
 
     const matchingAvailability = availability.some((item) =>
