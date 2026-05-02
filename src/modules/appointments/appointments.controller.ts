@@ -39,7 +39,7 @@ export class AppointmentsController {
   }
 
   @Post()
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'ASSISTANT')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAppointmentDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.createAppointment(
@@ -63,7 +63,7 @@ export class AppointmentsController {
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'ASSISTANT')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -97,7 +97,7 @@ export class AppointmentsController {
   }
 
   @Post(':id/cancel')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'ASSISTANT')
   @HttpCode(HttpStatus.OK)
   cancel(
     @CurrentUser() user: AuthUser,
