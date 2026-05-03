@@ -14,6 +14,7 @@ import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { CreateAvailabilityExceptionDto } from './dto/create-availability-exception.dto';
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
+import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 import { CalendarIntegrationsService } from '../calendar-integrations/calendar-integrations.service';
 
 const APPOINTMENT_INCLUDE = {
@@ -22,6 +23,14 @@ const APPOINTMENT_INCLUDE = {
   patient: {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
+} as const;
+
+// Default working hours applied when a professional has no availability configured.
+// Mon=1 … Fri=5; weekends (0=Sun, 6=Sat) are unavailable.
+const DEFAULT_BUSINESS_HOURS = {
+  startTime: new Date('1970-01-01T08:00:00.000Z'),
+  endTime: new Date('1970-01-01T18:00:00.000Z'),
+  weekdays: [1, 2, 3, 4, 5],
 } as const;
 
 @Injectable()
@@ -242,10 +251,7 @@ export class AppointmentsService {
       appointment.profile.userId,
     );
 
-    if (
-      role === 'DENTIST' &&
-      (dto.status === 'CONFIRMED' || dto.status === 'CANCELED')
-    ) {
+    if (role === 'DENTIST' && !['COMPLETED', 'NO_SHOW'].includes(dto.status)) {
       throw new ForbiddenException(
         'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
       );
@@ -487,6 +493,113 @@ export class AppointmentsService {
     });
   }
 
+  async getAvailableSlots(
+    clinicId: string,
+    dto: GetAvailableSlotsDto,
+  ): Promise<{ time: string; available: boolean; reason: string | null }[]> {
+    await this.assertProfileInClinic(clinicId, dto.profileId);
+
+    let durationMinutes = dto.durationMinutes;
+    if (!durationMinutes && dto.serviceId) {
+      const service = await this.assertServiceInProfile(
+        clinicId,
+        dto.profileId,
+        dto.serviceId,
+      );
+      durationMinutes = service.durationMinutes ?? undefined;
+    }
+    durationMinutes ??= 30;
+
+    const date = parseDate(dto.date);
+    const workingRanges = await this.resolveWorkingRanges(
+      clinicId,
+      dto.profileId,
+      date,
+    );
+
+    if (workingRanges.length === 0) return [];
+
+    const existingAppointments = await this.prisma.appointment.findMany({
+      where: {
+        clinicId,
+        profileId: dto.profileId,
+        appointmentDate: date,
+        status: { notIn: ['CANCELED', 'NO_SHOW'] },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    const SLOT_INCREMENT = 30;
+    const slots: { time: string; available: boolean; reason: string | null }[] =
+      [];
+
+    for (const range of workingRanges) {
+      const rangeStartMin = timeToMinutes(range.start);
+      const rangeEndMin = timeToMinutes(range.end);
+
+      for (
+        let t = rangeStartMin;
+        t + durationMinutes <= rangeEndMin;
+        t += SLOT_INCREMENT
+      ) {
+        const slotEnd = t + durationMinutes;
+        const conflict = existingAppointments.some(
+          (a) =>
+            timeToMinutes(a.startTime) < slotEnd &&
+            timeToMinutes(a.endTime) > t,
+        );
+        slots.push({
+          time: formatTimeValue(t),
+          available: !conflict,
+          reason: conflict ? 'Horário ocupado' : null,
+        });
+      }
+    }
+
+    return slots;
+  }
+
+  private async resolveWorkingRanges(
+    clinicId: string,
+    profileId: string,
+    date: Date,
+  ): Promise<{ start: Date; end: Date }[]> {
+    const exception = await this.prisma.availabilityException.findFirst({
+      where: { clinicId, profileId, exceptionDate: date },
+    });
+
+    if (exception?.isDayOff) return [];
+
+    if (exception?.startTime && exception.endTime) {
+      return [{ start: exception.startTime, end: exception.endTime }];
+    }
+
+    const availability = await this.prisma.availability.findMany({
+      where: {
+        clinicId,
+        profileId,
+        dayOfWeek: date.getUTCDay(),
+        isActive: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    if (availability.length > 0) {
+      return availability.map((a) => ({ start: a.startTime, end: a.endTime }));
+    }
+
+    const dow = date.getUTCDay();
+    if (!(DEFAULT_BUSINESS_HOURS.weekdays as readonly number[]).includes(dow)) {
+      return [];
+    }
+    return [
+      {
+        start: DEFAULT_BUSINESS_HOURS.startTime,
+        end: DEFAULT_BUSINESS_HOURS.endTime,
+      },
+    ];
+  }
+
   private async assertProfileAccess(
     clinicId: string,
     userId: string,
@@ -623,9 +736,28 @@ export class AppointmentsService {
     });
 
     if (availability.length === 0) {
-      throw new ConflictException(
-        'Profissional sem disponibilidade para este dia',
-      );
+      // No availability configured → fall back to default Mon-Fri 08:00-18:00
+      const dow = appointmentDate.getUTCDay();
+      if (
+        !(DEFAULT_BUSINESS_HOURS.weekdays as readonly number[]).includes(dow)
+      ) {
+        throw new ConflictException(
+          'Profissional não atende neste dia da semana',
+        );
+      }
+      if (
+        !isWithinRange(
+          startTime,
+          endTime,
+          DEFAULT_BUSINESS_HOURS.startTime,
+          DEFAULT_BUSINESS_HOURS.endTime,
+        )
+      ) {
+        throw new ConflictException(
+          'Consulta fora do horário padrão do profissional (08:00 – 18:00)',
+        );
+      }
+      return;
     }
 
     const matchingAvailability = availability.some((item) =>
@@ -737,6 +869,12 @@ function isWithinRange(
     timeToMinutes(startTime) >= timeToMinutes(rangeStart) &&
     timeToMinutes(endTime) <= timeToMinutes(rangeEnd)
   );
+}
+
+function formatTimeValue(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function formatDateInputValue(date: Date): string {

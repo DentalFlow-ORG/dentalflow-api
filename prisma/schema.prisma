@@ -77,6 +77,30 @@ enum SubscriptionStatus {
   INCOMPLETE
 }
 
+enum FinancialTransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum FinancialTransactionSource {
+  MANUAL
+  SERVICE_PAYMENT
+  FIXED_EXPENSE
+  ADJUSTMENT
+}
+
+enum FinancialTransactionStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+enum FixedExpenseRecurrence {
+  MONTHLY
+  WEEKLY
+  YEARLY
+}
+
 // ================================================================
 // DOMAIN 1 — IDENTITY, AUTH & RBAC
 // ================================================================
@@ -108,6 +132,9 @@ model Clinic {
   appointments Appointment[]
   subscription Subscription?
   dailyMetrics DailyMetrics[]
+  financialCategories FinancialCategory[]
+  financialTransactions FinancialTransaction[]
+  fixedExpenses FixedExpense[]
 
   @@map("clinics")
 }
@@ -139,6 +166,8 @@ model User {
   leadActivities LeadActivity[]
   assignedLeads  Lead[]         @relation("AssignedLeads")
   patientAppointments Appointment[] @relation("PatientAppointments")
+  createdFinancialTransactions FinancialTransaction[] @relation("FinancialTransactionCreatedBy")
+  createdFixedExpenses FixedExpense[] @relation("FixedExpenseCreatedBy")
 
   @@unique([email])
   @@index([clinicId])
@@ -202,6 +231,7 @@ model Profile {
   availability           Availability[]
   availabilityExceptions AvailabilityException[]
   appointments           Appointment[]
+  financialTransactions  FinancialTransaction[]
 
   @@index([clinicId])
   @@index([isPublished])
@@ -249,6 +279,7 @@ model Service {
   profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
   leads        Lead[]
   appointments Appointment[]
+  financialTransactions FinancialTransaction[]
 
   @@index([profileId])
   @@index([clinicId])
@@ -390,6 +421,7 @@ model Appointment {
   patient User?    @relation("PatientAppointments", fields: [patientUserId], references: [id])
   lead    Lead?    @relation(fields: [leadId], references: [id])
   service Service? @relation(fields: [serviceId], references: [id])
+  financialTransactions FinancialTransaction[]
 
   @@index([clinicId])
   @@index([profileId])
@@ -498,6 +530,98 @@ model StripeEvent {
   @@index([type])
   @@index([processed])
   @@map("stripe_events")
+}
+
+// ================================================================
+// DOMAIN 6 — CLINIC FINANCE
+// ================================================================
+
+model FinancialCategory {
+  id        String                   @id @default(cuid())
+  clinicId  String
+  name      String
+  type      FinancialTransactionType
+  color     String?
+  icon      String?
+  isDefault Boolean                  @default(false)
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+
+  clinic        Clinic                 @relation(fields: [clinicId], references: [id])
+  transactions  FinancialTransaction[]
+  fixedExpenses FixedExpense[]
+
+  @@unique([clinicId, type, name])
+  @@index([clinicId])
+  @@index([clinicId, type])
+  @@map("financial_categories")
+}
+
+model FinancialTransaction {
+  id               String                     @id @default(cuid())
+  clinicId         String
+  type             FinancialTransactionType
+  source           FinancialTransactionSource @default(MANUAL)
+  categoryId       String
+  fixedExpenseId   String?
+  amount           Decimal                    @db.Decimal(10, 2)
+  description      String
+  transactionDate  DateTime                   @db.Date
+  dueDate          DateTime?                  @db.Date
+  paidAt           DateTime?
+  status           FinancialTransactionStatus @default(PENDING)
+  appointmentId    String?
+  serviceId        String?
+  profileId        String?
+  paymentReference String?
+  createdByUserId  String
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  clinic        Clinic            @relation(fields: [clinicId], references: [id])
+  category      FinancialCategory @relation(fields: [categoryId], references: [id])
+  fixedExpense  FixedExpense?     @relation(fields: [fixedExpenseId], references: [id])
+  appointment   Appointment?      @relation(fields: [appointmentId], references: [id])
+  service       Service?          @relation(fields: [serviceId], references: [id])
+  profile       Profile?          @relation(fields: [profileId], references: [id])
+  createdByUser User              @relation("FinancialTransactionCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@unique([clinicId, appointmentId, source])
+  @@unique([clinicId, fixedExpenseId, dueDate])
+  @@index([clinicId])
+  @@index([clinicId, transactionDate])
+  @@index([clinicId, status])
+  @@index([clinicId, type])
+  @@index([categoryId])
+  @@index([serviceId])
+  @@index([profileId])
+  @@map("financial_transactions")
+}
+
+model FixedExpense {
+  id              String                 @id @default(cuid())
+  clinicId        String
+  categoryId      String
+  description     String
+  amount          Decimal                @db.Decimal(10, 2)
+  recurrence      FixedExpenseRecurrence @default(MONTHLY)
+  dueDay          Int
+  startDate       DateTime               @db.Date
+  endDate         DateTime?              @db.Date
+  isActive        Boolean                @default(true)
+  createdByUserId String
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  clinic        Clinic                 @relation(fields: [clinicId], references: [id])
+  category      FinancialCategory      @relation(fields: [categoryId], references: [id])
+  createdByUser User                   @relation("FixedExpenseCreatedBy", fields: [createdByUserId], references: [id])
+  transactions  FinancialTransaction[]
+
+  @@index([clinicId])
+  @@index([clinicId, isActive])
+  @@index([categoryId])
+  @@map("fixed_expenses")
 }
 
 // ================================================================

@@ -161,4 +161,9 @@ vite.config.ts.timestamp-*
 .claude/
 .codex/
 .agents/
+.cursor/
+
+# Editor workspace settings
+.vscode/
+.idea/
 

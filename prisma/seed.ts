@@ -1,7 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { Pool } from 'pg';
 
 const SPECIALTIES: { name: string; slug: string }[] = [
   { name: 'Clínica Geral', slug: 'clinica-geral' },
@@ -286,8 +285,7 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL is not set');
   }
 
-  const pool = new Pool({ connectionString });
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
 
   try {
@@ -295,7 +293,6 @@ async function main(): Promise<void> {
     console.log('Seed completed successfully.');
   } finally {
     await prisma.$disconnect();
-    await pool.end();
   }
 }
 
