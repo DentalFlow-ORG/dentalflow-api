@@ -11,6 +11,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { CalendarIntegrationsModule } from './modules/calendar-integrations/calendar-integrations.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
+import { PatientsModule } from './modules/patients/patients.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
@@ -41,6 +42,7 @@ import { PrismaModule } from './prisma/prisma.module';
     BillingModule,
     CalendarIntegrationsModule,
     FinanceModule,
+    PatientsModule,
     MetricsModule,
   ],
   providers: [
