@@ -9,6 +9,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { CalendarIntegrationsModule } from './modules/calendar-integrations/calendar-integrations.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
@@ -39,6 +40,7 @@ import { PrismaModule } from './prisma/prisma.module';
     SubscriptionsModule,
     BillingModule,
     CalendarIntegrationsModule,
+    FinanceModule,
     MetricsModule,
   ],
   providers: [
