@@ -1,14 +1,23 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { BillingInterval, SubscriptionStatus } from '@prisma/client';
-import Stripe = require('stripe');
+import { SubscriptionStatus } from '@prisma/client';
+import type StripeConstructor from 'stripe';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from './stripe.service';
 
-type StripeEvent = ReturnType<Stripe.Stripe['webhooks']['constructEvent']>;
-type StripeSubscription = Awaited<ReturnType<Stripe.Stripe['subscriptions']['retrieve']>>;
-type StripeInvoice = Awaited<ReturnType<Stripe.Stripe['invoices']['retrieve']>>;
-type StripeCheckoutSession = Awaited<ReturnType<Stripe.Stripe['checkout']['sessions']['retrieve']>>;
+type StripeEvent = ReturnType<
+  StripeConstructor.Stripe['webhooks']['constructEvent']
+>;
+type StripeSubscription = Awaited<
+  ReturnType<StripeConstructor.Stripe['subscriptions']['retrieve']>
+>;
+type StripeInvoice = Awaited<
+  ReturnType<StripeConstructor.Stripe['invoices']['retrieve']>
+>;
+type StripeCheckoutSession = Awaited<
+  ReturnType<StripeConstructor.Stripe['checkout']['sessions']['retrieve']>
+>;
+type BillingIntervalValue = 'MONTHLY' | 'YEARLY';
 
 @Injectable()
 export class WebhookService {
@@ -23,11 +32,13 @@ export class WebhookService {
     // 1. Verify Stripe signature — throws BadRequest if invalid
     let event: StripeEvent;
     try {
-      event = this.stripe.getClient().webhooks.constructEvent(
-        rawBody,
-        signature,
-        this.stripe.getWebhookSecret(),
-      );
+      event = this.stripe
+        .getClient()
+        .webhooks.constructEvent(
+          rawBody,
+          signature,
+          this.stripe.getWebhookSecret(),
+        );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Stripe signature verification failed: ${message}`);
@@ -107,9 +118,7 @@ export class WebhookService {
         );
         break;
       case 'invoice.payment_failed':
-        await this.onInvoicePaymentFailed(
-          event.data.object as StripeInvoice,
-        );
+        await this.onInvoicePaymentFailed(event.data.object as StripeInvoice);
         break;
       default:
         this.logger.log(`Unhandled Stripe event type: ${event.type}`);
@@ -131,7 +140,7 @@ export class WebhookService {
     const meta = session.metadata;
     const clinicId = meta?.clinicId;
     const planId = meta?.planId;
-    const billingInterval = meta?.billingInterval as BillingInterval | undefined;
+    const billingInterval = this.parseBillingInterval(meta?.billingInterval);
     const stripeCustomerId = this.resolveId(session.customer);
     const stripeSubscriptionId = this.resolveId(session.subscription);
 
@@ -146,12 +155,6 @@ export class WebhookService {
         `checkout.session.completed missing required data — ` +
           `clinicId: ${clinicId}, planId: ${planId}, ` +
           `stripeCustomerId: ${stripeCustomerId}, stripeSubscriptionId: ${stripeSubscriptionId}`,
-      );
-    }
-
-    if (!Object.values(BillingInterval).includes(billingInterval)) {
-      throw new Error(
-        `Invalid billingInterval in session metadata: ${billingInterval}`,
       );
     }
 
@@ -179,16 +182,11 @@ export class WebhookService {
    * Handles both customer.subscription.created and customer.subscription.updated.
    * Syncs status and period dates from the Stripe subscription object.
    */
-  private async onSubscriptionUpserted(
-    sub: StripeSubscription,
-  ): Promise<void> {
+  private async onSubscriptionUpserted(sub: StripeSubscription): Promise<void> {
     const stripeCustomerId = this.resolveId(sub.customer);
     if (!stripeCustomerId) return;
 
-    const existing = await this.findLocalSubscription(
-      sub.id,
-      stripeCustomerId,
-    );
+    const existing = await this.findLocalSubscription(sub.id, stripeCustomerId);
     if (!existing) {
       this.logger.warn(
         `No local subscription found for Stripe subscription ${sub.id} / customer ${stripeCustomerId}`,
@@ -210,9 +208,7 @@ export class WebhookService {
           : undefined,
         trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
-        canceledAt: sub.canceled_at
-          ? new Date(sub.canceled_at * 1000)
-          : null,
+        canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
       },
     });
   }
@@ -220,16 +216,11 @@ export class WebhookService {
   /**
    * Marks the local subscription as canceled when Stripe deletes the subscription.
    */
-  private async onSubscriptionDeleted(
-    sub: StripeSubscription,
-  ): Promise<void> {
+  private async onSubscriptionDeleted(sub: StripeSubscription): Promise<void> {
     const stripeCustomerId = this.resolveId(sub.customer);
     if (!stripeCustomerId) return;
 
-    const existing = await this.findLocalSubscription(
-      sub.id,
-      stripeCustomerId,
-    );
+    const existing = await this.findLocalSubscription(sub.id, stripeCustomerId);
     if (!existing) {
       this.logger.warn(
         `No local subscription found for deleted Stripe subscription ${sub.id}`,
@@ -276,9 +267,7 @@ export class WebhookService {
   /**
    * Sets status to PAST_DUE when a subscription invoice fails to collect.
    */
-  private async onInvoicePaymentFailed(
-    invoice: StripeInvoice,
-  ): Promise<void> {
+  private async onInvoicePaymentFailed(invoice: StripeInvoice): Promise<void> {
     const stripeCustomerId = this.resolveId(invoice.customer);
     const stripeSubscriptionId = this.resolveId(
       invoice.parent?.subscription_details?.subscription ?? null,
@@ -312,6 +301,20 @@ export class WebhookService {
     return typeof field === 'string' ? field : field.id;
   }
 
+  private parseBillingInterval(
+    billingInterval: string | null | undefined,
+  ): BillingIntervalValue | null {
+    if (billingInterval === 'MONTHLY') {
+      return 'MONTHLY';
+    }
+
+    if (billingInterval === 'YEARLY') {
+      return 'YEARLY';
+    }
+
+    return null;
+  }
+
   /**
    * Looks up the local Subscription by Stripe subscription ID first,
    * then falls back to Stripe customer ID.
@@ -339,17 +342,18 @@ export class WebhookService {
   private mapStripeStatus(
     stripeStatus: StripeSubscription['status'],
   ): SubscriptionStatus {
-    const map: Partial<Record<StripeSubscription['status'], SubscriptionStatus>> =
-      {
-        trialing: SubscriptionStatus.TRIALING,
-        active: SubscriptionStatus.ACTIVE,
-        past_due: SubscriptionStatus.PAST_DUE,
-        canceled: SubscriptionStatus.CANCELED,
-        unpaid: SubscriptionStatus.UNPAID,
-        paused: SubscriptionStatus.PAUSED,
-        incomplete: SubscriptionStatus.INCOMPLETE,
-        incomplete_expired: SubscriptionStatus.CANCELED,
-      };
+    const map: Partial<
+      Record<StripeSubscription['status'], SubscriptionStatus>
+    > = {
+      trialing: SubscriptionStatus.TRIALING,
+      active: SubscriptionStatus.ACTIVE,
+      past_due: SubscriptionStatus.PAST_DUE,
+      canceled: SubscriptionStatus.CANCELED,
+      unpaid: SubscriptionStatus.UNPAID,
+      paused: SubscriptionStatus.PAUSED,
+      incomplete: SubscriptionStatus.INCOMPLETE,
+      incomplete_expired: SubscriptionStatus.CANCELED,
+    };
     return map[stripeStatus] ?? SubscriptionStatus.ACTIVE;
   }
 }

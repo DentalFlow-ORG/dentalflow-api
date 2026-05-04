@@ -1,11 +1,14 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
-import { BillingInterval } from '@prisma/client';
+import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+
+export type BillingIntervalValue = 'MONTHLY' | 'YEARLY';
 
 export class CreateCheckoutSessionDto {
   @IsString()
   @IsNotEmpty({ message: 'planId é obrigatório' })
   planId!: string;
 
-  @IsEnum(BillingInterval, { message: 'billingInterval deve ser MONTHLY ou YEARLY' })
-  billingInterval!: BillingInterval;
+  @IsIn(['MONTHLY', 'YEARLY'], {
+    message: 'billingInterval deve ser MONTHLY ou YEARLY',
+  })
+  billingInterval!: BillingIntervalValue;
 }

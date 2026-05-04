@@ -1,4 +1,12 @@
-export const stripeConfig = {
+type StripeConfig = {
+  secretKey: string;
+  webhookSecret: string;
+  successUrl: string;
+  cancelUrl: string;
+  portalReturnUrl: string;
+};
+
+export const stripeConfig: StripeConfig = {
   secretKey: process.env.STRIPE_SECRET_KEY ?? '',
   webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   successUrl:
@@ -7,4 +15,7 @@ export const stripeConfig = {
   cancelUrl:
     process.env.STRIPE_CANCEL_URL ??
     'http://localhost:5173/app/assinatura/cancelar',
-} as const;
+  portalReturnUrl:
+    process.env.STRIPE_PORTAL_RETURN_URL ??
+    'http://localhost:5173/app/assinatura',
+};

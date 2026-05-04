@@ -34,6 +34,8 @@ interface PlanSeed {
   description: string;
   priceMonthly: number;
   priceYearly: number;
+  stripePriceIdMonthly: string | null;
+  stripePriceIdYearly: string | null;
   maxProfiles: number | null;
   maxLeadsPerMonth: number | null;
   maxServicesPerProfile: number | null;
@@ -45,48 +47,65 @@ interface PlanSeed {
   displayOrder: number;
 }
 
+// Slugs that were replaced by the current plan lineup.
+// Marked inactive so they are hidden from the frontend without deleting the
+// rows (existing Subscription FK references are preserved).
+const LEGACY_PLAN_SLUGS = ['basic', 'pro', 'enterprise'];
+
+// PLAN LIMITS & FEATURE FLAGS — PLACEHOLDERS
+// No plan-limit enforcement exists in the application yet.
+// All numeric limits are null (= unlimited) and all feature flags are true
+// so that no plan accidentally blocks a feature before the limits module is
+// intentionally implemented. When that module ships, update these values and
+// re-run `pnpm prisma db seed` to apply the real commercial differentiation.
 const PLANS: PlanSeed[] = [
   {
-    name: 'Basic',
-    slug: 'basic',
+    name: 'Starter',
+    slug: 'starter',
     description:
       'Ideal para dentistas autônomos que querem começar a captar pacientes online.',
-    priceMonthly: 0,
-    priceYearly: 0,
-    maxProfiles: 1,
-    maxLeadsPerMonth: 50,
-    maxServicesPerProfile: 5,
-    hasAppointments: false,
-    hasAnalytics: false,
-    hasCustomDomain: false,
-    hasPrioritySupport: false,
+    priceMonthly: 12990,
+    priceYearly: 129900,
+    stripePriceIdMonthly: 'price_1TTQseEpOLGVHpKlyaPh1zWt',
+    stripePriceIdYearly: 'price_1TTQtnEpOLGVHpKlFKmFyH4V',
+    maxProfiles: null,
+    maxLeadsPerMonth: null,
+    maxServicesPerProfile: null,
+    hasAppointments: true,
+    hasAnalytics: true,
+    hasCustomDomain: true,
+    hasPrioritySupport: true,
     isPublic: true,
     displayOrder: 1,
   },
   {
-    name: 'Pro',
-    slug: 'pro',
+    name: 'Professional',
+    slug: 'professional',
     description:
-      'Para clínicas em crescimento que precisam de agendamento e métricas.',
-    priceMonthly: 9900,
-    priceYearly: 99000,
-    maxProfiles: 3,
-    maxLeadsPerMonth: 300,
-    maxServicesPerProfile: 20,
+      'Para clínicas em crescimento que precisam de agendamento e métricas completas.',
+    priceMonthly: 21990,
+    priceYearly: 219900,
+    stripePriceIdMonthly: 'price_1TTQt0EpOLGVHpKln1zcaZYX',
+    stripePriceIdYearly: 'price_1TTQu4EpOLGVHpKlwwzZWUOh',
+    maxProfiles: null,
+    maxLeadsPerMonth: null,
+    maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
-    hasCustomDomain: false,
-    hasPrioritySupport: false,
+    hasCustomDomain: true,
+    hasPrioritySupport: true,
     isPublic: true,
     displayOrder: 2,
   },
   {
-    name: 'Enterprise',
-    slug: 'enterprise',
+    name: 'Premium',
+    slug: 'premium',
     description:
       'Para grandes clínicas e redes odontológicas com múltiplos profissionais.',
-    priceMonthly: 29900,
-    priceYearly: 299000,
+    priceMonthly: 29990,
+    priceYearly: 299900,
+    stripePriceIdMonthly: 'price_1TTQtIEpOLGVHpKlwHHqMQEa',
+    stripePriceIdYearly: 'price_1TTQuJEpOLGVHpKlCDg8dROV',
     maxProfiles: null,
     maxLeadsPerMonth: null,
     maxServicesPerProfile: null,
@@ -114,6 +133,13 @@ async function seed(prisma: PrismaClient): Promise<void> {
   console.log(`  - ${SPECIALTIES.length} specialties upserted`);
 
   console.log('Seeding plans...');
+  if (LEGACY_PLAN_SLUGS.length > 0) {
+    await prisma.plan.updateMany({
+      where: { slug: { in: LEGACY_PLAN_SLUGS } },
+      data: { isActive: false, isPublic: false },
+    });
+    console.log(`  - ${LEGACY_PLAN_SLUGS.length} legacy plans deactivated`);
+  }
   for (const plan of PLANS) {
     await prisma.plan.upsert({
       where: { slug: plan.slug },
@@ -122,6 +148,8 @@ async function seed(prisma: PrismaClient): Promise<void> {
         description: plan.description,
         priceMonthly: plan.priceMonthly,
         priceYearly: plan.priceYearly,
+        stripePriceIdMonthly: plan.stripePriceIdMonthly,
+        stripePriceIdYearly: plan.stripePriceIdYearly,
         maxProfiles: plan.maxProfiles,
         maxLeadsPerMonth: plan.maxLeadsPerMonth,
         maxServicesPerProfile: plan.maxServicesPerProfile,

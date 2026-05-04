@@ -16,6 +16,17 @@ export class BillingController {
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
+  @Get('plans')
+  getPlans() {
+    return this.billingService.getPlans();
+  }
+
+  @Get('subscription')
+  getSubscription(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    return this.billingService.getSubscription(clinicId);
+  }
+
   @Post('checkout-session')
   createCheckoutSession(
     @CurrentUser() user: AuthUser,
@@ -23,6 +34,18 @@ export class BillingController {
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.billingService.createCheckoutSession(clinicId, user.id, dto);
+  }
+
+  @Post('portal-session')
+  createPortalSession(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    return this.billingService.createPortalSession(clinicId);
+  }
+
+  @Post('subscription/cancel')
+  cancelSubscription(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    return this.billingService.cancelSubscription(clinicId);
   }
 
   @Get('template')
