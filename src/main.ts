@@ -6,7 +6,7 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/app.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.use(helmet());
   app.enableCors({
     origin: appConfig.frontendOrigin,
