@@ -67,27 +67,25 @@ export class UsersService {
   // ─── OWNER: clinic member management ─────────────────────────────────────────
 
   async findClinicMembers(clinicId: string) {
-    const [users, profiles] = await Promise.all([
-      this.prisma.user.findMany({
-        where: {
-          clinicId,
-          role: { in: ['DENTIST', 'ASSISTANT'] },
-          deletedAt: null,
-        },
-        select: MEMBER_LIST_SELECT,
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.profile.findMany({
-        where: { clinicId, userId: { not: null } },
-        select: {
-          id: true,
-          userId: true,
-          slug: true,
-          displayName: true,
-          isPublished: true,
-        },
-      }),
-    ]);
+    const users = await this.prisma.user.findMany({
+      where: {
+        clinicId,
+        role: { in: ['DENTIST', 'ASSISTANT'] },
+        deletedAt: null,
+      },
+      select: MEMBER_LIST_SELECT,
+      orderBy: { createdAt: 'asc' },
+    });
+    const profiles = await this.prisma.profile.findMany({
+      where: { clinicId, userId: { not: null } },
+      select: {
+        id: true,
+        userId: true,
+        slug: true,
+        displayName: true,
+        isPublished: true,
+      },
+    });
 
     const profileByUserId = new Map(profiles.map((p) => [p.userId!, p]));
 
@@ -125,7 +123,9 @@ export class UsersService {
           select: { id: true },
         });
         if (found.length !== dto.specialtyIds.length) {
-          throw new BadRequestException('Uma ou mais especialidades são inválidas');
+          throw new BadRequestException(
+            'Uma ou mais especialidades são inválidas',
+          );
         }
       }
     }
@@ -179,21 +179,19 @@ export class UsersService {
       return { userId: user.id, profileId: profile.id };
     });
 
-    const [user, profile] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: userId },
-        select: MEMBER_LIST_SELECT,
-      }),
-      profileId
-        ? this.prisma.profile.findUnique({
-            where: { id: profileId },
-            include: {
-              profileSpecialties: { include: { specialty: true } },
-              services: { orderBy: { displayOrder: 'asc' } },
-            },
-          })
-        : Promise.resolve(null),
-    ]);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: MEMBER_LIST_SELECT,
+    });
+    const profile = profileId
+      ? await this.prisma.profile.findUnique({
+          where: { id: profileId },
+          include: {
+            profileSpecialties: { include: { specialty: true } },
+            services: { orderBy: { displayOrder: 'asc' } },
+          },
+        })
+      : null;
 
     return { user, profile };
   }
@@ -288,16 +286,14 @@ export class UsersService {
     const take = Math.min(limit, 100);
     const skip = (page - 1) * take;
 
-    const [total, users] = await Promise.all([
-      this.prisma.user.count({ where: { deletedAt: null } }),
-      this.prisma.user.findMany({
-        where: { deletedAt: null },
-        select: USER_SAFE_SELECT,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take,
-      }),
-    ]);
+    const total = await this.prisma.user.count({ where: { deletedAt: null } });
+    const users = await this.prisma.user.findMany({
+      where: { deletedAt: null },
+      select: USER_SAFE_SELECT,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    });
 
     return { data: users, total, page, limit: take };
   }
@@ -462,46 +458,44 @@ export class UsersService {
   }
 
   private async checkPlanUserLimit(clinicId: string): Promise<void> {
-    const [userCount, subscription] = await Promise.all([
-      this.prisma.user.count({
-        where: { clinicId, isActive: true, deletedAt: null },
-      }),
-      this.prisma.subscription.findUnique({
-        where: { clinicId },
-        select: { plan: { select: { slug: true } } },
-      }),
-    ]);
+    const userCount = await this.prisma.user.count({
+      where: { clinicId, isActive: true, deletedAt: null },
+    });
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { clinicId },
+      select: { plan: { select: { slug: true } } },
+    });
 
     const planSlug = subscription?.plan?.slug?.toLowerCase() ?? '';
     const limit = PLAN_USER_LIMITS[planSlug] ?? DEFAULT_USER_LIMIT;
 
     if (userCount >= limit) {
-      throw new ForbiddenException('Limite de usuários atingido para o plano atual');
+      throw new ForbiddenException(
+        'Limite de usuários atingido para o plano atual',
+      );
     }
   }
 
   private async findClinicMemberById(clinicId: string, userId: string) {
-    const [member, profile] = await Promise.all([
-      this.prisma.user.findFirst({
-        where: {
-          id: userId,
-          clinicId,
-          role: { in: ['DENTIST', 'ASSISTANT'] },
-          deletedAt: null,
-        },
-        select: MEMBER_LIST_SELECT,
-      }),
-      this.prisma.profile.findFirst({
-        where: { clinicId, userId },
-        select: {
-          id: true,
-          userId: true,
-          slug: true,
-          displayName: true,
-          isPublished: true,
-        },
-      }),
-    ]);
+    const member = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        clinicId,
+        role: { in: ['DENTIST', 'ASSISTANT'] },
+        deletedAt: null,
+      },
+      select: MEMBER_LIST_SELECT,
+    });
+    const profile = await this.prisma.profile.findFirst({
+      where: { clinicId, userId },
+      select: {
+        id: true,
+        userId: true,
+        slug: true,
+        displayName: true,
+        isPublished: true,
+      },
+    });
 
     if (!member) throw new NotFoundException('Usuário não encontrado');
 
