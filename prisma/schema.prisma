@@ -140,6 +140,8 @@ model Clinic {
   financialCategories FinancialCategory[]
   financialTransactions FinancialTransaction[]
   fixedExpenses FixedExpense[]
+  googleCalendarIntegration GoogleCalendarIntegration?
+  googleCalendarOAuthStates GoogleCalendarOAuthState[]
 
   @@map("clinics")
 }
@@ -160,6 +162,7 @@ model User {
   passwordResetToken         String?
   passwordResetExpiresAt     DateTime?
   isActive                   Boolean   @default(true)
+  tokenVersion               Int       @default(0)
   lastLoginAt                DateTime?
   deletedAt                  DateTime?
   createdAt                  DateTime  @default(now())
@@ -173,6 +176,8 @@ model User {
   patientAppointments Appointment[] @relation("PatientAppointments")
   createdFinancialTransactions FinancialTransaction[] @relation("FinancialTransactionCreatedBy")
   createdFixedExpenses FixedExpense[] @relation("FixedExpenseCreatedBy")
+  googleCalendarConnections GoogleCalendarIntegration[] @relation("GoogleCalendarConnectedBy")
+  googleCalendarOAuthStates GoogleCalendarOAuthState[]  @relation("GoogleCalendarOAuthStates")
 
   @@unique([email])
   @@index([clinicId])
@@ -434,6 +439,10 @@ model Appointment {
   @@index([appointmentDate])
   @@index([status])
   @@index([leadId])
+  @@index([clinicId, appointmentDate])
+  @@index([profileId, appointmentDate])
+  @@index([clinicId, profileId, appointmentDate])
+  @@index([clinicId, status, appointmentDate])
   @@map("appointments")
 }
 
@@ -453,6 +462,9 @@ model GoogleCalendarIntegration {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  clinic          Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  connectedByUser User   @relation("GoogleCalendarConnectedBy", fields: [connectedByUserId], references: [id], onDelete: Restrict)
+
   @@index([connectedByUserId])
   @@map("google_calendar_integrations")
 }
@@ -463,6 +475,9 @@ model GoogleCalendarOAuthState {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user   User   @relation("GoogleCalendarOAuthStates", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([clinicId])
   @@index([userId])

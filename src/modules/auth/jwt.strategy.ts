@@ -29,10 +29,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         isActive: true,
         deletedAt: true,
+        tokenVersion: true,
       },
     });
 
     if (!user || !user.isActive || user.deletedAt !== null) {
+      throw new UnauthorizedException('Sessão inválida');
+    }
+
+    if (user.tokenVersion !== payload.tokenVersion) {
       throw new UnauthorizedException('Sessão inválida');
     }
 

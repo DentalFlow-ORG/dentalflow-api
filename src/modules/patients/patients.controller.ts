@@ -8,7 +8,7 @@ import { PatientsService } from './patients.service';
 
 @Controller('patients')
 @TenantScoped()
-@Roles('OWNER', 'DENTIST', 'ASSISTANT')
+@Roles('OWNER', 'ASSISTANT')
 export class PatientsController {
   constructor(
     private readonly patientsService: PatientsService,

@@ -103,6 +103,7 @@ export class AuthService {
           firstName: true,
           lastName: true,
           role: true,
+          tokenVersion: true,
         },
       });
 
@@ -122,7 +123,7 @@ export class AuthService {
     const safeUser = this.toAuthResponseUser(user);
 
     return {
-      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role),
+      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
@@ -143,6 +144,7 @@ export class AuthService {
         firstName: true,
         lastName: true,
         role: true,
+        tokenVersion: true,
         passwordHash: true,
       },
     });
@@ -186,7 +188,7 @@ export class AuthService {
     const safeUser = this.toAuthResponseUser(user);
 
     return {
-      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role),
+      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
@@ -212,6 +214,7 @@ export class AuthService {
             role: true,
             isActive: true,
             deletedAt: true,
+            tokenVersion: true,
           },
         },
       },
@@ -290,6 +293,7 @@ export class AuthService {
         stored.user.id,
         stored.user.clinicId,
         stored.user.role,
+        stored.user.tokenVersion,
       ),
       refreshToken: newRawToken,
     };
@@ -345,8 +349,9 @@ export class AuthService {
     userId: string,
     clinicId: string | null,
     role: UserRole,
+    tokenVersion: number,
   ): string {
-    const payload: JwtPayload = { sub: userId, clinicId, role };
+    const payload: JwtPayload = { sub: userId, clinicId, role, tokenVersion };
     return this.jwt.sign(payload);
   }
 }

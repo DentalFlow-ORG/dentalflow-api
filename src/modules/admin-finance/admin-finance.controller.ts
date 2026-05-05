@@ -4,6 +4,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { AuthUser } from '../../common/types/auth-user.type';
 import { AdminFinanceService } from './admin-finance.service';
+import { ListSubscriptionsDto } from './dto/list-subscriptions.dto';
+import { ListStripeEventsDto } from './dto/list-stripe-events.dto';
 
 @Controller('admin/finance')
 @Roles('ADMIN')
@@ -22,23 +24,17 @@ export class AdminFinanceController {
   @Get('subscriptions')
   listSubscriptions(
     @CurrentUser() user: AuthUser,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('status') status?: string,
-    @Query('planId') planId?: string,
-    @Query('search') search?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query() query: ListSubscriptionsDto,
   ) {
     this.accessPolicy.assertPlatformAdmin(user);
     return this.adminFinanceService.listSubscriptions({
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
-      status,
-      planId,
-      search,
-      from,
-      to,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      status: query.status,
+      planId: query.planId,
+      search: query.search,
+      from: query.from,
+      to: query.to,
     });
   }
 
@@ -51,21 +47,16 @@ export class AdminFinanceController {
   @Get('stripe-events')
   listStripeEvents(
     @CurrentUser() user: AuthUser,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('processed') processed?: string,
-    @Query('type') type?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query() query: ListStripeEventsDto,
   ) {
     this.accessPolicy.assertPlatformAdmin(user);
     return this.adminFinanceService.listStripeEvents({
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
-      processed,
-      type,
-      from,
-      to,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      processed: query.processed === undefined ? undefined : String(query.processed),
+      type: query.type,
+      from: query.from,
+      to: query.to,
     });
   }
 }

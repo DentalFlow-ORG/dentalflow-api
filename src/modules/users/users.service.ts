@@ -211,24 +211,30 @@ export class UsersService {
       await this.checkPlanUserLimit(clinicId);
     }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
-        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
-        ...(dto.role !== undefined && { role: dto.role }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-      },
-    });
+    const requiresInvalidation =
+      dto.isActive === false || dto.role !== undefined;
 
-    if (dto.isActive === false) {
-      await this.prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+          ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+          ...(dto.email !== undefined && { email: dto.email }),
+          ...(dto.phone !== undefined && { phone: dto.phone }),
+          ...(dto.role !== undefined && { role: dto.role }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(requiresInvalidation && { tokenVersion: { increment: 1 } }),
+        },
       });
-    }
+
+      if (requiresInvalidation) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+    });
 
     return this.findClinicMemberById(clinicId, userId);
   }
@@ -261,10 +267,9 @@ export class UsersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
-        data: { passwordHash },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
-      // Force re-login after a password change
       await tx.refreshToken.updateMany({
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -352,11 +357,31 @@ export class UsersService {
   }
 
   async adminUpdate(userId: string, dto: AdminUpdateUserDto) {
-    const user = await this.prisma.user.findFirst({
+    const current = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, role: true, clinicId: true },
     });
-    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (!current) throw new NotFoundException('Usuário não encontrado');
+
+    // Resolve the effective role and clinicId after the update
+    const effectiveRole = dto.role ?? current.role;
+    const effectiveClinicId =
+      dto.clinicId !== undefined ? dto.clinicId : current.clinicId;
+
+    const clinicMemberRoles = ['OWNER', 'DENTIST', 'ASSISTANT'];
+    if (clinicMemberRoles.includes(effectiveRole) && !effectiveClinicId) {
+      throw new BadRequestException(
+        `clinicId é obrigatório para o papel ${effectiveRole}`,
+      );
+    }
+    if (
+      (effectiveRole === 'ADMIN' || effectiveRole === 'PATIENT') &&
+      effectiveClinicId
+    ) {
+      throw new BadRequestException(
+        `clinicId deve ser omitido para o papel ${effectiveRole}`,
+      );
+    }
 
     if (dto.email) {
       const conflict = await this.prisma.user.findFirst({
@@ -366,35 +391,44 @@ export class UsersService {
       if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
-    if (dto.clinicId !== undefined && dto.clinicId !== null) {
+    if (effectiveClinicId) {
       const clinic = await this.prisma.clinic.findFirst({
-        where: { id: dto.clinicId, deletedAt: null },
+        where: { id: effectiveClinicId, deletedAt: null },
         select: { id: true },
       });
       if (!clinic) throw new NotFoundException('Clínica não encontrada');
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
-        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
-        ...(dto.role !== undefined && { role: dto.role }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        ...(dto.clinicId !== undefined && { clinicId: dto.clinicId }),
-      },
-      select: USER_SAFE_SELECT,
-    });
+    const requiresInvalidation =
+      dto.isActive === false ||
+      dto.role !== undefined ||
+      dto.clinicId !== undefined;
 
-    // Revoke tokens if the account was deactivated
-    if (dto.isActive === false) {
-      await this.prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+          ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+          ...(dto.email !== undefined && { email: dto.email }),
+          ...(dto.phone !== undefined && { phone: dto.phone }),
+          ...(dto.role !== undefined && { role: dto.role }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(dto.clinicId !== undefined && { clinicId: dto.clinicId }),
+          ...(requiresInvalidation && { tokenVersion: { increment: 1 } }),
+        },
+        select: USER_SAFE_SELECT,
       });
-    }
+
+      if (requiresInvalidation) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+
+      return result;
+    });
 
     return updated;
   }
@@ -431,7 +465,7 @@ export class UsersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
-        data: { passwordHash },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
       await tx.refreshToken.updateMany({
