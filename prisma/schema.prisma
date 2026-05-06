@@ -106,6 +106,43 @@ enum FixedExpenseRecurrence {
   YEARLY
 }
 
+enum FiscalDocumentType {
+  CPF
+  CNPJ
+}
+
+enum FiscalTaxRegime {
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+  MEI
+  OUTRO
+}
+
+enum FiscalProvider {
+  LOCAL
+  FOCUS_NFE
+  NFE_IO
+  PLUGNOTAS
+  OTHER
+}
+
+enum FiscalProviderMode {
+  LOCAL
+  SANDBOX
+  PRODUCTION
+}
+
+enum ServiceInvoiceStatus {
+  DRAFT
+  READY_TO_ISSUE
+  SIMULATED
+  PROCESSING
+  ISSUED
+  FAILED
+  CANCELED
+}
+
 // ================================================================
 // DOMAIN 1 — IDENTITY, AUTH & RBAC
 // ================================================================
@@ -140,6 +177,8 @@ model Clinic {
   financialCategories FinancialCategory[]
   financialTransactions FinancialTransaction[]
   fixedExpenses FixedExpense[]
+  fiscalProfile ClinicFiscalProfile?
+  serviceInvoices ServiceInvoice[]
   googleCalendarIntegration GoogleCalendarIntegration?
   googleCalendarOAuthStates GoogleCalendarOAuthState[]
 
@@ -174,8 +213,13 @@ model User {
   leadActivities LeadActivity[]
   assignedLeads  Lead[]         @relation("AssignedLeads")
   patientAppointments Appointment[] @relation("PatientAppointments")
+  patientServiceInvoices ServiceInvoice[] @relation("ServiceInvoicePatient")
   createdFinancialTransactions FinancialTransaction[] @relation("FinancialTransactionCreatedBy")
   createdFixedExpenses FixedExpense[] @relation("FixedExpenseCreatedBy")
+  createdServiceInvoices ServiceInvoice[] @relation("ServiceInvoiceCreatedBy")
+  updatedServiceInvoices ServiceInvoice[] @relation("ServiceInvoiceUpdatedBy")
+  issuedServiceInvoices ServiceInvoice[] @relation("ServiceInvoiceIssuedBy")
+  fiscalInvoiceEvents FiscalInvoiceEvent[] @relation("FiscalInvoiceEventCreatedBy")
   googleCalendarConnections GoogleCalendarIntegration[] @relation("GoogleCalendarConnectedBy")
   googleCalendarOAuthStates GoogleCalendarOAuthState[]  @relation("GoogleCalendarOAuthStates")
 
@@ -432,6 +476,7 @@ model Appointment {
   lead    Lead?    @relation(fields: [leadId], references: [id])
   service Service? @relation(fields: [serviceId], references: [id])
   financialTransactions FinancialTransaction[]
+  serviceInvoices ServiceInvoice[]
 
   @@index([clinicId])
   @@index([profileId])
@@ -534,8 +579,30 @@ model Subscription {
 
   clinic Clinic @relation(fields: [clinicId], references: [id])
   plan   Plan   @relation(fields: [planId], references: [id])
+  items  SubscriptionItem[]
 
   @@map("subscriptions")
+}
+
+model SubscriptionItem {
+  id                       String           @id @default(cuid())
+  subscriptionId           String
+  stripeSubscriptionItemId String           @unique
+  stripePriceId            String
+  priceNickname            String?
+  billingInterval          BillingInterval?
+  unitAmount               Int?
+  unitAmountDecimal        String?
+  currency                 String
+  quantity                 Int              @default(1)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([stripePriceId])
+  @@map("subscription_items")
 }
 
 model StripeEvent {
@@ -645,8 +712,117 @@ model FixedExpense {
   @@map("fixed_expenses")
 }
 
+model ClinicFiscalProfile {
+  id                    String             @id @default(cuid())
+  clinicId              String             @unique
+  legalName             String
+  tradeName             String?
+  documentType          FiscalDocumentType
+  documentNumber        String
+  municipalRegistration String?
+  stateRegistration     String?
+  taxRegime             FiscalTaxRegime
+  specialTaxRegime      String?
+  serviceCode           String?
+  cnae                  String?
+  issRate               Decimal?           @db.Decimal(5, 2)
+  addressStreet         String
+  addressNumber         String
+  addressComplement     String?
+  addressNeighborhood   String
+  addressCity           String
+  addressState          String
+  addressZipCode        String
+  cityIbgeCode          String?
+  fiscalProvider        FiscalProvider     @default(LOCAL)
+  fiscalProviderMode    FiscalProviderMode @default(LOCAL)
+  isConfigured          Boolean            @default(false)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@map("clinic_fiscal_profiles")
+}
+
+model ServiceInvoice {
+  id                  String               @id @default(cuid())
+  clinicId            String
+  patientId           String?
+  appointmentId       String?
+  createdByUserId     String
+  updatedByUserId     String?
+  issuedByUserId      String?
+  externalInvoiceId   String?
+  status              ServiceInvoiceStatus @default(DRAFT)
+  environment         FiscalProviderMode   @default(LOCAL)
+  isLegalDocument     Boolean              @default(false)
+  invoiceNumber       String?
+  verificationCode    String?
+  rpsNumber           String?
+  rpsSeries           String?
+  customerName        String
+  customerDocument    String?
+  customerEmail       String?
+  customerPhone       String?
+  serviceDescription  String               @db.Text
+  serviceCode         String?
+  amountCents         Int
+  deductionsCents     Int?
+  issRate             Decimal?             @db.Decimal(5, 2)
+  issAmountCents      Int?
+  currency            String               @default("BRL")
+  competenceDate      DateTime             @db.Date
+  simulatedIssueDate  DateTime?
+  issueDate           DateTime?
+  pdfUrl              String?
+  xmlUrl              String?
+  providerRawResponse Json?
+  errorMessage        String?              @db.Text
+  cancellationReason  String?              @db.Text
+  canceledAt          DateTime?
+  notes               String?              @db.Text
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient       User?        @relation("ServiceInvoicePatient", fields: [patientId], references: [id])
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  createdByUser User         @relation("ServiceInvoiceCreatedBy", fields: [createdByUserId], references: [id])
+  updatedByUser User?        @relation("ServiceInvoiceUpdatedBy", fields: [updatedByUserId], references: [id])
+  issuedByUser  User?        @relation("ServiceInvoiceIssuedBy", fields: [issuedByUserId], references: [id])
+  events        FiscalInvoiceEvent[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([clinicId, competenceDate])
+  @@index([clinicId, createdAt])
+  @@index([appointmentId])
+  @@index([patientId])
+  @@map("service_invoices")
+}
+
+model FiscalInvoiceEvent {
+  id               String                @id @default(cuid())
+  serviceInvoiceId String
+  eventType        String
+  previousStatus   ServiceInvoiceStatus?
+  nextStatus       ServiceInvoiceStatus?
+  message          String?
+  metadata         Json?
+  createdByUserId  String?
+  createdAt        DateTime              @default(now())
+
+  serviceInvoice ServiceInvoice @relation(fields: [serviceInvoiceId], references: [id], onDelete: Cascade)
+  createdByUser  User?          @relation("FiscalInvoiceEventCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([serviceInvoiceId])
+  @@index([serviceInvoiceId, createdAt])
+  @@map("fiscal_invoice_events")
+}
+
 // ================================================================
-// DOMAIN 6 — ANALYTICS
+// DOMAIN 7 — ANALYTICS
 // ================================================================
 
 model DailyMetrics {
