@@ -18,6 +18,8 @@ const rules: EnvRule[] = [
   { key: 'GOOGLE_CALENDAR_CLIENT_ID', required: isProduction, description: 'Google Calendar OAuth client ID' },
   { key: 'GOOGLE_CALENDAR_CLIENT_SECRET', required: isProduction, description: 'Google Calendar OAuth client secret' },
   { key: 'GOOGLE_CALENDAR_TOKEN_SECRET', required: isProduction, description: 'Secret for encrypting Google tokens' },
+  { key: 'FISCAL_PROVIDER', required: false, description: 'Future fiscal provider identifier' },
+  { key: 'FISCAL_PROVIDER_MODE', required: false, description: 'Future fiscal provider mode' },
 ];
 
 export function validateEnv(): void {
