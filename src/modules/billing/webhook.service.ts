@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { SubscriptionStatus } from '@prisma/client';
+import { BillingInterval, SubscriptionStatus } from '@prisma/client';
 import type StripeConstructor from 'stripe';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,6 +17,7 @@ type StripeInvoice = Awaited<
 type StripeCheckoutSession = Awaited<
   ReturnType<StripeConstructor.Stripe['checkout']['sessions']['retrieve']>
 >;
+type StripeSubscriptionItem = StripeSubscription['items']['data'][number];
 type BillingIntervalValue = 'MONTHLY' | 'YEARLY';
 
 @Injectable()
@@ -112,6 +113,7 @@ export class WebhookService {
           event.data.object as StripeSubscription,
         );
         break;
+      case 'invoice.paid':
       case 'invoice.payment_succeeded':
         await this.onInvoicePaymentSucceeded(
           event.data.object as StripeInvoice,
@@ -158,7 +160,13 @@ export class WebhookService {
       );
     }
 
-    await this.prisma.subscription.upsert({
+    const stripeSubscription = await this.stripe
+      .getClient()
+      .subscriptions.retrieve(stripeSubscriptionId);
+    const items = stripeSubscription.items?.data ?? [];
+    const firstItem = items[0];
+
+    const subscription = await this.prisma.subscription.upsert({
       where: { clinicId },
       create: {
         clinicId,
@@ -166,16 +174,43 @@ export class WebhookService {
         stripeCustomerId,
         stripeSubscriptionId,
         billingInterval,
-        status: SubscriptionStatus.ACTIVE,
+        status: this.mapStripeStatus(stripeSubscription.status),
+        currentPeriodStart: firstItem
+          ? new Date(firstItem.current_period_start * 1000)
+          : undefined,
+        currentPeriodEnd: firstItem
+          ? new Date(firstItem.current_period_end * 1000)
+          : undefined,
+        trialEndsAt: stripeSubscription.trial_end
+          ? new Date(stripeSubscription.trial_end * 1000)
+          : null,
+        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+        canceledAt: stripeSubscription.canceled_at
+          ? new Date(stripeSubscription.canceled_at * 1000)
+          : null,
       },
       update: {
         planId,
         stripeCustomerId,
         stripeSubscriptionId,
         billingInterval,
-        status: SubscriptionStatus.ACTIVE,
+        status: this.mapStripeStatus(stripeSubscription.status),
+        currentPeriodStart: firstItem
+          ? new Date(firstItem.current_period_start * 1000)
+          : undefined,
+        currentPeriodEnd: firstItem
+          ? new Date(firstItem.current_period_end * 1000)
+          : undefined,
+        trialEndsAt: stripeSubscription.trial_end
+          ? new Date(stripeSubscription.trial_end * 1000)
+          : null,
+        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+        canceledAt: stripeSubscription.canceled_at
+          ? new Date(stripeSubscription.canceled_at * 1000)
+          : null,
       },
     });
+    await this.syncSubscriptionItems(subscription.id, items);
   }
 
   /**
@@ -194,7 +229,8 @@ export class WebhookService {
       return;
     }
 
-    const firstItem = sub.items?.data?.[0];
+    const items = sub.items?.data ?? [];
+    const firstItem = items[0];
     await this.prisma.subscription.update({
       where: { id: existing.id },
       data: {
@@ -211,6 +247,7 @@ export class WebhookService {
         canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
       },
     });
+    await this.syncSubscriptionItems(existing.id, items);
   }
 
   /**
@@ -238,6 +275,7 @@ export class WebhookService {
         endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : new Date(),
       },
     });
+    await this.syncSubscriptionItems(existing.id, sub.items?.data ?? []);
   }
 
   /**
@@ -312,6 +350,68 @@ export class WebhookService {
       return 'YEARLY';
     }
 
+    return null;
+  }
+
+  private async syncSubscriptionItems(
+    subscriptionId: string,
+    items: StripeSubscriptionItem[],
+  ): Promise<void> {
+    const itemIds = items.map((item) => item.id);
+    const operations = items.map((item) => {
+      const price = item.price;
+      const quantity = item.quantity ?? 1;
+
+      return this.prisma.subscriptionItem.upsert({
+        where: { stripeSubscriptionItemId: item.id },
+        create: {
+          subscriptionId,
+          stripeSubscriptionItemId: item.id,
+          stripePriceId: price.id,
+          priceNickname: price.nickname,
+          billingInterval: this.mapStripePriceInterval(
+            price.recurring?.interval,
+          ),
+          unitAmount: price.unit_amount,
+          unitAmountDecimal: price.unit_amount_decimal
+            ? String(price.unit_amount_decimal)
+            : null,
+          currency: price.currency.toUpperCase(),
+          quantity,
+        },
+        update: {
+          subscriptionId,
+          stripePriceId: price.id,
+          priceNickname: price.nickname,
+          billingInterval: this.mapStripePriceInterval(
+            price.recurring?.interval,
+          ),
+          unitAmount: price.unit_amount,
+          unitAmountDecimal: price.unit_amount_decimal
+            ? String(price.unit_amount_decimal)
+            : null,
+          currency: price.currency.toUpperCase(),
+          quantity,
+        },
+      });
+    });
+
+    await this.prisma.$transaction([
+      ...operations,
+      this.prisma.subscriptionItem.deleteMany({
+        where: {
+          subscriptionId,
+          ...(itemIds.length > 0
+            ? { stripeSubscriptionItemId: { notIn: itemIds } }
+            : {}),
+        },
+      }),
+    ]);
+  }
+
+  private mapStripePriceInterval(interval: string | null | undefined): BillingInterval | null {
+    if (interval === 'month') return BillingInterval.MONTHLY;
+    if (interval === 'year') return BillingInterval.YEARLY;
     return null;
   }
 
