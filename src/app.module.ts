@@ -6,6 +6,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { CommonModule } from './common/common.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
+import { ClinicalRecordsModule } from './modules/clinical-records/clinical-records.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -48,6 +49,7 @@ import { PrismaModule } from './prisma/prisma.module';
     FiscalModule,
     PatientsModule,
     MetricsModule,
+    ClinicalRecordsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -111,6 +111,22 @@ enum FiscalDocumentType {
   CNPJ
 }
 
+enum ClinicalRecordStatus {
+  DRAFT
+  COMPLETED
+  LOCKED
+  CANCELED
+}
+
+enum ClinicalTemplateCategory {
+  ANAMNESIS
+  EVOLUTION
+  PRESCRIPTION
+  RECOMMENDATION
+  PROCEDURE
+  OTHER
+}
+
 enum FiscalTaxRegime {
   SIMPLES_NACIONAL
   LUCRO_PRESUMIDO
@@ -181,6 +197,10 @@ model Clinic {
   serviceInvoices ServiceInvoice[]
   googleCalendarIntegration GoogleCalendarIntegration?
   googleCalendarOAuthStates GoogleCalendarOAuthState[]
+  clinicalRecords       ClinicalRecord[]
+  clinicalRecordEvents  ClinicalRecordEvent[]
+  clinicalTemplates     ClinicalTemplate[]
+  odontogramRecords     OdontogramRecord[]
 
   @@map("clinics")
 }
@@ -222,6 +242,12 @@ model User {
   fiscalInvoiceEvents FiscalInvoiceEvent[] @relation("FiscalInvoiceEventCreatedBy")
   googleCalendarConnections GoogleCalendarIntegration[] @relation("GoogleCalendarConnectedBy")
   googleCalendarOAuthStates GoogleCalendarOAuthState[]  @relation("GoogleCalendarOAuthStates")
+  createdClinicalRecords    ClinicalRecord[]            @relation("ClinicalRecordCreatedBy")
+  updatedClinicalRecords    ClinicalRecord[]            @relation("ClinicalRecordUpdatedBy")
+  clinicalRecordEvents      ClinicalRecordEvent[]       @relation("ClinicalRecordEventCreatedBy")
+  uploadedAttachments       ClinicalRecordAttachment[]  @relation("AttachmentUploadedBy")
+  createdClinicalTemplates  ClinicalTemplate[]          @relation("ClinicalTemplateCreatedBy")
+  createdOdontogramRecords  OdontogramRecord[]          @relation("OdontogramRecordCreatedBy")
 
   @@unique([email])
   @@index([clinicId])
@@ -286,6 +312,7 @@ model Profile {
   availabilityExceptions AvailabilityException[]
   appointments           Appointment[]
   financialTransactions  FinancialTransaction[]
+  clinicalRecords        ClinicalRecord[]
 
   @@index([clinicId])
   @@index([isPublished])
@@ -477,6 +504,7 @@ model Appointment {
   service Service? @relation(fields: [serviceId], references: [id])
   financialTransactions FinancialTransaction[]
   serviceInvoices ServiceInvoice[]
+  clinicalRecord  ClinicalRecord?
 
   @@index([clinicId])
   @@index([profileId])
@@ -847,4 +875,136 @@ model DailyMetrics {
   @@index([clinicId])
   @@index([date])
   @@map("daily_metrics")
+}
+
+// ================================================================
+// DOMAIN 8 — DIGITAL CLINICAL RECORDS (PRONTUÁRIO)
+// ================================================================
+
+model ClinicalRecord {
+  id               String               @id @default(cuid())
+  clinicId         String
+  appointmentId    String?              @unique
+  profileId        String
+  patientName      String
+  patientEmail     String?
+  patientPhone     String?
+  status           ClinicalRecordStatus @default(DRAFT)
+  chiefComplaint   String?              @db.Text
+  anamnesis        String?              @db.Text
+  clinicalEvolution String?             @db.Text
+  diagnosis        String?              @db.Text
+  proceduresPerformed String?           @db.Text
+  treatmentPlan    String?              @db.Text
+  prescription     String?              @db.Text
+  recommendations  String?              @db.Text
+  privateNotes     String?              @db.Text
+  aiDraft          String?              @db.Text
+  aiSummary        String?              @db.Text
+  odontogramSnapshot Json?
+  printedAt        DateTime?
+  completedAt      DateTime?
+  lockedAt         DateTime?
+  createdByUserId  String
+  updatedByUserId  String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  clinic        Clinic                    @relation(fields: [clinicId], references: [id])
+  appointment   Appointment?              @relation(fields: [appointmentId], references: [id])
+  profile       Profile                   @relation(fields: [profileId], references: [id])
+  createdByUser User                      @relation("ClinicalRecordCreatedBy", fields: [createdByUserId], references: [id])
+  updatedByUser User?                     @relation("ClinicalRecordUpdatedBy", fields: [updatedByUserId], references: [id])
+  events        ClinicalRecordEvent[]
+  attachments   ClinicalRecordAttachment[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([clinicId, patientEmail])
+  @@index([clinicId, patientName])
+  @@index([profileId])
+  @@index([createdAt])
+  @@map("clinical_records")
+}
+
+model ClinicalRecordEvent {
+  id               String                @id @default(cuid())
+  clinicId         String
+  clinicalRecordId String
+  eventType        String
+  previousStatus   ClinicalRecordStatus?
+  nextStatus       ClinicalRecordStatus?
+  message          String?
+  metadata         Json?
+  createdByUserId  String?
+  createdAt        DateTime              @default(now())
+
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  clinicalRecord ClinicalRecord @relation(fields: [clinicalRecordId], references: [id], onDelete: Cascade)
+  createdByUser  User?          @relation("ClinicalRecordEventCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([clinicalRecordId])
+  @@index([clinicalRecordId, createdAt])
+  @@map("clinical_record_events")
+}
+
+model ClinicalRecordAttachment {
+  id               String   @id @default(cuid())
+  clinicId         String
+  clinicalRecordId String
+  fileName         String
+  fileType         String?
+  mimeType         String?
+  sizeBytes        Int?
+  storageKey       String?
+  dataBase64       String?  @db.Text
+  thumbnailBase64  String?  @db.Text
+  description      String?
+  uploadedByUserId String
+  createdAt        DateTime @default(now())
+
+  clinicalRecord ClinicalRecord @relation(fields: [clinicalRecordId], references: [id], onDelete: Cascade)
+  uploadedByUser User           @relation("AttachmentUploadedBy", fields: [uploadedByUserId], references: [id])
+
+  @@index([clinicalRecordId])
+  @@map("clinical_record_attachments")
+}
+
+model ClinicalTemplate {
+  id              String                   @id @default(cuid())
+  clinicId        String
+  name            String
+  category        ClinicalTemplateCategory @default(OTHER)
+  content         String                   @db.Text
+  isActive        Boolean                  @default(true)
+  createdByUserId String
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  clinic        Clinic @relation(fields: [clinicId], references: [id])
+  createdByUser User   @relation("ClinicalTemplateCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([clinicId])
+  @@index([clinicId, isActive])
+  @@index([clinicId, category])
+  @@map("clinical_templates")
+}
+
+model OdontogramRecord {
+  id              String   @id @default(cuid())
+  clinicId        String
+  patientEmail    String?
+  patientName     String
+  data            Json
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clinic        Clinic @relation(fields: [clinicId], references: [id])
+  createdByUser User   @relation("OdontogramRecordCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([clinicId])
+  @@index([clinicId, patientEmail])
+  @@index([clinicId, patientName])
+  @@map("odontogram_records")
 }
