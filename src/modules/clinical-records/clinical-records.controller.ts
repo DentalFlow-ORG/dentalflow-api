@@ -43,20 +43,30 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     const allowedStatuses = ['DRAFT', 'COMPLETED', 'LOCKED', 'CANCELED'];
-    return this.clinicalRecordsService.listRecords(clinicId, user.id, user.role, {
-      status:
-        status && allowedStatuses.includes(status)
-          ? (status as import('@prisma/client').ClinicalRecordStatus)
-          : undefined,
-      dentistProfileId,
-    });
+    return this.clinicalRecordsService.listRecords(
+      clinicId,
+      user.id,
+      user.role,
+      {
+        status:
+          status && allowedStatuses.includes(status)
+            ? (status as import('@prisma/client').ClinicalRecordStatus)
+            : undefined,
+        dentistProfileId,
+      },
+    );
   }
 
   @Post()
   @Roles('OWNER', 'DENTIST')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateClinicalRecordDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.createRecord(clinicId, user.id, user.role, dto);
+    return this.clinicalRecordsService.createRecord(
+      clinicId,
+      user.id,
+      user.role,
+      dto,
+    );
   }
 
   @Get('by-appointment/:appointmentId')
@@ -67,7 +77,10 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.findByAppointmentId(
-      clinicId, user.id, user.role, appointmentId,
+      clinicId,
+      user.id,
+      user.role,
+      appointmentId,
     );
   }
 
@@ -79,7 +92,45 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.getPatientTimeline(
-      clinicId, user.id, user.role, identifier,
+      clinicId,
+      user.id,
+      user.role,
+      identifier,
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Odontogram (must be before :id to avoid route collision)
+  // ----------------------------------------------------------------
+
+  @Get('odontogram')
+  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  getOdontogram(
+    @CurrentUser() user: AuthUser,
+    @Query('identifier') identifier: string,
+  ) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.clinicalRecordsService.getOdontogram(clinicId, identifier);
+  }
+
+  @Post('odontogram')
+  @Roles('OWNER', 'DENTIST')
+  upsertOdontogram(
+    @CurrentUser() user: AuthUser,
+    @Body()
+    body: {
+      identifier: string;
+      patientName: string;
+      data: Prisma.InputJsonValue;
+    },
+  ) {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    return this.clinicalRecordsService.upsertOdontogram(
+      clinicId,
+      user.id,
+      body.identifier,
+      body.patientName,
+      body.data,
     );
   }
 
@@ -87,7 +138,12 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.findRecordById(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.findRecordById(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Patch(':id')
@@ -98,7 +154,13 @@ export class ClinicalRecordsController {
     @Body() dto: UpdateClinicalRecordDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.updateRecord(clinicId, user.id, user.role, id, dto);
+    return this.clinicalRecordsService.updateRecord(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      dto,
+    );
   }
 
   @Post(':id/complete')
@@ -106,7 +168,12 @@ export class ClinicalRecordsController {
   @HttpCode(HttpStatus.OK)
   complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.completeRecord(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.completeRecord(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Post(':id/lock')
@@ -114,7 +181,12 @@ export class ClinicalRecordsController {
   @HttpCode(HttpStatus.OK)
   lock(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.lockRecord(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.lockRecord(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Post(':id/cancel')
@@ -122,7 +194,12 @@ export class ClinicalRecordsController {
   @HttpCode(HttpStatus.OK)
   cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.cancelRecord(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.cancelRecord(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Post(':id/restore')
@@ -130,14 +207,24 @@ export class ClinicalRecordsController {
   @HttpCode(HttpStatus.OK)
   restore(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.restoreRecord(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.restoreRecord(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Get(':id/print-data')
   @Roles('OWNER', 'DENTIST')
   getPrintData(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.getPrintData(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.getPrintData(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   // ----------------------------------------------------------------
@@ -148,7 +235,12 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   listAttachments(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.listAttachments(clinicId, user.id, user.role, id);
+    return this.clinicalRecordsService.listAttachments(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
   }
 
   @Post(':id/attachments')
@@ -156,7 +248,8 @@ export class ClinicalRecordsController {
   addAttachment(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body() body: {
+    @Body()
+    body: {
       fileName: string;
       fileType?: string;
       mimeType?: string;
@@ -168,7 +261,11 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.addAttachmentMetadata(
-      clinicId, user.id, user.role, id, body,
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      body,
     );
   }
 
@@ -182,7 +279,12 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.updateAttachmentDescription(
-      clinicId, user.id, user.role, id, attachmentId, body.description ?? '',
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      attachmentId,
+      body.description ?? '',
     );
   }
 
@@ -196,7 +298,11 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.removeAttachment(
-      clinicId, user.id, user.role, id, attachmentId,
+      clinicId,
+      user.id,
+      user.role,
+      id,
+      attachmentId,
     );
   }
 
@@ -229,7 +335,11 @@ export class ClinicalRecordsController {
     @Body() dto: UpdateClinicalTemplateDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.updateTemplate(clinicId, templateId, dto);
+    return this.clinicalRecordsService.updateTemplate(
+      clinicId,
+      templateId,
+      dto,
+    );
   }
 
   @Delete('templates/:templateId')
@@ -241,31 +351,5 @@ export class ClinicalRecordsController {
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.deactivateTemplate(clinicId, templateId);
-  }
-
-  // ----------------------------------------------------------------
-  // Odontogram
-  // ----------------------------------------------------------------
-
-  @Get('odontogram')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  getOdontogram(
-    @CurrentUser() user: AuthUser,
-    @Query('identifier') identifier: string,
-  ) {
-    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.getOdontogram(clinicId, identifier);
-  }
-
-  @Post('odontogram')
-  @Roles('OWNER', 'DENTIST')
-  upsertOdontogram(
-    @CurrentUser() user: AuthUser,
-    @Body() body: { identifier: string; patientName: string; data: Prisma.InputJsonValue },
-  ) {
-    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.upsertOdontogram(
-      clinicId, user.id, body.identifier, body.patientName, body.data,
-    );
   }
 }

@@ -42,7 +42,7 @@ export class ClinicalRecordsService {
     role: UserRole,
     filters: { status?: ClinicalRecordStatus; dentistProfileId?: string } = {},
   ) {
-    return this.prisma.clinicalRecord.findMany({
+    return await this.prisma.clinicalRecord.findMany({
       where: {
         clinicId,
         ...(role === 'DENTIST' ? { profile: { userId } } : {}),
@@ -140,7 +140,14 @@ export class ClinicalRecordsService {
       include: RECORD_INCLUDE,
     });
 
-    await this.createEvent(clinicId, record.id, userId, 'CREATED', null, 'DRAFT');
+    await this.createEvent(
+      clinicId,
+      record.id,
+      userId,
+      'CREATED',
+      null,
+      'DRAFT',
+    );
     return record;
   }
 
@@ -195,7 +202,12 @@ export class ClinicalRecordsService {
     });
 
     await this.createEvent(
-      clinicId, recordId, userId, 'COMPLETED', 'DRAFT', 'COMPLETED',
+      clinicId,
+      recordId,
+      userId,
+      'COMPLETED',
+      'DRAFT',
+      'COMPLETED',
     );
     return record;
   }
@@ -223,7 +235,12 @@ export class ClinicalRecordsService {
     });
 
     await this.createEvent(
-      clinicId, recordId, userId, 'LOCKED', 'COMPLETED', 'LOCKED',
+      clinicId,
+      recordId,
+      userId,
+      'LOCKED',
+      'COMPLETED',
+      'LOCKED',
     );
     return record;
   }
@@ -249,7 +266,12 @@ export class ClinicalRecordsService {
     });
 
     await this.createEvent(
-      clinicId, recordId, userId, 'CANCELED', prevStatus, 'CANCELED',
+      clinicId,
+      recordId,
+      userId,
+      'CANCELED',
+      prevStatus,
+      'CANCELED',
     );
     return record;
   }
@@ -284,7 +306,12 @@ export class ClinicalRecordsService {
     });
 
     await this.createEvent(
-      clinicId, recordId, userId, 'RESTORED', 'CANCELED', restoredStatus,
+      clinicId,
+      recordId,
+      userId,
+      'RESTORED',
+      'CANCELED',
+      restoredStatus,
     );
     return record;
   }
@@ -357,7 +384,7 @@ export class ClinicalRecordsService {
   // ----------------------------------------------------------------
 
   async listTemplates(clinicId: string) {
-    return this.prisma.clinicalTemplate.findMany({
+    return await this.prisma.clinicalTemplate.findMany({
       where: { clinicId, isActive: true },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
@@ -368,7 +395,7 @@ export class ClinicalRecordsService {
     userId: string,
     dto: CreateClinicalTemplateDto,
   ) {
-    return this.prisma.clinicalTemplate.create({
+    return await this.prisma.clinicalTemplate.create({
       data: {
         clinicId,
         name: dto.name,
@@ -454,7 +481,8 @@ export class ClinicalRecordsService {
     }
 
     const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    if (data.mimeType && !ALLOWED_MIME_TYPES.includes(data.mimeType)) {
+    const effectiveMime = data.fileType ?? data.mimeType;
+    if (effectiveMime && !ALLOWED_MIME_TYPES.includes(effectiveMime)) {
       throw new BadRequestException(
         'Tipo de arquivo não permitido. Envie apenas imagens JPEG, PNG ou WebP.',
       );
@@ -465,8 +493,7 @@ export class ClinicalRecordsService {
         clinicId,
         clinicalRecordId: recordId,
         fileName: data.fileName,
-        fileType: data.fileType,
-        mimeType: data.mimeType,
+        fileType: data.fileType ?? data.mimeType,
         sizeBytes: data.sizeBytes,
         dataBase64: data.dataBase64,
         thumbnailBase64: data.thumbnailBase64,
@@ -526,7 +553,7 @@ export class ClinicalRecordsService {
   async getOdontogram(clinicId: string, identifier: string) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
 
-    return this.prisma.odontogramRecord.findFirst({
+    return await this.prisma.odontogramRecord.findFirst({
       where: {
         clinicId,
         ...(isEmail
