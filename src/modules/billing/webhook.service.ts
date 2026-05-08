@@ -122,6 +122,11 @@ export class WebhookService {
       case 'invoice.payment_failed':
         await this.onInvoicePaymentFailed(event.data.object as StripeInvoice);
         break;
+      case 'customer.subscription.trial_will_end':
+        await this.onSubscriptionUpserted(
+          event.data.object as StripeSubscription,
+        );
+        break;
       default:
         this.logger.log(`Unhandled Stripe event type: ${event.type}`);
     }
@@ -278,9 +283,6 @@ export class WebhookService {
     await this.syncSubscriptionItems(existing.id, sub.items?.data ?? []);
   }
 
-  /**
-   * Reactivates ACTIVE status when a previously failed invoice is paid.
-   */
   private async onInvoicePaymentSucceeded(
     invoice: StripeInvoice,
   ): Promise<void> {
@@ -290,11 +292,16 @@ export class WebhookService {
     );
     if (!stripeCustomerId && !stripeSubscriptionId) return;
 
-    const existing = await this.findLocalSubscription(
-      stripeSubscriptionId,
-      stripeCustomerId,
-    );
-    if (!existing) return;
+    if (stripeSubscriptionId) {
+      const subscription = await this.stripe
+        .getClient()
+        .subscriptions.retrieve(stripeSubscriptionId);
+      await this.onSubscriptionUpserted(subscription);
+      return;
+    }
+
+    const existing = await this.findLocalSubscription(null, stripeCustomerId);
+    if (!existing || existing.status === SubscriptionStatus.CANCELED) return;
 
     await this.prisma.subscription.update({
       where: { id: existing.id },
@@ -409,7 +416,9 @@ export class WebhookService {
     ]);
   }
 
-  private mapStripePriceInterval(interval: string | null | undefined): BillingInterval | null {
+  private mapStripePriceInterval(
+    interval: string | null | undefined,
+  ): BillingInterval | null {
     if (interval === 'month') return BillingInterval.MONTHLY;
     if (interval === 'year') return BillingInterval.YEARLY;
     return null;
