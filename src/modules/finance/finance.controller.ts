@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -31,6 +32,7 @@ import { FinanceService } from './finance.service';
 @Controller('finance')
 @TenantScoped()
 @Roles('OWNER')
+@RequiresBillingAccess()
 export class FinanceController {
   constructor(
     private readonly financeService: FinanceService,
@@ -81,7 +83,10 @@ export class FinanceController {
 
   @Delete('categories/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deleteCategory(@CurrentUser() user: AuthUser, @Param('id') categoryId: string) {
+  deleteCategory(
+    @CurrentUser() user: AuthUser,
+    @Param('id') categoryId: string,
+  ) {
     return this.financeService.deleteCategory(
       this.accessPolicy.assertOwnerAccess(user),
       categoryId,

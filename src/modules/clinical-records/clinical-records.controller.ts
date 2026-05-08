@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -24,6 +25,7 @@ import { UpdateClinicalTemplateDto } from './dto/update-clinical-template.dto';
 
 @Controller('clinical-records')
 @TenantScoped()
+@RequiresBillingAccess()
 export class ClinicalRecordsController {
   constructor(
     private readonly clinicalRecordsService: ClinicalRecordsService,

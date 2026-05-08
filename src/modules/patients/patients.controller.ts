@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -9,6 +10,7 @@ import { PatientsService } from './patients.service';
 @Controller('patients')
 @TenantScoped()
 @Roles('OWNER', 'ASSISTANT')
+@RequiresBillingAccess()
 export class PatientsController {
   constructor(
     private readonly patientsService: PatientsService,
@@ -16,10 +18,7 @@ export class PatientsController {
   ) {}
 
   @Get()
-  list(
-    @CurrentUser() user: AuthUser,
-    @Query('search') search?: string,
-  ) {
+  list(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
     return this.patientsService.listPatients(clinicId, search);
   }

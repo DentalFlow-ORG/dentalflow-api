@@ -10,6 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -22,6 +23,7 @@ import { UpdateAvailabilityExceptionDto } from './dto/update-availability-except
 
 @Controller('profiles/:profileId')
 @TenantScoped()
+@RequiresBillingAccess()
 export class AvailabilityController {
   constructor(
     private readonly appointmentsService: AppointmentsService,

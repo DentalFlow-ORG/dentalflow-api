@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -25,6 +26,7 @@ import { FiscalService } from './fiscal.service';
 @Controller('clinic')
 @TenantScoped()
 @Roles('OWNER', 'ASSISTANT')
+@RequiresBillingAccess()
 export class FiscalController {
   constructor(
     private readonly fiscalService: FiscalService,

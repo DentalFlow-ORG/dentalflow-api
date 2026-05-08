@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { AuthUser } from '../../common/types/auth-user.type';
@@ -38,6 +39,7 @@ export class UsersController {
 
   @Get()
   @Roles('OWNER')
+  @RequiresBillingAccess()
   findMembers(@CurrentUser() user: AuthUser) {
     return this.usersService.findClinicMembers(
       this.accessPolicy.assertOwnerAccess(user),
@@ -46,6 +48,7 @@ export class UsersController {
 
   @Post()
   @Roles('OWNER')
+  @RequiresBillingAccess()
   createMember(@CurrentUser() user: AuthUser, @Body() dto: CreateMemberDto) {
     return this.usersService.createMember(
       this.accessPolicy.assertOwnerAccess(user),
@@ -55,6 +58,7 @@ export class UsersController {
 
   @Patch(':id')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   updateMember(
     @CurrentUser() user: AuthUser,
     @Param('id') userId: string,
@@ -69,6 +73,7 @@ export class UsersController {
 
   @Patch(':id/password')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   @HttpCode(HttpStatus.NO_CONTENT)
   updateMemberPassword(
     @CurrentUser() user: AuthUser,
@@ -84,11 +89,9 @@ export class UsersController {
 
   @Delete(':id')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   @HttpCode(HttpStatus.NO_CONTENT)
-  deleteMember(
-    @CurrentUser() user: AuthUser,
-    @Param('id') userId: string,
-  ) {
+  deleteMember(@CurrentUser() user: AuthUser, @Param('id') userId: string) {
     return this.usersService.deleteMember(
       this.accessPolicy.assertOwnerAccess(user),
       userId,
@@ -99,6 +102,7 @@ export class UsersController {
 
   @Get('clinic/members')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   findClinicMembers(@CurrentUser() user: AuthUser) {
     return this.usersService.findClinicMembers(
       this.accessPolicy.assertOwnerAccess(user),
@@ -107,6 +111,7 @@ export class UsersController {
 
   @Post('clinic/members')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   createClinicMember(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateMemberDto,
@@ -121,6 +126,7 @@ export class UsersController {
 
   @Patch('clinic/members/:id')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   updateClinicMember(
     @CurrentUser() user: AuthUser,
     @Param('id') userId: string,
@@ -135,6 +141,7 @@ export class UsersController {
 
   @Patch('clinic/members/:id/password')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   @HttpCode(HttpStatus.NO_CONTENT)
   updateClinicMemberPassword(
     @CurrentUser() user: AuthUser,
@@ -150,6 +157,7 @@ export class UsersController {
 
   @Delete('clinic/members/:id')
   @Roles('OWNER')
+  @RequiresBillingAccess()
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteClinicMember(
     @CurrentUser() user: AuthUser,

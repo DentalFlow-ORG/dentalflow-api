@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -23,6 +24,7 @@ import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 
 @Controller('appointments')
 @TenantScoped()
+@RequiresBillingAccess()
 export class AppointmentsController {
   constructor(
     private readonly appointmentsService: AppointmentsService,

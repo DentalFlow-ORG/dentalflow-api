@@ -95,22 +95,22 @@ export class FiscalService {
     startOfMonth.setUTCDate(1);
     startOfMonth.setUTCHours(0, 0, 0, 0);
 
-    const [statusRows, monthRows, profile] = await Promise.all([
-      this.prisma.serviceInvoice.groupBy({
-        by: ['status'],
-        where: { clinicId },
-        _count: { _all: true },
-      }),
-      this.prisma.serviceInvoice.findMany({
-        where: {
-          clinicId,
-          competenceDate: { gte: startOfMonth },
-          status: { not: ServiceInvoiceStatus.CANCELED },
-        },
-        select: { amountCents: true },
-      }),
-      this.prisma.clinicFiscalProfile.findUnique({ where: { clinicId } }),
-    ]);
+    const statusRows = await this.prisma.serviceInvoice.groupBy({
+      by: ['status'],
+      where: { clinicId },
+      _count: { _all: true },
+    });
+    const monthRows = await this.prisma.serviceInvoice.findMany({
+      where: {
+        clinicId,
+        competenceDate: { gte: startOfMonth },
+        status: { not: ServiceInvoiceStatus.CANCELED },
+      },
+      select: { amountCents: true },
+    });
+    const profile = await this.prisma.clinicFiscalProfile.findUnique({
+      where: { clinicId },
+    });
 
     const counts = Object.values(ServiceInvoiceStatus).reduce<
       Record<ServiceInvoiceStatus, number>
@@ -446,10 +446,12 @@ export class FiscalService {
   }
 
   private async assertReadyForIssue(clinicId: string, invoiceId: string) {
-    const [profile, invoice] = await Promise.all([
-      this.prisma.clinicFiscalProfile.findUnique({ where: { clinicId } }),
-      this.prisma.serviceInvoice.findFirst({ where: { id: invoiceId, clinicId } }),
-    ]);
+    const profile = await this.prisma.clinicFiscalProfile.findUnique({
+      where: { clinicId },
+    });
+    const invoice = await this.prisma.serviceInvoice.findFirst({
+      where: { id: invoiceId, clinicId },
+    });
 
     if (!profile?.isConfigured) {
       throw new BadRequestException(

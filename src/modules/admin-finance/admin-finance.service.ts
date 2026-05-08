@@ -32,18 +32,19 @@ export class AdminFinanceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSummary() {
-    const [plans, subscriptions, stripeEventsTotal, stripeEventsProcessed, stripeEventsFailed] =
-      await Promise.all([
-        this.prisma.plan.findMany({ orderBy: { displayOrder: 'asc' } }),
-        this.prisma.subscription.findMany({
-          include: { plan: true, clinic: true, items: true },
-        }),
-        this.prisma.stripeEvent.count(),
-        this.prisma.stripeEvent.count({ where: { processed: true } }),
-        this.prisma.stripeEvent.count({
-          where: { processed: false, errorMessage: { not: null } },
-        }),
-      ]);
+    const plans = await this.prisma.plan.findMany({
+      orderBy: { displayOrder: 'asc' },
+    });
+    const subscriptions = await this.prisma.subscription.findMany({
+      include: { plan: true, clinic: true, items: true },
+    });
+    const stripeEventsTotal = await this.prisma.stripeEvent.count();
+    const stripeEventsProcessed = await this.prisma.stripeEvent.count({
+      where: { processed: true },
+    });
+    const stripeEventsFailed = await this.prisma.stripeEvent.count({
+      where: { processed: false, errorMessage: { not: null } },
+    });
 
     const statusCounts = this.countBy(subscriptions, (item) => item.status);
     const revenueRows = subscriptions.flatMap((subscription) =>

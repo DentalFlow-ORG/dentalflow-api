@@ -12,6 +12,7 @@ import {
 import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -25,6 +26,7 @@ import { ProfilesService } from './profiles.service';
 
 @Controller('profiles')
 @TenantScoped()
+@RequiresBillingAccess()
 export class ProfilesController {
   constructor(
     private readonly profilesService: ProfilesService,
