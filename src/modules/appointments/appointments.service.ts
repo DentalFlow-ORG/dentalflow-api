@@ -40,11 +40,28 @@ export class AppointmentsService {
     private readonly calendarIntegrations: CalendarIntegrationsService,
   ) {}
 
-  async listAppointments(clinicId: string, userId: string, role: UserRole) {
+  async listAppointments(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    date?: string,
+  ) {
+    let dateFilter = {};
+    if (date) {
+      const [y, m, d] = date.split('-').map(Number);
+      dateFilter = {
+        appointmentDate: {
+          gte: new Date(Date.UTC(y, m - 1, d)),
+          lt: new Date(Date.UTC(y, m - 1, d + 1)),
+        },
+      };
+    }
+
     return this.prisma.appointment.findMany({
       where: {
         clinicId,
         ...(role === 'DENTIST' ? { profile: { userId } } : {}),
+        ...dateFilter,
       },
       include: APPOINTMENT_INCLUDE,
       orderBy: [{ appointmentDate: 'asc' }, { startTime: 'asc' }],

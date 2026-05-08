@@ -33,12 +33,16 @@ export class AppointmentsController {
 
   @Get()
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  list(@CurrentUser() user: AuthUser) {
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query('date') date?: string,
+  ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.listAppointments(
       clinicId,
       user.id,
       user.role,
+      date,
     );
   }
 

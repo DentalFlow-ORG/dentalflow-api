@@ -87,3 +87,15 @@ src/
 # 📌 Status
 
 🚧 Em desenvolvimento
+
+# Session Startup — DentalFlow Brain
+
+At the start of every session, read these files from the Obsidian vault:
+
+D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Next Step.md
+D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Roadmap Master.md
+D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Database Schema.md
+D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Backend Analysis.md
+D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Architecture Patterns.md
+
+After reading, tell Pedro what to implement this session and ask: "Shall I start inspecting the code?"
