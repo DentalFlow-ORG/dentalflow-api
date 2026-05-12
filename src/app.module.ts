@@ -20,6 +20,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
+import { StockModule } from './modules/stock/stock.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -42,6 +43,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     ProfilesModule,
     SpecialtiesModule,
+    StockModule,
     LeadsModule,
     SubscriptionsModule,
     BillingModule,

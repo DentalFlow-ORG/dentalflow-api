@@ -1,0 +1,72 @@
+import { Transform, Type } from 'class-transformer'
+import {
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator'
+
+export class UpdateStockProductDto {
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name?: string
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  categoryId?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  unit?: string
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  currentQuantity?: number
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minQuantity?: number
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  purchasePrice?: number
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  supplier?: string
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean
+}
