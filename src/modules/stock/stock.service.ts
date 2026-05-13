@@ -221,7 +221,21 @@ export class StockService {
     productId: string,
     dto: UpdateStockProductDto,
   ) {
-    await this.assertProduct(clinicId, productId);
+    // C-01: reject any attempt to set currentQuantity directly — use movements
+    if ('currentQuantity' in (dto as object)) {
+      throw new BadRequestException(
+        'A quantidade atual deve ser alterada por uma movimentação de estoque.',
+      );
+    }
+
+    const existing = await this.assertProduct(clinicId, productId);
+
+    // H-01: inactive products cannot be edited through normal update
+    if (!existing.isActive) {
+      throw new BadRequestException(
+        'Produto inativo não pode ser editado. Reative o produto antes de alterar os dados.',
+      );
+    }
 
     if (dto.categoryId) {
       await this.assertCategory(clinicId, dto.categoryId);
@@ -234,9 +248,6 @@ export class StockService {
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.description !== undefined ? { description: dto.description } : {}),
         ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
-        ...(dto.currentQuantity !== undefined
-          ? { currentQuantity: new Prisma.Decimal(dto.currentQuantity) }
-          : {}),
         ...(dto.minQuantity !== undefined
           ? { minQuantity: new Prisma.Decimal(dto.minQuantity) }
           : {}),
@@ -248,6 +259,18 @@ export class StockService {
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
+      include: { category: true },
+    });
+
+    return this.serializeProduct(product);
+  }
+
+  async reactivateProduct(clinicId: string, productId: string) {
+    await this.assertProduct(clinicId, productId);
+
+    const product = await this.prisma.stockProduct.update({
+      where: { id: productId },
+      data: { isActive: true },
       include: { category: true },
     });
 

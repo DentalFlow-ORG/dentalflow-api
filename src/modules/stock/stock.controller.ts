@@ -178,6 +178,18 @@ export class StockController {
     );
   }
 
+  @Patch('products/:id/reactivate')
+  @Roles('OWNER')
+  reactivateProduct(
+    @CurrentUser() user: AuthUser,
+    @Param('id') productId: string,
+  ) {
+    return this.stockService.reactivateProduct(
+      this.accessPolicy.assertOwnerAccess(user),
+      productId,
+    );
+  }
+
   @Delete('products/:id')
   @Roles('OWNER')
   @HttpCode(HttpStatus.NO_CONTENT)

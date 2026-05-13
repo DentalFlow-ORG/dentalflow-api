@@ -38,12 +38,6 @@ export class UpdateStockProductDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  currentQuantity?: number
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
   minQuantity?: number
 
   @IsOptional()
