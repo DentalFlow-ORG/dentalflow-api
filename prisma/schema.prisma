@@ -159,6 +159,13 @@ enum ServiceInvoiceStatus {
   CANCELED
 }
 
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  LOSS
+}
+
 // ================================================================
 // DOMAIN 1 — IDENTITY, AUTH & RBAC
 // ================================================================
@@ -203,6 +210,7 @@ model Clinic {
   odontogramRecords     OdontogramRecord[]
   stockCategories       StockCategory[]
   stockProducts         StockProduct[]
+  stockMovements        StockMovement[]
 
   @@map("clinics")
 }
@@ -250,6 +258,7 @@ model User {
   uploadedAttachments       ClinicalRecordAttachment[]  @relation("AttachmentUploadedBy")
   createdClinicalTemplates  ClinicalTemplate[]          @relation("ClinicalTemplateCreatedBy")
   createdOdontogramRecords  OdontogramRecord[]          @relation("OdontogramRecordCreatedBy")
+  performedStockMovements   StockMovement[]             @relation("StockMovementPerformedBy")
 
   @@unique([email])
   @@index([clinicId])
@@ -1050,10 +1059,36 @@ model StockProduct {
 
   clinic   Clinic        @relation(fields: [clinicId], references: [id])
   category StockCategory @relation(fields: [categoryId], references: [id])
+  movements StockMovement[]
 
   @@index([clinicId])
   @@index([categoryId])
   @@index([clinicId, isActive])
   @@index([expiresAt])
   @@map("stock_products")
+}
+
+model StockMovement {
+  id                String            @id @default(cuid())
+  clinicId          String
+  productId         String
+  type              StockMovementType
+  quantity          Decimal           @db.Decimal(10, 3)
+  previousQuantity  Decimal           @db.Decimal(10, 3)
+  newQuantity       Decimal           @db.Decimal(10, 3)
+  reason            String?
+  notes             String?           @db.Text
+  performedByUserId String
+  createdAt         DateTime          @default(now())
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  product     StockProduct @relation(fields: [productId], references: [id])
+  performedBy User         @relation("StockMovementPerformedBy", fields: [performedByUserId], references: [id])
+
+  @@index([clinicId])
+  @@index([productId])
+  @@index([clinicId, createdAt])
+  @@index([clinicId, type])
+  @@index([performedByUserId])
+  @@map("stock_movements")
 }
