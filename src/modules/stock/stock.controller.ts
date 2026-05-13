@@ -21,6 +21,8 @@ import { UpdateStockCategoryDto } from './dto/update-stock-category.dto';
 import { CreateStockProductDto } from './dto/create-stock-product.dto';
 import { UpdateStockProductDto } from './dto/update-stock-product.dto';
 import { ListStockProductsDto } from './dto/list-stock-products.dto';
+import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
+import { ListStockMovementsDto } from './dto/list-stock-movements.dto';
 import { StockService } from './stock.service';
 
 @Controller('stock')
@@ -90,6 +92,31 @@ export class StockController {
     );
   }
 
+  // ── Movements ───────────────────────────────────────────────────────────────
+
+  @Get('movements')
+  listMovements(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListStockMovementsDto,
+  ) {
+    return this.stockService.listMovements(
+      this.accessPolicy.assertOwnerOrAssistantAccess(user),
+      query,
+    );
+  }
+
+  @Post('movements')
+  createMovement(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateStockMovementDto,
+  ) {
+    return this.stockService.createMovement(
+      this.accessPolicy.assertOwnerOrAssistantAccess(user),
+      user.id,
+      dto,
+    );
+  }
+
   // ── Products ────────────────────────────────────────────────────
 
   @Get('products')
@@ -99,6 +126,19 @@ export class StockController {
   ) {
     return this.stockService.listProducts(
       this.accessPolicy.assertOwnerOrAssistantAccess(user),
+      query,
+    );
+  }
+
+  @Get('products/:id/movements')
+  listProductMovements(
+    @CurrentUser() user: AuthUser,
+    @Param('id') productId: string,
+    @Query() query: ListStockMovementsDto,
+  ) {
+    return this.stockService.listProductMovements(
+      this.accessPolicy.assertOwnerOrAssistantAccess(user),
+      productId,
       query,
     );
   }
