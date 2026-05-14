@@ -4,8 +4,9 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AppointmentStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -33,6 +34,16 @@ const DEFAULT_BUSINESS_HOURS = {
   weekdays: [1, 2, 3, 4, 5],
 } as const;
 
+// Defines which status transitions are allowed by the business rules.
+// Both the service and the frontend must follow the same machine.
+const APPOINTMENT_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
+  PENDING:   ['CONFIRMED', 'CANCELED'],
+  CONFIRMED: ['COMPLETED', 'NO_SHOW', 'CANCELED'],
+  COMPLETED: [],
+  NO_SHOW:   [],
+  CANCELED:  [],
+};
+
 @Injectable()
 export class AppointmentsService {
   constructor(
@@ -46,6 +57,18 @@ export class AppointmentsService {
     role: UserRole,
     date?: string,
   ) {
+    // MVP read-time normalization: stale CONFIRMED appointments are promoted to
+    // NO_SHOW before the query runs so the caller always receives correct state.
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const { date: todayStr } = getZonedDateTimeParts(
+      new Date(),
+      clinic?.timezone ?? 'America/Sao_Paulo',
+    );
+    await this.normalizeStaleNoShows(clinicId, todayStr);
+
     let dateFilter = {};
     if (date) {
       const [y, m, d] = date.split('-').map(Number);
@@ -258,10 +281,14 @@ export class AppointmentsService {
       where: { id: appointmentId, clinicId },
       select: {
         id: true,
+        status: true,
+        appointmentDate: true,
+        startTime: true,
         profile: { select: { userId: true } },
       },
     });
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
+
     this.assertDentistAppointmentAccess(
       role,
       userId,
@@ -271,6 +298,19 @@ export class AppointmentsService {
     if (role === 'DENTIST' && !['COMPLETED', 'NO_SHOW'].includes(dto.status)) {
       throw new ForbiddenException(
         'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
+      );
+    }
+
+    // Enforce the state machine: reject invalid transitions with clear messages.
+    this.assertValidStatusTransition(appointment.status, dto.status);
+
+    // Temporal guard: COMPLETED and NO_SHOW are only valid after the appointment time.
+    if (dto.status === 'COMPLETED' || dto.status === 'NO_SHOW') {
+      await this.assertAppointmentHasOccurred(
+        clinicId,
+        appointment.appointmentDate,
+        appointment.startTime,
+        dto.status,
       );
     }
 
@@ -309,6 +349,7 @@ export class AppointmentsService {
       where: { id: appointmentId, clinicId },
       select: {
         id: true,
+        status: true,
         profile: { select: { userId: true } },
       },
     });
@@ -318,6 +359,12 @@ export class AppointmentsService {
       userId,
       appointment.profile.userId,
     );
+
+    if (appointment.status !== 'PENDING' && appointment.status !== 'CONFIRMED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento não pode ser cancelado no status atual.',
+      );
+    }
 
     return this.updateAppointmentStatus(clinicId, userId, role, appointmentId, {
       status: 'CANCELED',
@@ -698,6 +745,87 @@ export class AppointmentsService {
       throw new NotFoundException('Exceção de disponibilidade não encontrada');
     }
     return exception;
+  }
+
+  private async normalizeStaleNoShows(
+    clinicId: string,
+    todayDateStr: string,
+  ): Promise<void> {
+    await this.prisma.appointment.updateMany({
+      where: {
+        clinicId,
+        status: 'CONFIRMED',
+        appointmentDate: { lt: new Date(`${todayDateStr}T00:00:00.000Z`) },
+      },
+      data: { status: 'NO_SHOW' },
+    });
+  }
+
+  private assertValidStatusTransition(
+    currentStatus: AppointmentStatus,
+    targetStatus: AppointmentStatus,
+  ): void {
+    if (APPOINTMENT_TRANSITIONS[currentStatus].includes(targetStatus)) return;
+
+    if (currentStatus === 'PENDING' && targetStatus === 'NO_SHOW') {
+      throw new UnprocessableEntityException(
+        'Não é possível marcar como não compareceu um agendamento que ainda não foi confirmado.',
+      );
+    }
+    if (currentStatus === 'PENDING' && targetStatus === 'COMPLETED') {
+      throw new UnprocessableEntityException(
+        'Não é possível concluir um agendamento que ainda não foi confirmado.',
+      );
+    }
+    if (currentStatus === 'COMPLETED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi concluído e não pode ser alterado.',
+      );
+    }
+    if (currentStatus === 'NO_SHOW') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi marcado como não compareceu e não pode ser alterado.',
+      );
+    }
+    if (currentStatus === 'CANCELED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi cancelado e não pode ser alterado.',
+      );
+    }
+
+    throw new UnprocessableEntityException(
+      `Transição de status inválida: ${currentStatus} → ${targetStatus}.`,
+    );
+  }
+
+  private async assertAppointmentHasOccurred(
+    clinicId: string,
+    appointmentDate: Date,
+    startTime: Date,
+    targetStatus: AppointmentStatus,
+  ): Promise<void> {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const now = getZonedDateTimeParts(
+      new Date(),
+      clinic?.timezone ?? 'America/Sao_Paulo',
+    );
+
+    const apptDate = formatDateInputValue(appointmentDate);
+    const apptTime = formatTimeInputValue(startTime);
+
+    const isInFuture =
+      apptDate > now.date || (apptDate === now.date && apptTime > now.time);
+
+    if (isInFuture) {
+      throw new UnprocessableEntityException(
+        targetStatus === 'COMPLETED'
+          ? 'Não é possível concluir um agendamento que ainda não ocorreu.'
+          : 'Não é possível registrar não comparecimento para um agendamento futuro.',
+      );
+    }
   }
 
   private assertDentistAppointmentAccess(
