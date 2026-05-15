@@ -112,7 +112,12 @@ export class ClinicalRecordsController {
     @Query('identifier') identifier: string,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    return this.clinicalRecordsService.getOdontogram(clinicId, identifier);
+    return this.clinicalRecordsService.getOdontogram(
+      clinicId,
+      user.id,
+      user.role,
+      identifier,
+    );
   }
 
   @Post('odontogram')
@@ -130,6 +135,7 @@ export class ClinicalRecordsController {
     return this.clinicalRecordsService.upsertOdontogram(
       clinicId,
       user.id,
+      user.role,
       body.identifier,
       body.patientName,
       body.data,

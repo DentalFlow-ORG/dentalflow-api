@@ -550,8 +550,20 @@ export class ClinicalRecordsService {
   // Odontogram
   // ----------------------------------------------------------------
 
-  async getOdontogram(clinicId: string, identifier: string) {
+  async getOdontogram(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    identifier: string,
+  ) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    await this.assertDentistOdontogramAccess(
+      clinicId,
+      userId,
+      role,
+      identifier,
+      isEmail,
+    );
 
     return await this.prisma.odontogramRecord.findFirst({
       where: {
@@ -567,11 +579,19 @@ export class ClinicalRecordsService {
   async upsertOdontogram(
     clinicId: string,
     userId: string,
+    role: UserRole,
     identifier: string,
     patientName: string,
     data: Prisma.InputJsonValue,
   ) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    await this.assertDentistOdontogramAccess(
+      clinicId,
+      userId,
+      role,
+      identifier,
+      isEmail,
+    );
 
     const existing = await this.prisma.odontogramRecord.findFirst({
       where: {
@@ -655,6 +675,33 @@ export class ClinicalRecordsService {
     if (role === 'DENTIST' && profileUserId !== userId) {
       throw new ForbiddenException(
         'Profissionais podem acessar apenas os próprios prontuários',
+      );
+    }
+  }
+
+  private async assertDentistOdontogramAccess(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    identifier: string,
+    isEmail: boolean,
+  ): Promise<void> {
+    if (role !== 'DENTIST') return;
+
+    const record = await this.prisma.clinicalRecord.findFirst({
+      where: {
+        clinicId,
+        ...(isEmail
+          ? { patientEmail: identifier }
+          : { patientName: identifier, patientEmail: null }),
+        profile: { userId },
+      },
+      select: { id: true },
+    });
+
+    if (!record) {
+      throw new ForbiddenException(
+        'Profissionais podem acessar apenas o odontograma dos próprios pacientes',
       );
     }
   }
