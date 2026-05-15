@@ -23,6 +23,8 @@ export type AiAnalysisResponse = {
   model: string;
 };
 
+type AssistantType = 'finance' | 'inventory';
+
 const FINANCE_SYSTEM_PROMPT = `Você é um assistente financeiro especializado em clínicas odontológicas brasileiras.
 
 REGRAS ABSOLUTAS — siga-as sem exceção:
@@ -34,8 +36,8 @@ REGRAS ABSOLUTAS — siga-as sem exceção:
 - Cite números relevantes ao discutir indicadores — não seja vago.
 - Responda em português do Brasil, linguagem profissional e direta.
 - Priorize clareza para o gestor da clínica.
-- Considere que este é um sistema de MVP e pode haver limitações nos dados.
-- Não exiba dados pessoais de pacientes — o contexto não deve conter e você não deve inferir.
+- Você só pode usar os dados fornecidos no payload. Se uma informação não estiver disponível, diga que não há dados suficientes. Não estime lucro, risco, giro de estoque, consumo médio ou previsão sem base nos dados fornecidos.
+- Não exiba dados pessoais de pacientes — o contexto não contém e você não deve inferir.
 
 FORMATO DE RESPOSTA — JSON exato, sem markdown extra, sem texto fora do JSON:
 {
@@ -52,9 +54,9 @@ FORMATO DE RESPOSTA — JSON exato, sem markdown extra, sem texto fora do JSON:
 SEÇÕES OBRIGATÓRIAS (nesta ordem, máx 6 seções):
 1. "Resumo executivo" — 2-3 frases sobre o resultado geral (tone conforme netProfit: positive/warning/danger)
 2. "Indicadores principais" — cite os números do contexto (tone: neutral)
-3. "Alertas de atenção" — SOMENTE se houver riscos reais (overdueCount > 0, netProfit negativo, despesas > 90% receita) (tone: warning ou danger). Omita se não houver alertas.
+3. "Alertas de atenção" — SOMENTE se houver riscos reais: overdueCount > 0, netProfit negativo ou despesas > 90% da receita (tone: warning ou danger). Omita se não houver alertas.
 4. "Oportunidades de melhoria" — baseado nos dados, não genérico (tone: neutral)
-5. "Recomendações práticas" — 2-3 ações concretas (tone: neutral)
+5. "Recomendações práticas" — 2-3 ações concretas e acionáveis (tone: neutral)
 6. "Limitações da análise" — SOMENTE se o array limitations não for vazio (tone: neutral)`;
 
 const INVENTORY_SYSTEM_PROMPT = `Você é um assistente de gestão de estoque especializado em clínicas odontológicas brasileiras.
@@ -68,6 +70,7 @@ REGRAS ABSOLUTAS — siga-as sem exceção:
 - Cite os nomes dos produtos críticos ao fazer recomendações — não seja genérico.
 - Responda em português do Brasil, linguagem profissional e direta.
 - Priorize clareza para o gestor da clínica.
+- Você só pode usar os dados fornecidos no payload. Se uma informação não estiver disponível, diga que não há dados suficientes. Não estime giro de estoque, consumo médio ou previsão de reposição sem base nos dados fornecidos.
 - Não exiba dados pessoais de pacientes — não há e não deve inferir.
 
 FORMATO DE RESPOSTA — JSON exato, sem markdown extra, sem texto fora do JSON:
@@ -95,6 +98,7 @@ export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name);
   private readonly openai: OpenAI;
   private readonly model: string;
+  private readonly maxOutputTokens: number;
 
   constructor(
     private readonly financeContextBuilder: FinanceContextBuilder,
@@ -102,58 +106,81 @@ export class AiAssistantService {
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      this.logger.warn('OPENAI_API_KEY não configurada — assistente de IA desabilitado.');
+      this.logger.warn(
+        'OPENAI_API_KEY não configurada — assistente de IA desabilitado.',
+      );
     }
     this.openai = new OpenAI({ apiKey: apiKey ?? 'not-configured' });
     this.model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+    this.maxOutputTokens = Number(process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 900);
   }
 
   async analyzeFinance(
+    userId: string,
     clinicId: string,
     from?: string,
     to?: string,
   ): Promise<AiAnalysisResponse> {
-    this.assertConfigured();
+    this.assertEnabled();
     const context = await this.financeContextBuilder.build(clinicId, from, to);
-    return this.callOpenAi(FINANCE_SYSTEM_PROMPT, context, 'finance');
+    return this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
   }
 
-  async analyzeInventory(clinicId: string): Promise<AiAnalysisResponse> {
-    this.assertConfigured();
+  async analyzeInventory(
+    userId: string,
+    clinicId: string,
+  ): Promise<AiAnalysisResponse> {
+    this.assertEnabled();
     const context = await this.inventoryContextBuilder.build(clinicId);
-    return this.callOpenAi(INVENTORY_SYSTEM_PROMPT, context, 'inventory');
+    return this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
   }
 
-  private assertConfigured() {
+  private assertEnabled() {
+    const enabled = process.env.OPENAI_AI_ASSISTANT_ENABLED;
+    if (enabled === 'false') {
+      throw new ServiceUnavailableException(
+        'O assistente IA está desabilitado no momento.',
+      );
+    }
     if (!process.env.OPENAI_API_KEY) {
       throw new ServiceUnavailableException(
-        'O assistente de IA ainda não está configurado. Contate o suporte.',
+        'O assistente IA indisponível no momento. Contate o suporte.',
       );
     }
   }
 
   private async callOpenAi(
+    userId: string,
+    clinicId: string,
     systemPrompt: string,
     context: FinanceAiContext | InventoryAiContext,
-    domain: string,
+    assistantType: AssistantType,
   ): Promise<AiAnalysisResponse> {
+    const startedAt = Date.now();
+
     try {
       const completion = await this.openai.chat.completions.create({
         model: this.model,
         response_format: { type: 'json_object' },
-        max_tokens: 1200,
+        max_tokens: this.maxOutputTokens,
         temperature: 0.3,
         messages: [
           { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: JSON.stringify(context),
-          },
+          { role: 'user', content: JSON.stringify(context) },
         ],
       });
 
       const raw = completion.choices[0]?.message?.content ?? '{}';
-      const parsed = this.parseResponse(raw, domain);
+      const parsed = this.parseResponse(raw, assistantType);
+
+      this.logEvent({
+        userId,
+        clinicId,
+        assistantType,
+        status: 'success',
+        durationMs: Date.now() - startedAt,
+        model: this.model,
+      });
 
       return {
         ...parsed,
@@ -161,18 +188,32 @@ export class AiAssistantService {
         model: this.model,
       };
     } catch (err: unknown) {
-      if (err instanceof ServiceUnavailableException) throw err;
-
-      const message =
-        err instanceof Error ? err.message : 'Erro desconhecido';
-      this.logger.error(`[AI ${domain}] OpenAI error: ${message}`);
-
       if (
+        err instanceof ServiceUnavailableException ||
+        err instanceof InternalServerErrorException
+      ) {
+        throw err;
+      }
+
+      const isRateLimit =
         typeof err === 'object' &&
         err !== null &&
         'status' in err &&
-        (err as { status: number }).status === 429
-      ) {
+        (err as { status: number }).status === 429;
+
+      const errorCode = isRateLimit ? 'RATE_LIMIT' : 'OPENAI_ERROR';
+
+      this.logEvent({
+        userId,
+        clinicId,
+        assistantType,
+        status: 'error',
+        errorCode,
+        durationMs: Date.now() - startedAt,
+        model: this.model,
+      });
+
+      if (isRateLimit) {
         throw new ServiceUnavailableException(
           'O assistente está temporariamente sobrecarregado. Tente novamente em alguns instantes.',
         );
@@ -184,9 +225,31 @@ export class AiAssistantService {
     }
   }
 
+  private logEvent(event: {
+    userId: string;
+    clinicId: string;
+    assistantType: AssistantType;
+    status: 'success' | 'error';
+    errorCode?: string;
+    durationMs: number;
+    model: string;
+  }) {
+    // Structured log — never includes payload, response content or API key
+    const entry = {
+      ...event,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (event.status === 'success') {
+      this.logger.log(JSON.stringify(entry));
+    } else {
+      this.logger.error(JSON.stringify(entry));
+    }
+  }
+
   private parseResponse(
     raw: string,
-    domain: string,
+    assistantType: AssistantType,
   ): Omit<AiAnalysisResponse, 'generatedAt' | 'model'> {
     try {
       const parsed = JSON.parse(raw) as {
@@ -218,8 +281,9 @@ export class AiAssistantService {
 
       return { sections, disclaimer };
     } catch {
+      // Log only type/domain, never the raw content in full
       this.logger.error(
-        `[AI ${domain}] Failed to parse OpenAI response: ${raw.slice(0, 200)}`,
+        `[AI ${assistantType}] Failed to parse OpenAI response (first 100 chars): ${raw.slice(0, 100)}`,
       );
       throw new InternalServerErrorException(
         'A resposta da IA veio em formato inválido. Tente novamente.',
