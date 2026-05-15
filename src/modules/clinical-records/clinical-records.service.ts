@@ -254,8 +254,14 @@ export class ClinicalRecordsService {
     const existing = await this.assertRecordInClinic(clinicId, recordId);
     this.assertDentistRecordAccess(role, userId, existing.profile.userId);
 
+    if (existing.status === 'LOCKED') {
+      throw new BadRequestException(
+        'Este prontuário está bloqueado e não pode ser cancelado.',
+      );
+    }
+
     if (existing.status === 'CANCELED') {
-      throw new BadRequestException('Prontuário já está cancelado');
+      throw new BadRequestException('Este prontuário já foi cancelado.');
     }
 
     const prevStatus = existing.status;
