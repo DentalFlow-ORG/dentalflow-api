@@ -677,6 +677,11 @@ export class ClinicalRecordsService {
     dto: UpdateClinicalRecordDto,
   ): void {
     if (role !== 'ASSISTANT') return;
+    if (Object.keys(dto).length > 0) {
+      throw new ForbiddenException(
+        'Assistentes nao podem editar prontuarios clinicos',
+      );
+    }
 
     const restrictedFields: (keyof UpdateClinicalRecordDto)[] = [
       'clinicalEvolution',

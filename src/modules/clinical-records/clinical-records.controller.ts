@@ -37,7 +37,7 @@ export class ClinicalRecordsController {
   // ----------------------------------------------------------------
 
   @Get()
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   list(
     @CurrentUser() user: AuthUser,
     @Query('status') status?: string,
@@ -72,7 +72,7 @@ export class ClinicalRecordsController {
   }
 
   @Get('by-appointment/:appointmentId')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   findByAppointment(
     @CurrentUser() user: AuthUser,
     @Param('appointmentId') appointmentId: string,
@@ -87,7 +87,7 @@ export class ClinicalRecordsController {
   }
 
   @Get('patient-timeline')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   patientTimeline(
     @CurrentUser() user: AuthUser,
     @Query('identifier') identifier: string,
@@ -106,7 +106,7 @@ export class ClinicalRecordsController {
   // ----------------------------------------------------------------
 
   @Get('odontogram')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   getOdontogram(
     @CurrentUser() user: AuthUser,
     @Query('identifier') identifier: string,
@@ -137,7 +137,7 @@ export class ClinicalRecordsController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.findRecordById(
@@ -149,7 +149,7 @@ export class ClinicalRecordsController {
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -234,7 +234,7 @@ export class ClinicalRecordsController {
   // ----------------------------------------------------------------
 
   @Get(':id/attachments')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   listAttachments(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.listAttachments(
@@ -313,7 +313,7 @@ export class ClinicalRecordsController {
   // ----------------------------------------------------------------
 
   @Get('templates/list')
-  @Roles('OWNER', 'DENTIST', 'ASSISTANT')
+  @Roles('OWNER', 'DENTIST')
   listTemplates(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.listTemplates(clinicId);
