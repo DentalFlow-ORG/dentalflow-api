@@ -259,6 +259,7 @@ model User {
   createdClinicalTemplates  ClinicalTemplate[]          @relation("ClinicalTemplateCreatedBy")
   createdOdontogramRecords  OdontogramRecord[]          @relation("OdontogramRecordCreatedBy")
   performedStockMovements   StockMovement[]             @relation("StockMovementPerformedBy")
+  termsAcceptances          TermsAcceptance[]
 
   @@unique([email])
   @@index([clinicId])
@@ -1091,4 +1092,156 @@ model StockMovement {
   @@index([clinicId, type])
   @@index([performedByUserId])
   @@map("stock_movements")
+}
+
+// ================================================================
+// DOMAIN 10 — COMPLIANCE / PRIVACY / LGPD
+// ================================================================
+
+enum PrivacyRequestStatus {
+  OPEN
+  IN_REVIEW
+  WAITING_VERIFICATION
+  COMPLETED
+  REJECTED
+  CANCELED
+}
+
+enum PrivacyRequestType {
+  CONFIRM_PROCESSING
+  ACCESS_DATA
+  CORRECT_DATA
+  DELETE_OR_ANONYMIZE
+  PORTABILITY
+  SHARING_INFORMATION
+  REVOKE_CONSENT
+  OTHER
+}
+
+enum RequesterType {
+  PATIENT
+  CLINIC_OWNER
+  CLINIC_STAFF
+  OTHER
+}
+
+enum AuditAction {
+  // Auth
+  USER_LOGIN_SUCCESS
+  USER_LOGIN_FAILURE
+  USER_LOGOUT
+  USER_REFRESH_TOKEN
+  USER_REFRESH_TOKEN_FAILED
+  USER_PASSWORD_CHANGED
+  USER_PASSWORD_RESET_REQUESTED
+  // User management
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+  USER_ROLE_CHANGED
+  // Privacy
+  PRIVACY_REQUEST_CREATED
+  PRIVACY_REQUEST_STATUS_CHANGED
+  PRIVACY_REQUEST_RESPONDED
+  COOKIE_CONSENT_RECORDED
+  TERMS_ACCEPTED
+  // Appointments
+  APPOINTMENT_CREATED
+  APPOINTMENT_UPDATED
+  APPOINTMENT_CANCELED
+  APPOINTMENT_COMPLETED
+  // Patients
+  PATIENT_CREATED
+  PATIENT_UPDATED
+  PATIENT_DELETED
+  // Clinical records
+  CLINICAL_RECORD_CREATED
+  CLINICAL_RECORD_UPDATED
+  CLINICAL_RECORD_ACCESSED
+  CLINICAL_RECORD_LOCKED
+  CLINICAL_RECORD_DELETED
+  // Calendar
+  GOOGLE_CALENDAR_CONNECTED
+  GOOGLE_CALENDAR_DISCONNECTED
+  GOOGLE_CALENDAR_SYNCED
+  // Billing
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_CANCELED
+  SUBSCRIPTION_CHANGED
+  // Generic
+  OTHER
+}
+
+model PrivacyRequest {
+  id                          String               @id @default(cuid())
+  requestCode                 String               @unique
+  requesterName               String
+  requesterEmail              String
+  requesterType               RequesterType
+  clinicName                  String?
+  requestType                 PrivacyRequestType
+  description                 String               @db.Text
+  identityConfirmationAccepted Boolean             @default(false)
+  status                      PrivacyRequestStatus @default(OPEN)
+  assignedToUserId            String?
+  responseNotes               String?              @db.Text
+  completedAt                 DateTime?
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+
+  @@index([status])
+  @@index([requesterEmail])
+  @@index([createdAt])
+  @@map("privacy_requests")
+}
+
+model CookieConsentLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  anonymousId   String?
+  categories    Json
+  policyVersion String
+  source        String   // banner | preferences
+  ipHash        String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("cookie_consent_logs")
+}
+
+model TermsAcceptance {
+  id                   String   @id @default(cuid())
+  userId               String
+  privacyPolicyVersion String
+  termsVersion         String
+  acceptedAt           DateTime @default(now())
+  ipHash               String?
+  userAgent            String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("terms_acceptances")
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  actorUserId String?
+  clinicId    String?
+  action      AuditAction
+  entityType  String?
+  entityId    String?
+  metadata    Json?
+  ipHash      String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  @@index([actorUserId])
+  @@index([clinicId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
 }
