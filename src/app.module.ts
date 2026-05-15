@@ -23,6 +23,8 @@ import { SpecialtiesModule } from './modules/specialties/specialties.module';
 import { StockModule } from './modules/stock/stock.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -53,6 +55,8 @@ import { PrismaModule } from './prisma/prisma.module';
     PatientsModule,
     MetricsModule,
     ClinicalRecordsModule,
+    AuditLogModule,
+    PrivacyModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

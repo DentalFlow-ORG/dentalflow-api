@@ -100,7 +100,7 @@ export class AuthController {
     if (!rawToken) {
       return { success: true };
     }
-    return this.authService.logout(user.id, rawToken);
+    return this.authService.logout(user.id, rawToken, this.extractMetadata(req));
   }
 
   private extractMetadata(req: Request): TokenMetadata {

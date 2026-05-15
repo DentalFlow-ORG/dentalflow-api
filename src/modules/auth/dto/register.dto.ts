@@ -1,5 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
+  Equals,
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsString,
@@ -52,4 +54,10 @@ export class RegisterDto {
     message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   lastName!: string;
+
+  @IsBoolean()
+  @Equals(true, {
+    message: 'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar uma conta.',
+  })
+  acceptedTerms!: boolean;
 }

@@ -11,6 +11,7 @@ import { createHash, randomBytes } from 'crypto';
 import { authConfig } from '../../config/auth.config';
 import { JwtPayload } from '../../common/types/jwt-payload.type';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { SignInDto } from './dto/sign-in.dto';
@@ -20,6 +21,9 @@ import {
   LogoutResponse,
   RefreshResponse,
 } from './types/auth-response.type';
+
+export const PRIVACY_POLICY_VERSION = '2026-05-15';
+export const TERMS_VERSION = '2026-05-15';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -57,6 +61,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async register(
@@ -117,10 +122,43 @@ export class AuthService {
         },
       });
 
+      await tx.termsAcceptance.create({
+        data: {
+          userId: created.id,
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+          termsVersion: TERMS_VERSION,
+          ipHash: metadata.ipAddress
+            ? createHash('sha256').update(metadata.ipAddress).digest('hex').slice(0, 16)
+            : null,
+          userAgent: metadata.deviceInfo?.slice(0, 512) ?? null,
+        },
+      });
+
       return created;
     });
 
     const safeUser = this.toAuthResponseUser(user);
+
+    await Promise.all([
+      this.auditLog.log({
+        actorUserId: user.id,
+        action: 'USER_CREATED',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { clinicId: user.clinicId },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      }),
+      this.auditLog.log({
+        actorUserId: user.id,
+        action: 'TERMS_ACCEPTED',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { privacyPolicyVersion: PRIVACY_POLICY_VERSION, termsVersion: TERMS_VERSION },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      }),
+    ]);
 
     return {
       accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
@@ -150,6 +188,16 @@ export class AuthService {
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+      // Fire-and-forget: AuditLogService never throws; no reason to delay the 401 response
+      void this.auditLog.log({
+        action: 'USER_LOGIN_FAILURE',
+        metadata: {
+          emailHash: createHash('sha256').update(normalizedEmail).digest('hex').slice(0, 16),
+          reason: 'INVALID_CREDENTIALS',
+        },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      });
       throw new UnauthorizedException('E-mail ou senha inválidos');
     }
 
@@ -187,6 +235,15 @@ export class AuthService {
 
     const safeUser = this.toAuthResponseUser(user);
 
+    await this.auditLog.log({
+      actorUserId: user.id,
+      action: 'USER_LOGIN_SUCCESS',
+      entityType: 'User',
+      entityId: user.id,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.deviceInfo,
+    });
+
     return {
       accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
       refreshToken: rawRefreshToken,
@@ -222,6 +279,12 @@ export class AuthService {
 
     if (!stored) {
       this.logger.warn('Invalid refresh token attempt — token not found');
+      void this.auditLog.log({
+        action: 'USER_REFRESH_TOKEN_FAILED',
+        metadata: { reason: 'TOKEN_NOT_FOUND' },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      });
       throw new UnauthorizedException('Sessão inválida');
     }
 
@@ -234,6 +297,15 @@ export class AuthService {
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      void this.auditLog.log({
+        actorUserId: stored.userId,
+        action: 'USER_REFRESH_TOKEN_FAILED',
+        entityType: 'User',
+        entityId: stored.userId,
+        metadata: { reason: 'TOKEN_REUSE_DETECTED' },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      });
       throw new UnauthorizedException('Sessão inválida');
     }
 
@@ -241,6 +313,15 @@ export class AuthService {
       this.logger.log(
         `Expired refresh token presented — userId: ${stored.userId}`,
       );
+      void this.auditLog.log({
+        actorUserId: stored.userId,
+        action: 'USER_REFRESH_TOKEN_FAILED',
+        entityType: 'User',
+        entityId: stored.userId,
+        metadata: { reason: 'TOKEN_EXPIRED' },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      });
       throw new UnauthorizedException('Sessão expirada');
     }
 
@@ -251,6 +332,15 @@ export class AuthService {
       await this.prisma.refreshToken.updateMany({
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
+      });
+      void this.auditLog.log({
+        actorUserId: stored.userId,
+        action: 'USER_REFRESH_TOKEN_FAILED',
+        entityType: 'User',
+        entityId: stored.userId,
+        metadata: { reason: 'USER_INACTIVE' },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
       });
       throw new UnauthorizedException('Acesso negado');
     }
@@ -288,6 +378,16 @@ export class AuthService {
       });
     });
 
+    await this.auditLog.log({
+      actorUserId: stored.user.id,
+      action: 'USER_REFRESH_TOKEN',
+      entityType: 'User',
+      entityId: stored.user.id,
+      metadata: { reason: 'TOKEN_ROTATED' },
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.deviceInfo,
+    });
+
     return {
       accessToken: this.sign(
         stored.user.id,
@@ -299,11 +399,19 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, rawToken: string): Promise<LogoutResponse> {
+  async logout(userId: string, rawToken: string, metadata: TokenMetadata = {}): Promise<LogoutResponse> {
     const tokenHash = hashToken(rawToken);
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, userId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+    await this.auditLog.log({
+      actorUserId: userId,
+      action: 'USER_LOGOUT',
+      entityType: 'User',
+      entityId: userId,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.deviceInfo,
     });
     return { success: true };
   }
