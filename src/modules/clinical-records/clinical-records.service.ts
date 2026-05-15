@@ -513,6 +513,7 @@ export class ClinicalRecordsService {
   ) {
     const record = await this.assertRecordInClinic(clinicId, recordId);
     this.assertDentistRecordAccess(role, userId, record.profile.userId);
+    this.assertRecordEditable(record.status);
 
     const attachment = await this.prisma.clinicalRecordAttachment.findFirst({
       where: { id: attachmentId, clinicalRecordId: recordId },
@@ -707,14 +708,9 @@ export class ClinicalRecordsService {
   }
 
   private assertRecordEditable(status: ClinicalRecordStatus): void {
-    if (status === 'LOCKED') {
+    if (status !== 'DRAFT') {
       throw new ForbiddenException(
-        'Este prontuário está bloqueado para edição',
-      );
-    }
-    if (status === 'CANCELED') {
-      throw new BadRequestException(
-        'Este prontuário está cancelado e não pode ser editado',
+        'Este prontuário não pode ser editado no status atual.',
       );
     }
   }
