@@ -166,6 +166,16 @@ enum StockMovementType {
   LOSS
 }
 
+enum AiAssistantAnalysisType {
+  FINANCE
+  INVENTORY
+}
+
+enum AiAssistantAnalysisStatus {
+  SUCCESS
+  ERROR
+}
+
 // ================================================================
 // DOMAIN 1 — IDENTITY, AUTH & RBAC
 // ================================================================
@@ -211,6 +221,7 @@ model Clinic {
   stockCategories       StockCategory[]
   stockProducts         StockProduct[]
   stockMovements        StockMovement[]
+  aiAssistantAnalyses   AiAssistantAnalysis[]
 
   @@map("clinics")
 }
@@ -260,6 +271,7 @@ model User {
   createdOdontogramRecords  OdontogramRecord[]          @relation("OdontogramRecordCreatedBy")
   performedStockMovements   StockMovement[]             @relation("StockMovementPerformedBy")
   termsAcceptances          TermsAcceptance[]
+  aiAssistantAnalyses       AiAssistantAnalysis[]
 
   @@unique([email])
   @@index([clinicId])
@@ -1244,4 +1256,34 @@ model AuditLog {
   @@index([createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ================================================================
+// DOMAIN — AI ASSISTANT PERSISTENCE
+// ================================================================
+
+model AiAssistantAnalysis {
+  id           String                    @id @default(cuid())
+  clinicId     String
+  userId       String?
+  type         AiAssistantAnalysisType
+  status       AiAssistantAnalysisStatus
+  // content: { sections: AiAnalysisSection[], disclaimer: string } — only set on SUCCESS
+  content      Json?
+  model        String?
+  generatedAt  DateTime
+  // periodStart/periodEnd: only set for FINANCE type
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  // Sanitized error message — never contains secrets or full payload
+  errorMessage String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([clinicId, type, generatedAt])
+  @@index([clinicId, type, status])
+  @@map("ai_assistant_analyses")
 }

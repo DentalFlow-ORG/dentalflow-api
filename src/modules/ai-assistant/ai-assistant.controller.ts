@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -26,6 +27,24 @@ export class AiAssistantController {
     private readonly aiService: AiAssistantService,
     private readonly accessPolicy: AccessPolicyService,
   ) {}
+
+  @Get('finance/latest')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER')
+  async getLatestFinance(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    const result = await this.aiService.getLatestFinance(clinicId);
+    return { data: result };
+  }
+
+  @Get('inventory/latest')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER', 'ASSISTANT')
+  async getLatestInventory(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    const result = await this.aiService.getLatestInventory(clinicId);
+    return { data: result };
+  }
 
   @Post('finance/analyze')
   @HttpCode(HttpStatus.OK)

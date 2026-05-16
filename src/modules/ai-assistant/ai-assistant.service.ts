@@ -4,9 +4,11 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { AiAssistantAnalysisType } from '@prisma/client';
 import OpenAI from 'openai';
 import type { FinanceAiContext } from './builders/finance-context.builder';
 import type { InventoryAiContext } from './builders/inventory-context.builder';
+import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repository';
 import { FinanceContextBuilder } from './builders/finance-context.builder';
 import { InventoryContextBuilder } from './builders/inventory-context.builder';
 
@@ -21,6 +23,10 @@ export type AiAnalysisResponse = {
   disclaimer: string;
   generatedAt: string;
   model: string;
+  /** YYYY-MM-DD — only for FINANCE analyses */
+  periodStart: string | null;
+  /** YYYY-MM-DD — only for FINANCE analyses */
+  periodEnd: string | null;
 };
 
 type AssistantType = 'finance' | 'inventory';
@@ -103,6 +109,7 @@ export class AiAssistantService {
   constructor(
     private readonly financeContextBuilder: FinanceContextBuilder,
     private readonly inventoryContextBuilder: InventoryContextBuilder,
+    private readonly analysisRepository: AiAssistantAnalysisRepository,
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -195,6 +202,49 @@ export class AiAssistantService {
     }
   }
 
+  // ─── Persistence: load saved analyses ────────────────────────────────────
+
+  async getLatestFinance(clinicId: string): Promise<AiAnalysisResponse | null> {
+    const record = await this.analysisRepository.findLatest(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
+    return record ? this.mapAnalysisToResponse(record) : null;
+  }
+
+  async getLatestInventory(clinicId: string): Promise<AiAnalysisResponse | null> {
+    const record = await this.analysisRepository.findLatest(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
+    return record ? this.mapAnalysisToResponse(record) : null;
+  }
+
+  private mapAnalysisToResponse(record: {
+    content: unknown;
+    model: string | null;
+    generatedAt: Date;
+    periodStart: Date | null;
+    periodEnd: Date | null;
+  }): AiAnalysisResponse {
+    const content = record.content as {
+      sections: AiAnalysisSection[];
+      disclaimer: string;
+    };
+    return {
+      sections: content.sections,
+      disclaimer: content.disclaimer,
+      generatedAt: record.generatedAt.toISOString(),
+      model: record.model ?? 'unknown',
+      periodStart: record.periodStart
+        ? record.periodStart.toISOString().slice(0, 10)
+        : null,
+      periodEnd: record.periodEnd
+        ? record.periodEnd.toISOString().slice(0, 10)
+        : null,
+    };
+  }
+
   // ─── Analysis endpoints ───────────────────────────────────────────────────
 
   async analyzeFinance(
@@ -264,10 +314,42 @@ export class AiAssistantService {
         model: this.model,
       });
 
+      const periodStart =
+        assistantType === 'finance' && 'period' in context
+          ? new Date((context as FinanceAiContext).period.from)
+          : null;
+      const periodEnd =
+        assistantType === 'finance' && 'period' in context
+          ? new Date((context as FinanceAiContext).period.to)
+          : null;
+
+      // Persist — best-effort: never let a DB failure break the analysis response
+      try {
+        await this.analysisRepository.saveSuccess({
+          clinicId,
+          userId,
+          type:
+            assistantType === 'finance'
+              ? AiAssistantAnalysisType.FINANCE
+              : AiAssistantAnalysisType.INVENTORY,
+          content: { sections: parsed.sections, disclaimer: parsed.disclaimer },
+          model: this.model,
+          generatedAt: new Date(context.generatedAt),
+          periodStart,
+          periodEnd,
+        });
+      } catch (dbErr: unknown) {
+        this.logger.error(
+          `[AI ${assistantType}] Failed to persist analysis: ${dbErr instanceof Error ? dbErr.message : 'unknown'}`,
+        );
+      }
+
       return {
         ...parsed,
         generatedAt: context.generatedAt,
         model: this.model,
+        periodStart: periodStart?.toISOString().slice(0, 10) ?? null,
+        periodEnd: periodEnd?.toISOString().slice(0, 10) ?? null,
       };
     } catch (err: unknown) {
       if (
@@ -294,6 +376,22 @@ export class AiAssistantService {
         durationMs: Date.now() - startedAt,
         model: this.model,
       });
+
+      // Persist error record — best-effort, sanitized
+      try {
+        await this.analysisRepository.saveError({
+          clinicId,
+          userId,
+          type:
+            assistantType === 'finance'
+              ? AiAssistantAnalysisType.FINANCE
+              : AiAssistantAnalysisType.INVENTORY,
+          model: this.model,
+          errorMessage: isRateLimit ? 'RATE_LIMIT' : 'OPENAI_ERROR',
+        });
+      } catch {
+        // Ignore secondary DB errors
+      }
 
       if (isRateLimit) {
         throw new ServiceUnavailableException(
@@ -332,7 +430,7 @@ export class AiAssistantService {
   private parseResponse(
     raw: string,
     assistantType: AssistantType,
-  ): Omit<AiAnalysisResponse, 'generatedAt' | 'model'> {
+  ): Omit<AiAnalysisResponse, 'generatedAt' | 'model' | 'periodStart' | 'periodEnd'> {
     try {
       const parsed = JSON.parse(raw) as {
         sections?: unknown[];
