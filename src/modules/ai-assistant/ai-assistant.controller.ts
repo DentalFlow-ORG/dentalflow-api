@@ -59,13 +59,13 @@ export class AiAssistantController {
 
   @Post('inventory/analyze')
   @HttpCode(HttpStatus.OK)
-  @Roles('OWNER', 'ASSISTANT')
+  @Roles('OWNER')
   async analyzeInventory(
     @CurrentUser() user: AuthUser,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     @Body() _dto: AnalyzeInventoryDto,
   ) {
-    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.aiService.analyzeInventory(user.id, clinicId);
   }
 }
