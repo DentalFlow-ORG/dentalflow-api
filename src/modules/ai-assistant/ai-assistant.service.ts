@@ -115,6 +115,88 @@ export class AiAssistantService {
     this.maxOutputTokens = Number(process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 900);
   }
 
+  // ─── Health / config inspection ──────────────────────────────────────────
+
+  getConfigStatus(): {
+    enabled: boolean;
+    hasApiKey: boolean;
+    modelConfigured: boolean;
+    maxOutputTokensConfigured: boolean;
+    ready: boolean;
+  } {
+    const enabled = process.env.OPENAI_AI_ASSISTANT_ENABLED !== 'false';
+    const apiKey = process.env.OPENAI_API_KEY ?? '';
+    // Format check: key must be non-empty and start with 'sk-'. Value is never logged.
+    const hasApiKey = apiKey.length > 0 && apiKey.startsWith('sk-');
+    const modelConfigured = !!(process.env.OPENAI_MODEL);
+    const rawTokens = process.env.OPENAI_AI_MAX_OUTPUT_TOKENS;
+    const maxOutputTokensConfigured =
+      rawTokens !== undefined && !isNaN(Number(rawTokens)) && Number(rawTokens) > 0;
+    const ready = enabled && hasApiKey;
+
+    return { enabled, hasApiKey, modelConfigured, maxOutputTokensConfigured, ready };
+  }
+
+  async pingOpenAi(): Promise<{
+    ok: boolean;
+    message: string;
+    durationMs: number;
+    model: string;
+  }> {
+    const startedAt = Date.now();
+    try {
+      await this.openai.chat.completions.create({
+        model: this.model,
+        max_tokens: 10,
+        temperature: 0,
+        messages: [{ role: 'user', content: 'Responda apenas: OK' }],
+      });
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        JSON.stringify({
+          event: 'health_ping',
+          status: 'success',
+          durationMs,
+          model: this.model,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      return {
+        ok: true,
+        message: 'Conexão com OpenAI validada.',
+        durationMs,
+        model: this.model,
+      };
+    } catch (err: unknown) {
+      const durationMs = Date.now() - startedAt;
+      const isRateLimit =
+        typeof err === 'object' &&
+        err !== null &&
+        'status' in err &&
+        (err as { status: number }).status === 429;
+      this.logger.error(
+        JSON.stringify({
+          event: 'health_ping',
+          status: 'error',
+          errorCode: isRateLimit ? 'RATE_LIMIT' : 'OPENAI_ERROR',
+          durationMs,
+          model: this.model,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      return {
+        ok: false,
+        message: isRateLimit
+          ? 'Rate limit atingido. Tente novamente em alguns instantes.'
+          : 'Falha na conexão com OpenAI. Verifique a configuração e a chave.',
+        durationMs,
+        model: this.model,
+      };
+    }
+  }
+
+  // ─── Analysis endpoints ───────────────────────────────────────────────────
+
   async analyzeFinance(
     userId: string,
     clinicId: string,
