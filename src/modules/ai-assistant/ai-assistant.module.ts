@@ -9,6 +9,7 @@ import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repositor
 import { AiAssistantController } from './ai-assistant.controller';
 import { AiAssistantHealthController } from './ai-assistant-health.controller';
 import { AiAssistantService } from './ai-assistant.service';
+import { AiQuotaService } from './ai-quota.service';
 
 @Module({
   imports: [PrismaModule, CommonModule, FinanceModule, StockModule],
@@ -16,6 +17,7 @@ import { AiAssistantService } from './ai-assistant.service';
   providers: [
     AiAssistantService,
     AiAssistantAnalysisRepository,
+    AiQuotaService,
     FinanceContextBuilder,
     InventoryContextBuilder,
   ],

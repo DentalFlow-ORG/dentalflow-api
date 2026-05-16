@@ -9,6 +9,7 @@ import OpenAI from 'openai';
 import type { FinanceAiContext } from './builders/finance-context.builder';
 import type { InventoryAiContext } from './builders/inventory-context.builder';
 import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repository';
+import { AiQuotaService } from './ai-quota.service';
 import { FinanceContextBuilder } from './builders/finance-context.builder';
 import { InventoryContextBuilder } from './builders/inventory-context.builder';
 
@@ -110,6 +111,7 @@ export class AiAssistantService {
     private readonly financeContextBuilder: FinanceContextBuilder,
     private readonly inventoryContextBuilder: InventoryContextBuilder,
     private readonly analysisRepository: AiAssistantAnalysisRepository,
+    private readonly quotaService: AiQuotaService,
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -254,6 +256,7 @@ export class AiAssistantService {
     to?: string,
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
+    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.FINANCE);
     const context = await this.financeContextBuilder.build(clinicId, from, to);
     return this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
   }
@@ -263,6 +266,7 @@ export class AiAssistantService {
     clinicId: string,
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
+    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
     const context = await this.inventoryContextBuilder.build(clinicId);
     return this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
   }
