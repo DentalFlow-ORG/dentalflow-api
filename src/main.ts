@@ -27,10 +27,50 @@ async function bootstrap() {
     }),
   );
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-  app.use(helmet());
+
+  if (appConfig.nodeEnv === 'production') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+      frameguard: { action: 'deny' },
+      hidePoweredBy: true,
+      hsts:
+        appConfig.nodeEnv === 'production'
+          ? { maxAge: 15552000, includeSubDomains: true }
+          : false,
+      noSniff: true,
+      referrerPolicy: { policy: 'no-referrer' },
+    }),
+  );
   app.enableCors({
-    origin: appConfig.frontendOrigin,
+    origin: (origin, callback) => {
+      if (!origin && appConfig.nodeEnv !== 'production') {
+        callback(null, true);
+        return;
+      }
+
+      if (origin && appConfig.frontendOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Origem nao permitida pelo CORS.'));
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 600,
   });
   app.setGlobalPrefix(appConfig.apiPrefix);
   app.enableShutdownHooks();

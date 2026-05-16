@@ -21,6 +21,10 @@ import {
   LogoutResponse,
   RefreshResponse,
 } from './types/auth-response.type';
+import {
+  LoginIdentityRateLimitExceededException,
+  LoginIdentityRateLimiterService,
+} from './login-identity-rate-limiter.service';
 
 export const PRIVACY_POLICY_VERSION = '2026-05-15';
 export const TERMS_VERSION = '2026-05-15';
@@ -38,6 +42,18 @@ function generateRawToken(): string {
 
 function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
+}
+
+function hashIdentity(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function shortHash(hash: string): string {
+  return hash.slice(0, 16);
+}
+
+function sanitizeUserAgent(value: string | undefined): string | undefined {
+  return value ? value.slice(0, 512) : undefined;
 }
 
 function parseDurationMs(duration: string): number {
@@ -62,6 +78,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly accessPolicy: AccessPolicyService,
     private readonly auditLog: AuditLogService,
+    private readonly loginIdentityRateLimiter: LoginIdentityRateLimiterService,
   ) {}
 
   async register(
@@ -172,6 +189,16 @@ export class AuthService {
     metadata: TokenMetadata = {},
   ): Promise<AuthResponse> {
     const normalizedEmail = dto.email.trim().toLowerCase();
+    const emailHash = hashIdentity(normalizedEmail);
+
+    try {
+      this.loginIdentityRateLimiter.assertCanAttempt(emailHash);
+    } catch (err) {
+      if (err instanceof LoginIdentityRateLimitExceededException) {
+        void this.logLoginFailure(emailHash, 'RATE_LIMITED', metadata);
+      }
+      throw err;
+    }
 
     const user = await this.prisma.user.findFirst({
       where: { email: normalizedEmail, isActive: true, deletedAt: null },
@@ -188,31 +215,16 @@ export class AuthService {
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
-      // Fire-and-forget: AuditLogService never throws; no reason to delay the 401 response
-      void this.auditLog.log({
-        action: 'USER_LOGIN_FAILURE',
-        metadata: {
-          emailHash: createHash('sha256').update(normalizedEmail).digest('hex').slice(0, 16),
-          reason: 'INVALID_CREDENTIALS',
-        },
-        ipAddress: metadata.ipAddress,
-        userAgent: metadata.deviceInfo,
-      });
-      throw new UnauthorizedException('E-mail ou senha inválidos');
+      this.loginIdentityRateLimiter.recordFailure(emailHash);
+      void this.logLoginFailure(emailHash, 'INVALID_CREDENTIALS', metadata);
+      throw new UnauthorizedException('E-mail ou senha invalidos');
     }
 
     // Patients are clinical records only — they have no platform access
     if (user.role === 'PATIENT') {
-      void this.auditLog.log({
-        action: 'USER_LOGIN_FAILURE',
-        metadata: {
-          emailHash: createHash('sha256').update(normalizedEmail).digest('hex').slice(0, 16),
-          reason: 'PATIENT_ROLE_NOT_ALLOWED',
-        },
-        ipAddress: metadata.ipAddress,
-        userAgent: metadata.deviceInfo,
-      });
-      throw new UnauthorizedException('E-mail ou senha inválidos');
+      this.loginIdentityRateLimiter.recordFailure(emailHash);
+      void this.logLoginFailure(emailHash, 'PATIENT_ROLE_NOT_ALLOWED', metadata);
+      throw new UnauthorizedException('E-mail ou senha invalidos');
     }
 
     this.accessPolicy.assertValidRoleTenantShape({
@@ -248,6 +260,7 @@ export class AuthService {
     });
 
     const safeUser = this.toAuthResponseUser(user);
+    this.loginIdentityRateLimiter.reset(emailHash);
 
     await this.auditLog.log({
       actorUserId: user.id,
@@ -299,7 +312,7 @@ export class AuthService {
         ipAddress: metadata.ipAddress,
         userAgent: metadata.deviceInfo,
       });
-      throw new UnauthorizedException('Sessão inválida');
+      throw new UnauthorizedException('Sessao invalida');
     }
 
     // Revoked token reuse → possible theft; revoke all active sessions for safety
@@ -320,7 +333,7 @@ export class AuthService {
         ipAddress: metadata.ipAddress,
         userAgent: metadata.deviceInfo,
       });
-      throw new UnauthorizedException('Sessão inválida');
+      throw new UnauthorizedException('Sessao invalida');
     }
 
     if (stored.expiresAt < new Date()) {
@@ -372,10 +385,19 @@ export class AuthService {
     );
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.refreshToken.update({
-        where: { id: stored.id },
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          id: stored.id,
+          tokenHash,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
         data: { revokedAt: new Date() },
       });
+
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException('Sessao invalida');
+      }
 
       await tx.refreshToken.deleteMany({
         where: { userId: stored.userId, expiresAt: { lt: new Date() } },
@@ -444,7 +466,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Sessão inválida');
+      throw new UnauthorizedException('Sessao invalida');
     }
 
     this.accessPolicy.assertValidRoleTenantShape({
@@ -465,6 +487,22 @@ export class AuthService {
       lastName: user.lastName,
       role: user.role,
     };
+  }
+
+  private logLoginFailure(
+    emailHash: string,
+    reason: 'INVALID_CREDENTIALS' | 'PATIENT_ROLE_NOT_ALLOWED' | 'RATE_LIMITED',
+    metadata: TokenMetadata,
+  ): Promise<void> {
+    return this.auditLog.log({
+      action: 'USER_LOGIN_FAILURE',
+      metadata: {
+        emailHash: shortHash(emailHash),
+        reason,
+      },
+      ipAddress: metadata.ipAddress,
+      userAgent: sanitizeUserAgent(metadata.deviceInfo),
+    });
   }
 
   private sign(

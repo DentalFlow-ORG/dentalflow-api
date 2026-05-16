@@ -6,6 +6,7 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { LoginIdentityRateLimiterService } from './login-identity-rate-limiter.service';
 
 type JwtExpiresIn = NonNullable<JwtModuleOptions['signOptions']>['expiresIn'];
 
@@ -19,6 +20,6 @@ type JwtExpiresIn = NonNullable<JwtModuleOptions['signOptions']>['expiresIn'];
     AuditLogModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, LoginIdentityRateLimiterService],
 })
 export class AuthModule {}

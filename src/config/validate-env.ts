@@ -38,4 +38,23 @@ export function validateEnv(): void {
         'Set them in .env or your deployment environment.',
     );
   }
+
+  if (isProduction) {
+    const origins = (process.env.FRONTEND_ORIGIN ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+
+    if (origins.length === 0) {
+      throw new Error('FRONTEND_ORIGIN is required in production.');
+    }
+
+    for (const origin of origins) {
+      if (origin === '*' || !origin.startsWith('https://')) {
+        throw new Error(
+          'FRONTEND_ORIGIN must contain only explicit HTTPS origins in production.',
+        );
+      }
+    }
+  }
 }

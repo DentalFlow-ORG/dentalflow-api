@@ -340,7 +340,12 @@ export class AiAssistantService {
         });
       } catch (dbErr: unknown) {
         this.logger.error(
-          `[AI ${assistantType}] Failed to persist analysis: ${dbErr instanceof Error ? dbErr.message : 'unknown'}`,
+          JSON.stringify({
+            event: 'analysis_persist_failed',
+            assistantType,
+            errorCode: 'PERSISTENCE_ERROR',
+            createdAt: new Date().toISOString(),
+          }),
         );
       }
 
@@ -461,9 +466,13 @@ export class AiAssistantService {
 
       return { sections, disclaimer };
     } catch {
-      // Log only type/domain, never the raw content in full
       this.logger.error(
-        `[AI ${assistantType}] Failed to parse OpenAI response (first 100 chars): ${raw.slice(0, 100)}`,
+        JSON.stringify({
+          event: 'openai_response_parse_failed',
+          assistantType,
+          errorCode: 'INVALID_JSON_RESPONSE',
+          createdAt: new Date().toISOString(),
+        }),
       );
       throw new InternalServerErrorException(
         'A resposta da IA veio em formato inválido. Tente novamente.',
