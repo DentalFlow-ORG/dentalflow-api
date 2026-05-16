@@ -6,10 +6,20 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AppointmentStatus, UserRole } from '@prisma/client';
+import {
+  AppointmentPaymentStatus,
+  AppointmentStatus,
+  FinancialTransactionSource,
+  FinancialTransactionStatus,
+  FinancialTransactionType,
+  Prisma,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
+import { UpdateAppointmentPaymentDto } from './dto/update-appointment-payment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
@@ -20,7 +30,15 @@ import { CalendarIntegrationsService } from '../calendar-integrations/calendar-i
 
 const APPOINTMENT_INCLUDE = {
   profile: { select: { id: true, displayName: true, userId: true } },
-  service: { select: { id: true, name: true, durationMinutes: true } },
+  service: {
+    select: {
+      id: true,
+      name: true,
+      durationMinutes: true,
+      priceFrom: true,
+      priceTo: true,
+    },
+  },
   patient: {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
@@ -49,6 +67,7 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendarIntegrations: CalendarIntegrationsService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async listAppointments(
@@ -370,6 +389,205 @@ export class AppointmentsService {
       status: 'CANCELED',
       canceledBy: dto?.canceledBy ?? 'CLINIC',
       cancellationReason: dto?.cancellationReason,
+    });
+  }
+
+  async updateAppointmentPayment(
+    clinicId: string,
+    userId: string,
+    appointmentId: string,
+    dto: UpdateAppointmentPaymentDto,
+  ) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, clinicId },
+      include: {
+        service: { select: { id: true, name: true } },
+        profile: { select: { id: true } },
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Consulta não encontrada.');
+    }
+
+    // Validate paid amount for statuses that require it
+    if (
+      (dto.paymentStatus === AppointmentPaymentStatus.PAID ||
+        dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID) &&
+      (!dto.paidAmountCents || dto.paidAmountCents < 1)
+    ) {
+      throw new BadRequestException(
+        'Informe o valor pago para registrar o pagamento.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Update appointment payment fields
+      await tx.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          paymentStatus: dto.paymentStatus,
+          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
+          paidAmountCents:
+            dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING ||
+            dto.paymentStatus === AppointmentPaymentStatus.CANCELED
+              ? null
+              : (dto.paidAmountCents ?? null),
+          paymentMethod: dto.paymentMethod ?? null,
+          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
+          paymentNotes: dto.paymentNotes ?? null,
+        },
+      });
+
+      // 2. Sync FinancialTransaction based on paymentStatus
+      if (
+        dto.paymentStatus === AppointmentPaymentStatus.PAID ||
+        dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID
+      ) {
+        // Ensure default INCOME category exists (idempotent)
+        await tx.financialCategory.upsert({
+          where: {
+            clinicId_type_name: {
+              clinicId,
+              type: FinancialTransactionType.INCOME,
+              name: 'Servicos odontologicos',
+            },
+          },
+          create: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            name: 'Servicos odontologicos',
+            color: '#10B981',
+            icon: 'stethoscope',
+            isDefault: true,
+          },
+          update: {},
+        });
+
+        const category = await tx.financialCategory.findFirst({
+          where: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            ...(dto.categoryId
+              ? { id: dto.categoryId }
+              : { name: 'Servicos odontologicos' }),
+          },
+        });
+
+        if (!category) {
+          throw new BadRequestException(
+            'Categoria financeira não encontrada. Configure as categorias antes de registrar o pagamento.',
+          );
+        }
+
+        const amountCents = dto.paidAmountCents!;
+        // FinancialTransaction.amount is stored as Decimal (BRL value, not centavos)
+        const amount = new Prisma.Decimal(amountCents).div(100).toDecimalPlaces(2);
+
+        const isPaid = dto.paymentStatus === AppointmentPaymentStatus.PAID;
+        // PARTIALLY_PAID: register as PENDING (partial amount) — documented decision:
+        // FinancialTransactionStatus has no PARTIAL state; partial = PENDING with partial amount.
+        const txStatus = isPaid
+          ? FinancialTransactionStatus.PAID
+          : FinancialTransactionStatus.PENDING;
+
+        const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+        const transactionDate = this.dateOnly(paymentDate);
+        const paidAt = isPaid ? paymentDate : null;
+
+        const prefix =
+          dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID
+            ? '[Parcial] '
+            : '';
+        const description = `${prefix}${appointment.service?.name ?? 'Serviço odontológico'} - ${appointment.patientName}`;
+
+        await tx.financialTransaction.upsert({
+          where: {
+            clinicId_appointmentId_source: {
+              clinicId,
+              appointmentId,
+              source: FinancialTransactionSource.SERVICE_PAYMENT,
+            },
+          },
+          create: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+            categoryId: category.id,
+            amount,
+            description,
+            transactionDate,
+            paidAt,
+            status: txStatus,
+            appointmentId,
+            serviceId: appointment.serviceId ?? undefined,
+            profileId: appointment.profileId,
+            createdByUserId: userId,
+          },
+          update: {
+            categoryId: category.id,
+            amount,
+            description,
+            transactionDate,
+            paidAt,
+            status: txStatus,
+            serviceId: appointment.serviceId ?? undefined,
+            profileId: appointment.profileId,
+          },
+        });
+      } else if (dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING) {
+        // Set existing transaction to PENDING if it exists; do not create one
+        const existing = await tx.financialTransaction.findFirst({
+          where: {
+            clinicId,
+            appointmentId,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+          },
+        });
+        if (existing) {
+          await tx.financialTransaction.update({
+            where: { id: existing.id },
+            data: {
+              status: FinancialTransactionStatus.PENDING,
+              paidAt: null,
+            },
+          });
+        }
+      } else {
+        // REFUNDED or CANCELED: cancel the linked transaction if it exists
+        const existing = await tx.financialTransaction.findFirst({
+          where: {
+            clinicId,
+            appointmentId,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+          },
+        });
+        if (existing) {
+          await tx.financialTransaction.update({
+            where: { id: existing.id },
+            data: { status: FinancialTransactionStatus.CANCELED },
+          });
+        }
+      }
+    });
+
+    void this.auditLog.log({
+      actorUserId: userId,
+      clinicId,
+      action: 'APPOINTMENT_PAYMENT_UPDATED',
+      entityType: 'Appointment',
+      entityId: appointmentId,
+      metadata: {
+        paymentStatus: dto.paymentStatus,
+        paidAmountCents: dto.paidAmountCents,
+        estimatedAmountCents: dto.estimatedAmountCents,
+        paymentMethod: dto.paymentMethod,
+      },
+    });
+
+    return this.prisma.appointment.findFirst({
+      where: { id: appointmentId },
+      include: APPOINTMENT_INCLUDE,
     });
   }
 
@@ -826,6 +1044,12 @@ export class AppointmentsService {
           : 'Não é possível registrar não comparecimento para um agendamento futuro.',
       );
     }
+  }
+
+  private dateOnly(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
   }
 
   private assertDentistAppointmentAccess(

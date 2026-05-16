@@ -61,6 +61,24 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum AppointmentPaymentStatus {
+  PAYMENT_PENDING
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  CANCELED
+}
+
+enum AppointmentPaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  BANK_TRANSFER
+  HEALTH_INSURANCE
+  OTHER
+}
+
 enum CanceledBy {
   CLINIC
   PATIENT
@@ -518,6 +536,12 @@ model Appointment {
   confirmedAt        DateTime?
   completedAt        DateTime?
   googleCalendarEventId String?
+  estimatedAmountCents  Int?
+  paidAmountCents       Int?
+  paymentStatus         AppointmentPaymentStatus @default(PAYMENT_PENDING)
+  paymentMethod         AppointmentPaymentMethod?
+  paymentDate           DateTime?
+  paymentNotes          String?                  @db.Text
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -1162,6 +1186,7 @@ enum AuditAction {
   APPOINTMENT_UPDATED
   APPOINTMENT_CANCELED
   APPOINTMENT_COMPLETED
+  APPOINTMENT_PAYMENT_UPDATED
   // Patients
   PATIENT_CREATED
   PATIENT_UPDATED

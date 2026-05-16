@@ -18,6 +18,7 @@ import { AuthUser } from '../../common/types/auth-user.type';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
+import { UpdateAppointmentPaymentDto } from './dto/update-appointment-payment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
@@ -186,6 +187,22 @@ export class AppointmentsController {
       user.role,
       id,
       { status: 'NO_SHOW' },
+    );
+  }
+
+  @Patch(':id/payment')
+  @Roles('OWNER', 'ASSISTANT')
+  updatePayment(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateAppointmentPaymentDto,
+  ) {
+    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    return this.appointmentsService.updateAppointmentPayment(
+      clinicId,
+      user.id,
+      id,
+      dto,
     );
   }
 }
