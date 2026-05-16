@@ -201,6 +201,20 @@ export class AuthService {
       throw new UnauthorizedException('E-mail ou senha inválidos');
     }
 
+    // Patients are clinical records only — they have no platform access
+    if (user.role === 'PATIENT') {
+      void this.auditLog.log({
+        action: 'USER_LOGIN_FAILURE',
+        metadata: {
+          emailHash: createHash('sha256').update(normalizedEmail).digest('hex').slice(0, 16),
+          reason: 'PATIENT_ROLE_NOT_ALLOWED',
+        },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.deviceInfo,
+      });
+      throw new UnauthorizedException('E-mail ou senha inválidos');
+    }
+
     this.accessPolicy.assertValidRoleTenantShape({
       id: user.id,
       clinicId: user.clinicId,
