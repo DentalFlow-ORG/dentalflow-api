@@ -1,4 +1,4 @@
-import { ServiceInvoiceStatus } from '@prisma/client';
+import { AppointmentPaymentStatus, ServiceInvoiceStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -164,4 +164,39 @@ export class UpdateServiceInvoiceDto {
 export class CancelInvoiceDto {
   @IsString({ message: 'Motivo do cancelamento é obrigatório.' })
   reason!: string;
+}
+
+export class ListAppointmentsForInvoiceDto {
+  @IsOptional()
+  @IsString()
+  patient?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Data inicial inválida.' })
+  from?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Data final inválida.' })
+  to?: string;
+
+  @IsOptional()
+  @IsString()
+  profileId?: string;
+
+  @IsOptional()
+  @IsEnum(AppointmentPaymentStatus, { message: 'Status de pagamento inválido.' })
+  paymentStatus?: AppointmentPaymentStatus;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
 }

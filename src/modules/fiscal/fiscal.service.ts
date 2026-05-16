@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,6 +8,8 @@ import {
   NotImplementedException,
 } from '@nestjs/common';
 import {
+  AppointmentPaymentStatus,
+  AppointmentStatus,
   FiscalProvider,
   FiscalProviderMode,
   Prisma,
@@ -18,6 +21,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   CancelInvoiceDto,
   CreateServiceInvoiceDto,
+  ListAppointmentsForInvoiceDto,
   ListInvoicesDto,
   UpdateServiceInvoiceDto,
 } from './dto/invoice.dto';
@@ -191,6 +195,23 @@ export class FiscalService {
     dto: CreateServiceInvoiceDto,
   ) {
     await this.assertLinksBelongToClinic(clinicId, dto);
+
+    if (dto.appointmentId) {
+      const duplicate = await this.prisma.serviceInvoice.findFirst({
+        where: {
+          clinicId,
+          appointmentId: dto.appointmentId,
+          status: { not: ServiceInvoiceStatus.CANCELED },
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new ConflictException(
+          'Já existe uma nota fiscal ativa vinculada a esta consulta.',
+        );
+      }
+    }
+
     const profile = await this.prisma.clinicFiscalProfile.findUnique({
       where: { clinicId },
     });
@@ -409,6 +430,116 @@ export class FiscalService {
     return updated;
   }
 
+  async listAppointmentsForInvoice(clinicId: string, query: ListAppointmentsForInvoiceDto) {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 50) : 20;
+
+    const where: Prisma.AppointmentWhereInput = {
+      clinicId,
+      status: { not: AppointmentStatus.CANCELED },
+      ...(query.patient?.trim()
+        ? { patientName: { contains: query.patient.trim(), mode: 'insensitive' } }
+        : {}),
+      ...(query.profileId ? { profileId: query.profileId } : {}),
+      ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
+      ...this.appointmentDateRangeFilter(query.from, query.to),
+    };
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.appointment.findMany({
+        where,
+        orderBy: [{ appointmentDate: 'desc' }, { startTime: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          patientName: true,
+          patientEmail: true,
+          patientPhone: true,
+          appointmentDate: true,
+          startTime: true,
+          status: true,
+          paymentStatus: true,
+          estimatedAmountCents: true,
+          paidAmountCents: true,
+          profile: { select: { id: true, displayName: true } },
+          service: { select: { id: true, name: true } },
+          serviceInvoices: {
+            where: { status: { not: ServiceInvoiceStatus.CANCELED } },
+            select: { id: true, status: true },
+            take: 1,
+          },
+        },
+      }),
+      this.prisma.appointment.count({ where }),
+    ]);
+
+    const data = rows.map(({ serviceInvoices, ...appt }) => ({
+      ...appt,
+      hasActiveInvoice: serviceInvoices.length > 0,
+      activeInvoiceId: serviceInvoices[0]?.id ?? null,
+    }));
+
+    return { data, total, page, limit };
+  }
+
+  async getAppointmentInvoiceDraft(clinicId: string, appointmentId: string) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, clinicId },
+      include: {
+        profile: { select: { id: true, displayName: true } },
+        service: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Consulta não encontrada.');
+    }
+
+    const existingInvoice = await this.prisma.serviceInvoice.findFirst({
+      where: {
+        appointmentId,
+        clinicId,
+        status: { not: ServiceInvoiceStatus.CANCELED },
+      },
+      select: { id: true, status: true },
+    });
+
+    const amountCents =
+      appointment.paidAmountCents ?? appointment.estimatedAmountCents ?? 0;
+    const paymentPending =
+      appointment.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING;
+
+    const draft = {
+      appointmentId: appointment.id,
+      customerName: appointment.patientName,
+      customerEmail: appointment.patientEmail ?? undefined,
+      customerPhone: appointment.patientPhone ?? undefined,
+      serviceDescription: appointment.service?.name ?? 'Consulta odontológica',
+      amountCents: amountCents > 0 ? amountCents : 0,
+      competenceDate: appointment.appointmentDate.toISOString().slice(0, 10),
+    };
+
+    return {
+      draft,
+      appointment: {
+        id: appointment.id,
+        patientName: appointment.patientName,
+        appointmentDate: appointment.appointmentDate.toISOString().slice(0, 10),
+        profileDisplayName: appointment.profile.displayName,
+        serviceName: appointment.service?.name ?? null,
+        paymentStatus: appointment.paymentStatus,
+        estimatedAmountCents: appointment.estimatedAmountCents,
+        paidAmountCents: appointment.paidAmountCents,
+      },
+      existingInvoice,
+      warnings: {
+        paymentPending,
+        hasExistingInvoice: !!existingInvoice,
+      },
+    };
+  }
+
   async getInvoicePdf(_clinicId: string, _invoiceId: string) {
     throw new NotImplementedException(
       'PDF fiscal real ainda não está disponível. Documento sem validade fiscal.',
@@ -550,6 +681,13 @@ export class FiscalService {
     if (from) range.gte = this.dateOnly(from);
     if (to) range.lte = this.dateOnly(to);
     return Object.keys(range).length > 0 ? { competenceDate: range } : {};
+  }
+
+  private appointmentDateRangeFilter(from?: string, to?: string) {
+    const range: Prisma.DateTimeFilter = {};
+    if (from) range.gte = this.dateOnly(from);
+    if (to) range.lte = this.dateOnly(to);
+    return Object.keys(range).length > 0 ? { appointmentDate: range } : {};
   }
 
   private dateOnly(value: string) {

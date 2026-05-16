@@ -17,6 +17,7 @@ import { AuthUser } from '../../common/types/auth-user.type';
 import {
   CancelInvoiceDto,
   CreateServiceInvoiceDto,
+  ListAppointmentsForInvoiceDto,
   ListInvoicesDto,
   UpdateServiceInvoiceDto,
 } from './dto/invoice.dto';
@@ -59,6 +60,24 @@ export class FiscalController {
   listInvoices(@CurrentUser() user: AuthUser, @Query() query: ListInvoicesDto) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
     return this.fiscalService.listInvoices(clinicId, query);
+  }
+
+  @Get('invoices/appointments')
+  listAppointmentsForInvoice(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListAppointmentsForInvoiceDto,
+  ) {
+    const clinicId = this.accessPolicy.assertClinicMember(user);
+    return this.fiscalService.listAppointmentsForInvoice(clinicId, query);
+  }
+
+  @Get('invoices/from-appointment/:appointmentId')
+  getAppointmentInvoiceDraft(
+    @CurrentUser() user: AuthUser,
+    @Param('appointmentId') appointmentId: string,
+  ) {
+    const clinicId = this.accessPolicy.assertClinicMember(user);
+    return this.fiscalService.getAppointmentInvoiceDraft(clinicId, appointmentId);
   }
 
   @Get('invoices/:id')
