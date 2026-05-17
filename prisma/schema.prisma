@@ -166,6 +166,24 @@ enum StockMovementType {
   LOSS
 }
 
+enum AppointmentPaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  BANK_TRANSFER
+  HEALTH_INSURANCE
+  OTHER
+}
+
+enum AppointmentPaymentStatus {
+  PAYMENT_PENDING
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  CANCELED
+}
+
 enum AiAssistantAnalysisType {
   FINANCE
   INVENTORY
@@ -174,6 +192,39 @@ enum AiAssistantAnalysisType {
 enum AiAssistantAnalysisStatus {
   SUCCESS
   ERROR
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+enum NotificationScope {
+  UTILITY
+  MARKETING
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  CONFIRMED
+  FAILED
+  OPTED_OUT
+}
+
+enum NotificationTemplateCategory {
+  UTILITY
+  MARKETING
+  SERVICE
+}
+
+enum ConsentSource {
+  MANUAL
+  FORM
+  IMPORT
 }
 
 // ================================================================
@@ -222,6 +273,10 @@ model Clinic {
   stockProducts         StockProduct[]
   stockMovements        StockMovement[]
   aiAssistantAnalyses   AiAssistantAnalysis[]
+  notificationConsents  NotificationConsent[]
+  notificationPreference NotificationPreference?
+  notificationQuotas    NotificationQuota[]
+  notificationMessages  NotificationMessage[]
 
   @@map("clinics")
 }
@@ -272,6 +327,7 @@ model User {
   performedStockMovements   StockMovement[]             @relation("StockMovementPerformedBy")
   termsAcceptances          TermsAcceptance[]
   aiAssistantAnalyses       AiAssistantAnalysis[]
+  notificationConsents      NotificationConsent[] @relation("PatientNotificationConsents")
 
   @@unique([email])
   @@index([clinicId])
@@ -518,6 +574,12 @@ model Appointment {
   confirmedAt        DateTime?
   completedAt        DateTime?
   googleCalendarEventId String?
+  paymentStatus      AppointmentPaymentStatus  @default(PAYMENT_PENDING)
+  paymentMethod      AppointmentPaymentMethod?
+  estimatedAmountCents Int?
+  paidAmountCents    Int?
+  paymentDate        DateTime?
+  paymentNotes       String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -529,6 +591,7 @@ model Appointment {
   financialTransactions FinancialTransaction[]
   serviceInvoices ServiceInvoice[]
   clinicalRecord  ClinicalRecord?
+  notificationMessages NotificationMessage[]
 
   @@index([clinicId])
   @@index([profileId])
@@ -601,6 +664,9 @@ model Plan {
   hasAnalytics          Boolean  @default(false)
   hasCustomDomain       Boolean  @default(false)
   hasPrioritySupport    Boolean  @default(false)
+  hasWhatsApp           Boolean  @default(false)
+  whatsappMonthlyLimit  Int?     // NULL = WhatsApp not included in plan
+  whatsappAutoReminder  Boolean  @default(false)
   isActive              Boolean  @default(true)
   isPublic              Boolean  @default(true)
   displayOrder          Int      @default(0)
@@ -1176,10 +1242,16 @@ enum AuditAction {
   GOOGLE_CALENDAR_CONNECTED
   GOOGLE_CALENDAR_DISCONNECTED
   GOOGLE_CALENDAR_SYNCED
+  // Appointments — payment
+  APPOINTMENT_PAYMENT_UPDATED
   // Billing
   SUBSCRIPTION_CREATED
   SUBSCRIPTION_CANCELED
   SUBSCRIPTION_CHANGED
+  // Notifications
+  NOTIFICATION_SENT
+  NOTIFICATION_CONSENT_GRANTED
+  NOTIFICATION_CONSENT_REVOKED
   // Generic
   OTHER
 }
@@ -1286,4 +1358,108 @@ model AiAssistantAnalysis {
   @@index([clinicId, type, generatedAt])
   @@index([clinicId, type, status])
   @@map("ai_assistant_analyses")
+}
+
+// ================================================================
+// DOMAIN 11 — NOTIFICATIONS (WhatsApp Phase 0 — Simulation)
+// ================================================================
+
+model NotificationConsent {
+  id            String              @id @default(cuid())
+  clinicId      String
+  patientUserId String?             // User with PATIENT role, when available
+  entityType    String?             // flexible future association ("appointment" | "lead")
+  entityId      String?
+  phone         String              // normalized: digits only, no country code
+  channel       NotificationChannel
+  scope         NotificationScope
+  granted       Boolean             @default(false)
+  grantedAt     DateTime?
+  revokedAt     DateTime?
+  source        ConsentSource
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  clinic      Clinic                @relation(fields: [clinicId], references: [id])
+  patientUser User?                 @relation("PatientNotificationConsents", fields: [patientUserId], references: [id])
+  messages    NotificationMessage[]
+
+  @@index([clinicId, phone, channel, scope])
+  @@index([clinicId, patientUserId])
+  @@index([clinicId, granted])
+  @@map("notification_consents")
+}
+
+model NotificationPreference {
+  id                  String   @id @default(cuid())
+  clinicId            String   @unique
+  whatsappEnabled     Boolean  @default(false)
+  autoReminder        Boolean  @default(false)
+  autoConfirmation    Boolean  @default(false)
+  reminderHoursBefore Int      @default(24)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@map("notification_preferences")
+}
+
+model NotificationQuota {
+  id        String              @id @default(cuid())
+  clinicId  String
+  month     String              // "2026-05" — YYYY-MM
+  channel   NotificationChannel
+  used      Int                 @default(0)
+  limit     Int
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, month, channel])
+  @@index([clinicId])
+  @@map("notification_quotas")
+}
+
+model NotificationMessage {
+  id            String              @id @default(cuid())
+  clinicId      String
+  consentId     String?
+  appointmentId String?
+  templateSlug  String
+  channel       NotificationChannel
+  scope         NotificationScope
+  status        NotificationStatus  @default(PENDING)
+  providerRef   String?             // future: real provider message ID
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  failedAt      DateTime?
+  failReason    String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  clinic      Clinic               @relation(fields: [clinicId], references: [id])
+  consent     NotificationConsent? @relation(fields: [consentId], references: [id])
+  appointment Appointment?         @relation(fields: [appointmentId], references: [id])
+
+  @@index([clinicId])
+  @@index([clinicId, appointmentId])
+  @@index([clinicId, createdAt])
+  @@index([consentId])
+  @@map("notification_messages")
+}
+
+model NotificationTemplate {
+  id        String                       @id @default(cuid())
+  slug      String                       @unique
+  channel   NotificationChannel
+  category  NotificationTemplateCategory
+  bodyPt    String                       @db.Text
+  variables String[]
+  isActive  Boolean                      @default(true)
+  createdAt DateTime                     @default(now())
+
+  @@map("notification_templates")
 }

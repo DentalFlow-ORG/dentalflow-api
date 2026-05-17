@@ -305,6 +305,64 @@ async function seed(prisma: PrismaClient): Promise<void> {
   });
 
   console.log('  - role users upserted');
+
+  console.log('Seeding notification templates...');
+  const NOTIFICATION_TEMPLATES = [
+    {
+      slug: 'appointment_reminder_24h',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Lembramos que você tem uma consulta agendada para amanhã, {{2}} às {{3}}, na {{4}}. Aguardamos você!',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'appointment_confirmation_request',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Confirme sua consulta em {{2}} às {{3}} na {{4}} respondendo SIM para confirmar ou NÃO para cancelar.',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'appointment_rescheduled',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Sua consulta foi reagendada para {{2}} às {{3}} na {{4}}. Em caso de dúvidas, entre em contato conosco.',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'payment_pending_notice',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Informamos que há um valor pendente de {{2}} na {{4}}. Entre em contato para regularizar.',
+      variables: ['patientName', 'amount', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'post_appointment_simple',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Obrigado pela sua visita à {{4}}. Esperamos que tenha gostado do atendimento. Estamos sempre à disposição!',
+      variables: ['patientName', 'clinicName'],
+      isActive: true,
+    },
+  ];
+
+  for (const tpl of NOTIFICATION_TEMPLATES) {
+    await prisma.notificationTemplate.upsert({
+      where: { slug: tpl.slug },
+      update: { bodyPt: tpl.bodyPt, variables: tpl.variables, isActive: tpl.isActive },
+      create: tpl,
+    });
+  }
+  console.log(`  - ${NOTIFICATION_TEMPLATES.length} notification templates upserted`);
 }
 
 async function main(): Promise<void> {
