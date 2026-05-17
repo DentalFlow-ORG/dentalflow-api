@@ -23,6 +23,12 @@ export class PatientsController {
     return this.patientsService.listPatients(clinicId, search);
   }
 
+  @Get('attention')
+  getAttention(@CurrentUser() user: AuthUser) {
+    const clinicId = this.accessPolicy.assertClinicMember(user);
+    return this.patientsService.getPatientsAttention(clinicId);
+  }
+
   @Get('history')
   getHistory(
     @CurrentUser() user: AuthUser,
