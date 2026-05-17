@@ -157,7 +157,7 @@ export class ReportsService {
       FINANCE_STATUS_LABELS[t.status] ?? t.status,
       t.description ?? '',
       t.category?.name ?? '',
-      centsToDecimal(Number(t.amount) * 100),
+      Number(t.amount).toFixed(2).replace('.', ','),
       t.service?.name ?? '',
       t.profile?.displayName ?? '',
     ]);

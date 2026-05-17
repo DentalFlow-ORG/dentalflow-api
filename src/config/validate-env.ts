@@ -9,6 +9,7 @@ type EnvRule = {
 const rules: EnvRule[] = [
   { key: 'JWT_SECRET', required: true, description: 'JWT signing secret' },
   { key: 'DATABASE_URL', required: true, description: 'PostgreSQL connection string' },
+  { key: 'DIRECT_URL', required: isProduction, description: 'Direct PostgreSQL URL for Prisma migrations (bypasses PgBouncer)' },
   { key: 'FRONTEND_ORIGIN', required: isProduction, description: 'Allowed CORS origin' },
   { key: 'STRIPE_SECRET_KEY', required: isProduction, description: 'Stripe API secret key' },
   { key: 'STRIPE_WEBHOOK_SECRET', required: isProduction, description: 'Stripe webhook signing secret' },
@@ -17,6 +18,7 @@ const rules: EnvRule[] = [
   { key: 'STRIPE_PORTAL_RETURN_URL', required: isProduction, description: 'Stripe portal return URL' },
   { key: 'GOOGLE_CALENDAR_CLIENT_ID', required: isProduction, description: 'Google Calendar OAuth client ID' },
   { key: 'GOOGLE_CALENDAR_CLIENT_SECRET', required: isProduction, description: 'Google Calendar OAuth client secret' },
+  { key: 'GOOGLE_CALENDAR_REDIRECT_URI', required: isProduction, description: 'Google Calendar OAuth redirect URI (must match Google Cloud Console)' },
   { key: 'GOOGLE_CALENDAR_TOKEN_SECRET', required: isProduction, description: 'Secret for encrypting Google tokens' },
   { key: 'FISCAL_PROVIDER', required: false, description: 'Future fiscal provider identifier' },
   { key: 'FISCAL_PROVIDER_MODE', required: false, description: 'Future fiscal provider mode' },
