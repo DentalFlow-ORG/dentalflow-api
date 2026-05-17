@@ -1,5 +1,13 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 
+// DEPLOYMENT NOTE — in-memory store:
+// Failure counters are held in a Map on the NestJS process heap.
+// Single-instance (MVP): fully effective — all requests share the same map.
+// Multi-instance / horizontally scaled: each instance maintains its own counters,
+// so a determined attacker can bypass the limit by spreading requests across instances.
+// Mitigation for multi-instance production: replace the Map with a shared Redis store
+// (e.g. ioredis + sliding-window counter) before scaling beyond one instance.
+
 const LOGIN_IDENTITY_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_IDENTITY_MAX_FAILURES = 8;
 

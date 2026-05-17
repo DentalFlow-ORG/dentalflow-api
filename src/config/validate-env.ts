@@ -42,6 +42,16 @@ export function validateEnv(): void {
   }
 
   if (isProduction) {
+    // OPENAI_API_KEY is only required when AI assistant is enabled.
+    // Set OPENAI_AI_ASSISTANT_ENABLED=false to disable AI features and skip this check.
+    const aiEnabled = process.env.OPENAI_AI_ASSISTANT_ENABLED !== 'false';
+    if (aiEnabled && !process.env.OPENAI_API_KEY) {
+      throw new Error(
+        'OPENAI_API_KEY is required in production when OPENAI_AI_ASSISTANT_ENABLED is not "false".\n' +
+          'Set OPENAI_API_KEY in your environment or set OPENAI_AI_ASSISTANT_ENABLED=false to disable AI.',
+      );
+    }
+
     const origins = (process.env.FRONTEND_ORIGIN ?? '')
       .split(',')
       .map((origin) => origin.trim())
