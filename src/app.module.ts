@@ -27,6 +27,8 @@ import { UsersModule } from './modules/users/users.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { PrivacyModule } from './modules/privacy/privacy.module';
 import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { ClinicModule } from './modules/clinic/clinic.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -60,6 +62,8 @@ import { PrismaModule } from './prisma/prisma.module';
     AuditLogModule,
     PrivacyModule,
     AiAssistantModule,
+    NotificationModule,
+    ClinicModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
