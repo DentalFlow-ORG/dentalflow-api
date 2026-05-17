@@ -1263,6 +1263,8 @@ enum AuditAction {
   LEAD_STATUS_CHANGED
   LEAD_ACTIVITY_CREATED
   LEAD_CONVERTED
+  // Reports
+  REPORT_EXPORTED
   // Generic
   OTHER
 }
