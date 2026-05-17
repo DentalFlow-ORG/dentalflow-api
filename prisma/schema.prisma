@@ -33,6 +33,11 @@ enum LeadSource {
   MANUAL
   IMPORT
   REFERRAL
+  WEBSITE
+  WHATSAPP
+  INSTAGRAM
+  GOOGLE
+  OTHER
 }
 
 enum LeadStatus {
@@ -182,24 +187,6 @@ enum StockMovementType {
   OUT
   ADJUSTMENT
   LOSS
-}
-
-enum AppointmentPaymentMethod {
-  CASH
-  CREDIT_CARD
-  DEBIT_CARD
-  PIX
-  BANK_TRANSFER
-  HEALTH_INSURANCE
-  OTHER
-}
-
-enum AppointmentPaymentStatus {
-  PAYMENT_PENDING
-  PAID
-  PARTIALLY_PAID
-  REFUNDED
-  CANCELED
 }
 
 enum AiAssistantAnalysisType {
@@ -487,6 +474,7 @@ model Lead {
   utmCampaign      String?
   utmContent       String?
   referrerUrl      String?
+  nextFollowUpAt   DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
@@ -592,21 +580,12 @@ model Appointment {
   confirmedAt        DateTime?
   completedAt        DateTime?
   googleCalendarEventId String?
-<<<<<<< HEAD
   estimatedAmountCents  Int?
   paidAmountCents       Int?
   paymentStatus         AppointmentPaymentStatus @default(PAYMENT_PENDING)
   paymentMethod         AppointmentPaymentMethod?
   paymentDate           DateTime?
   paymentNotes          String?                  @db.Text
-=======
-  paymentStatus      AppointmentPaymentStatus  @default(PAYMENT_PENDING)
-  paymentMethod      AppointmentPaymentMethod?
-  estimatedAmountCents Int?
-  paidAmountCents    Int?
-  paymentDate        DateTime?
-  paymentNotes       String?
->>>>>>> 6bb0517dd8c5098aa6342326b1a3820faec39f5a
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -1270,8 +1249,6 @@ enum AuditAction {
   GOOGLE_CALENDAR_CONNECTED
   GOOGLE_CALENDAR_DISCONNECTED
   GOOGLE_CALENDAR_SYNCED
-  // Appointments — payment
-  APPOINTMENT_PAYMENT_UPDATED
   // Billing
   SUBSCRIPTION_CREATED
   SUBSCRIPTION_CANCELED
@@ -1280,6 +1257,12 @@ enum AuditAction {
   NOTIFICATION_SENT
   NOTIFICATION_CONSENT_GRANTED
   NOTIFICATION_CONSENT_REVOKED
+  // Leads
+  LEAD_CREATED
+  LEAD_UPDATED
+  LEAD_STATUS_CHANGED
+  LEAD_ACTIVITY_CREATED
+  LEAD_CONVERTED
   // Generic
   OTHER
 }
