@@ -36,11 +36,11 @@ export class AiAssistantController {
   @Roles('OWNER')
   async getLatestFinance(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
-    const [{ data, dataReadiness }, quota] = await Promise.all([
-      this.aiService.getLatestFinance(clinicId),
+    const [{ data, dataReadiness, visibility }, quota] = await Promise.all([
+      this.aiService.getLatestFinance(user.id, clinicId),
       this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE),
     ]);
-    return { data, quota, dataReadiness };
+    return { data, quota, dataReadiness, visibility };
   }
 
   @Get('inventory/latest')
@@ -48,11 +48,11 @@ export class AiAssistantController {
   @Roles('OWNER', 'ASSISTANT')
   async getLatestInventory(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
-    const [{ data, dataReadiness }, quota] = await Promise.all([
-      this.aiService.getLatestInventory(clinicId),
+    const [{ data, dataReadiness, visibility }, quota] = await Promise.all([
+      this.aiService.getLatestInventory(user.id, clinicId),
       this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY),
     ]);
-    return { data, quota, dataReadiness };
+    return { data, quota, dataReadiness, visibility };
   }
 
   @Post('finance/analyze')

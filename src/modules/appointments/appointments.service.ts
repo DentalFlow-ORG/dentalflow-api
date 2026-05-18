@@ -285,6 +285,7 @@ export class AppointmentsService {
             : undefined,
         notes: dto.notes,
         patientNotes: dto.patientNotes,
+        estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
       },
       include: APPOINTMENT_INCLUDE,
     });

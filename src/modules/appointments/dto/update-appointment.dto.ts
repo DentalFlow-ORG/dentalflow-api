@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 
+
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^\d{2}:\d{2}$/;
 const phonePattern = /^\D*(?:\d\D*){10,11}$/;
@@ -72,4 +73,9 @@ export class UpdateAppointmentDto {
   @IsString()
   @MaxLength(2000)
   patientNotes?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  estimatedAmountCents?: number;
 }

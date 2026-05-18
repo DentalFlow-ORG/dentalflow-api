@@ -32,6 +32,14 @@ export type AiAnalysisResponse = {
   periodEnd: string | null;
 };
 
+export type AiVisibility = 'FULL' | 'TEASER' | 'LOCKED' | 'INSUFFICIENT_DATA';
+
+export type AiLatestResult = {
+  data: AiAnalysisResponse | null;
+  dataReadiness: DataReadiness;
+  visibility: AiVisibility;
+};
+
 type AssistantType = 'finance' | 'inventory';
 
 export type DataReadiness = {
@@ -215,24 +223,98 @@ export class AiAssistantService {
 
   // ─── Persistence: load saved analyses ────────────────────────────────────
 
-  async getLatestFinance(
-    clinicId: string,
-  ): Promise<{ data: AiAnalysisResponse | null; dataReadiness: DataReadiness }> {
-    const [record, dataReadiness] = await Promise.all([
+  async getLatestFinance(userId: string, clinicId: string): Promise<AiLatestResult> {
+    const [record, dataReadiness, quota] = await Promise.all([
       this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE),
       this.getFinanceDataReadiness(clinicId),
+      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE),
     ]);
-    return { data: record ? this.mapAnalysisToResponse(record) : null, dataReadiness };
+
+    if (!dataReadiness.ready) {
+      return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
+    }
+
+    if (quota.allowed) {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: 'FULL',
+      };
+    }
+
+    // Blocked plan with sufficient data — return or generate teaser
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    if (record && record.generatedAt >= thirtyDaysAgo) {
+      return { data: this.mapAnalysisToResponse(record), dataReadiness, visibility: 'TEASER' };
+    }
+
+    // Attempt auto-generation of teaser
+    const config = this.getConfigStatus();
+    if (!config.ready) {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: record ? 'TEASER' : 'LOCKED',
+      };
+    }
+    try {
+      const context = await this.financeContextBuilder.build(clinicId);
+      const response = await this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
+      return { data: response, dataReadiness, visibility: 'TEASER' };
+    } catch {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: record ? 'TEASER' : 'LOCKED',
+      };
+    }
   }
 
-  async getLatestInventory(
-    clinicId: string,
-  ): Promise<{ data: AiAnalysisResponse | null; dataReadiness: DataReadiness }> {
-    const [record, dataReadiness] = await Promise.all([
+  async getLatestInventory(userId: string, clinicId: string): Promise<AiLatestResult> {
+    const [record, dataReadiness, quota] = await Promise.all([
       this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY),
       this.getInventoryDataReadiness(clinicId),
+      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY),
     ]);
-    return { data: record ? this.mapAnalysisToResponse(record) : null, dataReadiness };
+
+    if (!dataReadiness.ready) {
+      return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
+    }
+
+    if (quota.allowed) {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: 'FULL',
+      };
+    }
+
+    // Blocked plan with sufficient data — return or generate teaser
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    if (record && record.generatedAt >= thirtyDaysAgo) {
+      return { data: this.mapAnalysisToResponse(record), dataReadiness, visibility: 'TEASER' };
+    }
+
+    // Attempt auto-generation of teaser
+    const config = this.getConfigStatus();
+    if (!config.ready) {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: record ? 'TEASER' : 'LOCKED',
+      };
+    }
+    try {
+      const context = await this.inventoryContextBuilder.build(clinicId);
+      const response = await this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
+      return { data: response, dataReadiness, visibility: 'TEASER' };
+    } catch {
+      return {
+        data: record ? this.mapAnalysisToResponse(record) : null,
+        dataReadiness,
+        visibility: record ? 'TEASER' : 'LOCKED',
+      };
+    }
   }
 
   private mapAnalysisToResponse(record: {
