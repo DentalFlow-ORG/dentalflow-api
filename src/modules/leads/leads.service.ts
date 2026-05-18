@@ -7,6 +7,7 @@ import {
 import { LeadActivityAction, LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { validateFollowUpDate } from '../../common/utils/date-range.utils';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { CreateLeadActivityDto } from './dto/create-lead-activity.dto';
 import { ListLeadsDto } from './dto/list-leads.dto';
@@ -119,6 +120,7 @@ export class LeadsService {
   }
 
   async createLead(clinicId: string, userId: string, dto: CreateLeadDto) {
+    validateFollowUpDate(dto.nextFollowUpAt, true);
     await this.assertQuotaNotExceeded(clinicId);
 
     const profile = await this.resolveProfile(clinicId);
@@ -166,6 +168,9 @@ export class LeadsService {
   }
 
   async updateLead(clinicId: string, userId: string, leadId: string, dto: UpdateLeadDto) {
+    if (dto.nextFollowUpAt !== undefined) {
+      validateFollowUpDate(dto.nextFollowUpAt, false);
+    }
     await this.assertLeadInClinic(clinicId, leadId);
 
     if (dto.serviceId) {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validateReportDateRange } from '../../common/utils/date-range.utils';
 import {
   AppointmentsReportQueryDto,
   FinanceReportQueryDto,
@@ -114,6 +115,7 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async exportFinance(clinicId: string, query: FinanceReportQueryDto): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
     const where: Prisma.FinancialTransactionWhereInput = {
       clinicId,
       ...(query.startDate || query.endDate
@@ -168,6 +170,7 @@ export class ReportsService {
   // ── Appointments report ──────────────────────────────────────────────────
 
   async exportAppointments(clinicId: string, query: AppointmentsReportQueryDto): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
     const where: Prisma.AppointmentWhereInput = {
       clinicId,
       ...(query.startDate || query.endDate
@@ -326,6 +329,7 @@ export class ReportsService {
   // ── Leads report ─────────────────────────────────────────────────────────
 
   async exportLeads(clinicId: string, query: LeadsReportQueryDto): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
     const SOURCE_LABELS: Record<string, string> = {
       PROFILE_PAGE: 'Página de perfil',
       MANUAL: 'Manual',
@@ -405,6 +409,7 @@ export class ReportsService {
   // ── Invoices report ──────────────────────────────────────────────────────
 
   async exportInvoices(clinicId: string, query: InvoicesReportQueryDto): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
     const STATUS_LABELS: Record<string, string> = {
       DRAFT: 'Rascunho',
       READY_TO_ISSUE: 'Pronto para emitir',
