@@ -314,25 +314,51 @@ export class AiAssistantService {
     if (daysWithData < minRequired) {
       return {
         ready: false,
-        reason: `São necessários dados financeiros de pelo menos ${minRequired} dias nos últimos 30 dias. Atualmente há ${daysWithData} dia${daysWithData !== 1 ? 's' : ''} com movimentações registradas.`,
+        reason: 'Ainda não há dados suficientes para uma análise confiável.',
       };
     }
     return { ready: true };
   }
 
   private async getInventoryDataReadiness(clinicId: string): Promise<DataReadiness> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const movements = await this.prisma.stockMovement.findMany({
+      where: { clinicId, createdAt: { gte: thirtyDaysAgo } },
+      select: { createdAt: true },
+    });
+    const products = await this.prisma.stockProduct.findMany({
+      where: { clinicId, updatedAt: { gte: thirtyDaysAgo } },
+      select: { updatedAt: true },
+    });
+
+    const daysWithActivity = new Set<string>();
+    for (const movement of movements) {
+      daysWithActivity.add(movement.createdAt.toISOString().slice(0, 10));
+    }
+    for (const product of products) {
+      daysWithActivity.add(product.updatedAt.toISOString().slice(0, 10));
+    }
+
+    if (daysWithActivity.size < 20) {
+      return {
+        ready: false,
+        reason: 'Ainda não há dados suficientes para uma análise confiável.',
+      };
+    }
+
     const activeProducts = await this.prisma.stockProduct.count({
       where: { clinicId, isActive: true },
     });
 
-    const minRequired = 3;
-
-    if (activeProducts < minRequired) {
+    if (activeProducts === 0) {
       return {
         ready: false,
-        reason: `São necessários pelo menos ${minRequired} produtos ativos no estoque. Atualmente há ${activeProducts} produto${activeProducts !== 1 ? 's' : ''} ativo${activeProducts !== 1 ? 's' : ''}.`,
+        reason: 'Ainda não há dados suficientes para uma análise confiável.',
       };
     }
+
     return { ready: true };
   }
 
