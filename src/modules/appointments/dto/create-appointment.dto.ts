@@ -13,6 +13,7 @@ import {
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^\d{2}:\d{2}$/;
+const phonePattern = /^\D*(?:\d\D*){10,11}$/;
 
 export class CreateAppointmentDto {
   @IsString()
@@ -44,10 +45,16 @@ export class CreateAppointmentDto {
   @MaxLength(254)
   patientEmail?: string;
 
-  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
+  @IsNotEmpty({ message: 'Informe um telefone com WhatsApp válido.' })
+  @Matches(phonePattern, {
+    message: 'Informe um telefone com WhatsApp válido.',
+  })
   @MaxLength(20)
-  patientPhone?: string;
+  patientPhone!: string;
 
   @IsString()
   @Matches(datePattern, { message: 'Data da consulta deve estar no formato AAAA-MM-DD' })
