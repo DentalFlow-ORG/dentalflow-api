@@ -85,6 +85,19 @@ export class BillingService {
     const existingSubscription = await this.prisma.subscription.findUnique({
       where: { clinicId },
     });
+
+    // Block checkout creation if the clinic already has an active or trialing Stripe subscription.
+    // Plan changes must go through the billing portal or changeSubscriptionPlan.
+    if (
+      existingSubscription?.stripeSubscriptionId &&
+      (existingSubscription.status === SubscriptionStatus.ACTIVE ||
+        existingSubscription.status === SubscriptionStatus.TRIALING)
+    ) {
+      throw new BadRequestException(
+        'Você já possui uma assinatura ativa. Para alterar seu plano, acesse o portal de assinatura.',
+      );
+    }
+
     const clinic = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },
       select: { name: true, email: true },
