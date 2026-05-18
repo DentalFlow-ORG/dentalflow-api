@@ -90,16 +90,8 @@ export class WhatsAppCloudProvider implements INotificationProvider {
 
     if (!appointment) return [];
 
-    const date = new Date(appointment.appointmentDate).toLocaleDateString(
-      'pt-BR',
-      {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        timeZone: 'UTC',
-      },
-    );
-    const time = new Date(appointment.startTime).toISOString().slice(11, 16);
+    const date = formatDatePtBR(appointment.appointmentDate);
+    const time = formatTimePtBR(appointment.startTime);
 
     return [
       {
@@ -113,4 +105,19 @@ export class WhatsAppCloudProvider implements INotificationProvider {
       },
     ];
   }
+}
+
+function formatDatePtBR(value: Date): string {
+  if (Number.isNaN(value.getTime())) return 'Data não informada';
+  return value.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function formatTimePtBR(value: Date): string {
+  if (Number.isNaN(value.getTime())) return 'Hora não informada';
+  return value.toISOString().slice(11, 16);
 }
