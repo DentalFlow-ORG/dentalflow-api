@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -12,6 +13,7 @@ import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repositor
 import { AiQuotaService } from './ai-quota.service';
 import { FinanceContextBuilder } from './builders/finance-context.builder';
 import { InventoryContextBuilder } from './builders/inventory-context.builder';
+import { PrismaService } from '../../prisma/prisma.service';
 
 export type AiAnalysisSection = {
   title: string;
@@ -31,6 +33,12 @@ export type AiAnalysisResponse = {
 };
 
 type AssistantType = 'finance' | 'inventory';
+
+export type DataReadiness = {
+  ready: boolean;
+  /** Human-readable reason shown to the user when ready is false */
+  reason?: string;
+};
 
 const FINANCE_SYSTEM_PROMPT = `Você é um assistente financeiro especializado em clínicas odontológicas brasileiras.
 
@@ -112,6 +120,7 @@ export class AiAssistantService {
     private readonly inventoryContextBuilder: InventoryContextBuilder,
     private readonly analysisRepository: AiAssistantAnalysisRepository,
     private readonly quotaService: AiQuotaService,
+    private readonly prisma: PrismaService,
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -206,20 +215,24 @@ export class AiAssistantService {
 
   // ─── Persistence: load saved analyses ────────────────────────────────────
 
-  async getLatestFinance(clinicId: string): Promise<AiAnalysisResponse | null> {
-    const record = await this.analysisRepository.findLatest(
-      clinicId,
-      AiAssistantAnalysisType.FINANCE,
-    );
-    return record ? this.mapAnalysisToResponse(record) : null;
+  async getLatestFinance(
+    clinicId: string,
+  ): Promise<{ data: AiAnalysisResponse | null; dataReadiness: DataReadiness }> {
+    const [record, dataReadiness] = await Promise.all([
+      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE),
+      this.getFinanceDataReadiness(clinicId),
+    ]);
+    return { data: record ? this.mapAnalysisToResponse(record) : null, dataReadiness };
   }
 
-  async getLatestInventory(clinicId: string): Promise<AiAnalysisResponse | null> {
-    const record = await this.analysisRepository.findLatest(
-      clinicId,
-      AiAssistantAnalysisType.INVENTORY,
-    );
-    return record ? this.mapAnalysisToResponse(record) : null;
+  async getLatestInventory(
+    clinicId: string,
+  ): Promise<{ data: AiAnalysisResponse | null; dataReadiness: DataReadiness }> {
+    const [record, dataReadiness] = await Promise.all([
+      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY),
+      this.getInventoryDataReadiness(clinicId),
+    ]);
+    return { data: record ? this.mapAnalysisToResponse(record) : null, dataReadiness };
   }
 
   private mapAnalysisToResponse(record: {
@@ -257,6 +270,10 @@ export class AiAssistantService {
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
     await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.FINANCE);
+    const readiness = await this.getFinanceDataReadiness(clinicId);
+    if (!readiness.ready) {
+      throw new BadRequestException(readiness.reason);
+    }
     const context = await this.financeContextBuilder.build(clinicId, from, to);
     return this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
   }
@@ -267,8 +284,56 @@ export class AiAssistantService {
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
     await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const readiness = await this.getInventoryDataReadiness(clinicId);
+    if (!readiness.ready) {
+      throw new BadRequestException(readiness.reason);
+    }
     const context = await this.inventoryContextBuilder.build(clinicId);
     return this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
+  }
+
+  // ─── Data readiness checks ────────────────────────────────────────────────
+
+  private async getFinanceDataReadiness(clinicId: string): Promise<DataReadiness> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const groups = await this.prisma.financialTransaction.groupBy({
+      by: ['transactionDate'],
+      where: {
+        clinicId,
+        type: 'INCOME',
+        status: 'PAID',
+        transactionDate: { gte: thirtyDaysAgo },
+      },
+    });
+
+    const daysWithData = groups.length;
+    const minRequired = 18;
+
+    if (daysWithData < minRequired) {
+      return {
+        ready: false,
+        reason: `São necessários dados financeiros de pelo menos ${minRequired} dias nos últimos 30 dias. Atualmente há ${daysWithData} dia${daysWithData !== 1 ? 's' : ''} com movimentações registradas.`,
+      };
+    }
+    return { ready: true };
+  }
+
+  private async getInventoryDataReadiness(clinicId: string): Promise<DataReadiness> {
+    const activeProducts = await this.prisma.stockProduct.count({
+      where: { clinicId, isActive: true },
+    });
+
+    const minRequired = 3;
+
+    if (activeProducts < minRequired) {
+      return {
+        ready: false,
+        reason: `São necessários pelo menos ${minRequired} produtos ativos no estoque. Atualmente há ${activeProducts} produto${activeProducts !== 1 ? 's' : ''} ativo${activeProducts !== 1 ? 's' : ''}.`,
+      };
+    }
+    return { ready: true };
   }
 
   private assertEnabled() {
