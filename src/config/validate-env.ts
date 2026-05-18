@@ -52,6 +52,29 @@ export function validateEnv(): void {
       );
     }
 
+    // WhatsApp Cloud API vars are only required when real sending is explicitly enabled.
+    if (
+      process.env.NOTIFICATION_PROVIDER === 'whatsapp_cloud' &&
+      process.env.WHATSAPP_CLOUD_API_ENABLED === 'true'
+    ) {
+      const whatsappRequired = [
+        'WHATSAPP_CLOUD_API_VERSION',
+        'WHATSAPP_CLOUD_PHONE_NUMBER_ID',
+        'WHATSAPP_CLOUD_ACCESS_TOKEN',
+        'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+        'WHATSAPP_WEBHOOK_APP_SECRET',
+        'WHATSAPP_DEFAULT_LANGUAGE',
+      ];
+      const missingWhatsapp = whatsappRequired.filter((k) => !process.env[k]);
+      if (missingWhatsapp.length > 0) {
+        throw new Error(
+          `NOTIFICATION_PROVIDER=whatsapp_cloud requires the following env vars:\n` +
+            missingWhatsapp.map((k) => `  ${k}`).join('\n') +
+            '\nSet them or set NOTIFICATION_PROVIDER=local to use the simulated provider.',
+        );
+      }
+    }
+
     const origins = (process.env.FRONTEND_ORIGIN ?? '')
       .split(',')
       .map((origin) => origin.trim())

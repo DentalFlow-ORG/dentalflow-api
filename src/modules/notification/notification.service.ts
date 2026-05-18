@@ -105,8 +105,10 @@ export class NotificationService {
       where: { clinicId },
     });
 
-    return (
-      pref ?? {
+    const providerStatus = this.getProviderStatus();
+
+    return {
+      ...(pref ?? {
         clinicId,
         whatsappEnabled: false,
         autoReminder: false,
@@ -114,12 +116,14 @@ export class NotificationService {
         reminderHoursBefore: 24,
         createdAt: null,
         updatedAt: null,
-      }
-    );
+      }),
+      providerType: providerStatus.providerType,
+      providerConfigured: providerStatus.providerConfigured,
+    };
   }
 
   async updatePreferences(clinicId: string, dto: UpdatePreferenceDto) {
-    return this.prisma.notificationPreference.upsert({
+    await this.prisma.notificationPreference.upsert({
       where: { clinicId },
       update: {
         ...(dto.whatsappEnabled !== undefined && { whatsappEnabled: dto.whatsappEnabled }),
@@ -135,6 +139,8 @@ export class NotificationService {
         reminderHoursBefore: dto.reminderHoursBefore ?? 24,
       },
     });
+
+    return this.getPreferences(clinicId);
   }
 
   // ─── Consents ──────────────────────────────────────────────────────────────
@@ -403,6 +409,7 @@ export class NotificationService {
     }
 
     // 9. Audit log
+    const providerStatus = this.getProviderStatus();
     await this.auditLog.log({
       actorUserId,
       clinicId,
@@ -415,10 +422,37 @@ export class NotificationService {
         scope: 'UTILITY' as NotificationScope,
         appointmentId: dto.appointmentId ?? null,
         status,
-        simulated: true,
+        simulated:
+          providerStatus.providerType !== 'whatsapp_cloud' ||
+          !providerStatus.providerConfigured,
       },
     });
 
     return message;
+  }
+
+  private getProviderStatus(): {
+    providerType: 'local' | 'whatsapp_cloud';
+    providerConfigured: boolean;
+  } {
+    const providerType =
+      process.env.NOTIFICATION_PROVIDER === 'whatsapp_cloud'
+        ? 'whatsapp_cloud'
+        : 'local';
+
+    return {
+      providerType,
+      providerConfigured:
+        providerType === 'whatsapp_cloud' &&
+        process.env.WHATSAPP_CLOUD_API_ENABLED === 'true' &&
+        Boolean(
+          process.env.WHATSAPP_CLOUD_API_VERSION &&
+            process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID &&
+            process.env.WHATSAPP_CLOUD_ACCESS_TOKEN &&
+            process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN &&
+            process.env.WHATSAPP_WEBHOOK_APP_SECRET &&
+            process.env.WHATSAPP_DEFAULT_LANGUAGE,
+        ),
+    };
   }
 }
