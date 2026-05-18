@@ -4,7 +4,7 @@
  * O que faz:
  *   Popula a clínica de pedro@pedro.com com dados realistas de desenvolvimento:
  *     - Perfil de profissional + serviço
- *     - 22 agendamentos distribuídos nos últimos 30 dias
+ *     - 23 agendamentos distribuídos nos últimos 30 dias (18+ dias com receitas pagas)
  *     - Transações financeiras em 20+ dias distintos (receitas + despesas)
  *     - 6 produtos em estoque (normal / baixo / zerado / vencendo / vencido / inativo)
  *     - Movimentações de estoque para definir quantidades
@@ -19,7 +19,8 @@
  *   DATABASE_URL=<url> npx ts-node prisma/dev-seed-pedro.ts
  *
  * Idempotência:
- *   Se a clínica já tiver mais de 10 agendamentos, o script encerra sem alterar dados.
+ *   Se a clínica já tiver dados marcados com DF_PEDRO_DEV_SEED ou mais de 10
+ *   agendamentos, o script encerra sem duplicar dados.
  *   Para recriar: delete os dados manualmente e re-execute.
  *
  * Quando remover:
@@ -33,11 +34,19 @@ import * as bcrypt from 'bcrypt';
 
 const USER_EMAIL = process.env.USER_EMAIL ?? 'pedro@pedro.com';
 const SEED_PASSWORD = process.env.SEED_USER_PASSWORD ?? 'Pedro@123';
-const TODAY = new Date('2026-05-17');
+const SEED_MARKER = 'DF_PEDRO_DEV_SEED';
+const TODAY = new Date();
+TODAY.setHours(12, 0, 0, 0);
 
 function daysAgo(n: number): Date {
   const d = new Date(TODAY);
   d.setDate(d.getDate() - n);
+  return d;
+}
+
+function daysFromNow(n: number): Date {
+  const d = new Date(TODAY);
+  d.setDate(d.getDate() + n);
   return d;
 }
 
@@ -94,8 +103,11 @@ async function main(): Promise<void> {
     const userId = user.id;
 
     // ── 1. Idempotency guard ───────────────────────────────────────────────────
+    const existingSeedAppts = await prisma.appointment.count({
+      where: { clinicId, notes: { contains: SEED_MARKER } },
+    });
     const existingAppts = await prisma.appointment.count({ where: { clinicId } });
-    if (existingAppts > 10) {
+    if (existingSeedAppts > 0 || existingAppts > 10) {
       console.log(`Clínica já tem ${existingAppts} agendamentos — seed ignorado.`);
       return;
     }
@@ -183,6 +195,7 @@ async function main(): Promise<void> {
       { daysBack: 13, hour: 16, patient: 'Mariana Tavares',    phone: '(21) 99013-1313', status: 'COMPLETED',  payStatus: 'PARTIALLY_PAID',  paidCents: 20000, estimatedCents: 35000, method: 'PIX' },
       { daysBack: 14, hour: 9,  patient: 'Nelson Barbosa',     phone: '(21) 99014-1414', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 31000, estimatedCents: 31000, method: 'DEBIT_CARD' },
       { daysBack: 15, hour: 11, patient: 'Olívia Castro',      phone: '(21) 99015-1515', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 27000, estimatedCents: 27000, method: 'PIX' },
+      { daysBack: 16, hour: 10, patient: 'Waldemar Silva',     phone: '(21) 99023-2323', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 30000, estimatedCents: 30000, method: 'PIX' },
       { daysBack: 17, hour: 9,  patient: 'Paulo Xavier',       phone: '(21) 99016-1616', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 33000, estimatedCents: 33000, method: 'CASH' },
       { daysBack: 18, hour: 14, patient: 'Quésia Lima',        phone: '(21) 99017-1717', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 48000, estimatedCents: 48000, method: 'CREDIT_CARD' },
       { daysBack: 20, hour: 9,  patient: 'Ricardo Dias',       phone: '(21) 99018-1818', status: 'COMPLETED',  payStatus: 'PAID',            paidCents: 26000, estimatedCents: 26000, method: 'PIX' },
@@ -220,6 +233,7 @@ async function main(): Promise<void> {
           paidAmountCents: a.paidCents,
           paymentMethod: a.method,
           paymentDate,
+          notes: `${SEED_MARKER} - consulta ficticia para desenvolvimento`,
           completedAt: a.status === 'COMPLETED' ? apptDate : undefined,
           canceledAt: a.status === 'CANCELED' ? apptDate : undefined,
         },
@@ -235,6 +249,38 @@ async function main(): Promise<void> {
     }
 
     console.log(`✓ ${createdAppointments.length} agendamentos criados`);
+
+    const FUTURE_APPTS = [
+      { daysForward: 1, hour: 9, patient: 'Helena Duarte', phone: '(21) 99101-0101', status: 'CONFIRMED' as const, payStatus: 'PAYMENT_PENDING' as const, estimatedCents: 32000 },
+      { daysForward: 3, hour: 14, patient: 'Igor Menezes', phone: '(21) 99102-0202', status: 'PENDING' as const, payStatus: 'PAYMENT_PENDING' as const, estimatedCents: 28000 },
+      { daysForward: 7, hour: 10, patient: 'Larissa Campos', phone: '(21) 99103-0303', status: 'CONFIRMED' as const, payStatus: 'PARTIALLY_PAID' as const, paidCents: 10000, estimatedCents: 30000, method: 'PIX' as const },
+    ];
+
+    for (const a of FUTURE_APPTS) {
+      const apptDate = daysFromNow(a.daysForward);
+      const start = timeOf(a.hour);
+      await prisma.appointment.create({
+        data: {
+          clinicId,
+          profileId: profile.id,
+          serviceId: service.id,
+          patientName: a.patient,
+          patientPhone: a.phone,
+          appointmentDate: apptDate,
+          startTime: start,
+          endTime: addMinutes(start, 60),
+          durationMinutes: 60,
+          status: a.status,
+          paymentStatus: a.payStatus,
+          estimatedAmountCents: a.estimatedCents,
+          paidAmountCents: a.paidCents,
+          paymentMethod: a.method,
+          notes: `${SEED_MARKER} - consulta futura ficticia`,
+        },
+      });
+    }
+
+    console.log(`✓ ${FUTURE_APPTS.length} agendamentos futuros criados`);
 
     // ── 5. Financial Transactions ──────────────────────────────────────────────
     let incomeCount = 0;
@@ -413,6 +459,27 @@ async function main(): Promise<void> {
 
     console.log(`✓ ${createdProducts.length} produtos em estoque criados`);
 
+    const movementProductIds = createdProducts.slice(0, 4);
+    for (let day = 1; day <= 20; day++) {
+      const productId = movementProductIds[day % movementProductIds.length];
+      await prisma.stockMovement.create({
+        data: {
+          clinicId,
+          productId,
+          type: day % 5 === 0 ? 'LOSS' : day % 2 === 0 ? 'OUT' : 'IN',
+          quantity: 1,
+          previousQuantity: 10,
+          newQuantity: day % 5 === 0 || day % 2 === 0 ? 9 : 11,
+          reason: `${SEED_MARKER} - atividade historica de estoque`,
+          notes: 'Movimentacao ficticia para testar IA de estoque.',
+          performedByUserId: userId,
+          createdAt: daysAgo(day),
+        },
+      });
+    }
+
+    console.log('✓ 20 movimentações históricas de estoque criadas');
+
     // ── 7. Leads ───────────────────────────────────────────────────────────────
     type LeadSeed = {
       name: string;
@@ -420,6 +487,7 @@ async function main(): Promise<void> {
       source: 'MANUAL' | 'WEBSITE' | 'WHATSAPP' | 'INSTAGRAM' | 'GOOGLE' | 'REFERRAL';
       status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'CONVERTED' | 'LOST' | 'ARCHIVED';
       message?: string;
+      followUpDays?: number;
     };
 
     const LEADS: LeadSeed[] = [
@@ -442,6 +510,7 @@ async function main(): Promise<void> {
           source: l.source,
           status: l.status,
           message: l.message,
+          nextFollowUpAt: l.followUpDays ? daysFromNow(l.followUpDays) : undefined,
         },
       });
 
@@ -538,11 +607,12 @@ async function main(): Promise<void> {
       },
     ];
 
-    for (const inv of INVOICES) {
+    for (const [index, inv] of INVOICES.entries()) {
       const invoice = await prisma.serviceInvoice.create({
         data: {
           clinicId,
           createdByUserId: userId,
+          appointmentId: createdAppointments[index]?.id,
           status: inv.status,
           environment: 'LOCAL',
           isLegalDocument: inv.status === 'ISSUED',

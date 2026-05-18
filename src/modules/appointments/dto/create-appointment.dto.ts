@@ -79,4 +79,9 @@ export class CreateAppointmentDto {
   @IsString()
   @MaxLength(2000)
   patientNotes?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  estimatedAmountCents?: number;
 }

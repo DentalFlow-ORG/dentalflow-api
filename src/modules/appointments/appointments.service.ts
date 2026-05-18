@@ -195,6 +195,7 @@ export class AppointmentsService {
         durationMinutes,
         notes: dto.notes,
         patientNotes: dto.patientNotes,
+        estimatedAmountCents: dto.estimatedAmountCents ?? null,
         status: 'PENDING',
       },
       include: APPOINTMENT_INCLUDE,
