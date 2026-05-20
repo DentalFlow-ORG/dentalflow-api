@@ -52,12 +52,12 @@ interface PlanSeed {
 // rows (existing Subscription FK references are preserved).
 const LEGACY_PLAN_SLUGS = ['basic', 'pro', 'enterprise'];
 
-// PLAN LIMITS & FEATURE FLAGS — PLACEHOLDERS
-// No plan-limit enforcement exists in the application yet.
-// All numeric limits are null (= unlimited) and all feature flags are true
-// so that no plan accidentally blocks a feature before the limits module is
-// intentionally implemented. When that module ships, update these values and
-// re-run `pnpm prisma db seed` to apply the real commercial differentiation.
+// PLAN LIMITS — ACTIVE
+// maxLeadsPerMonth: enforced by LeadsService.assertQuotaNotExceeded().
+//   null = unlimited (Premium).
+// maxProfiles / maxServicesPerProfile: not yet enforced — kept null.
+// Re-run `pnpm prisma db seed` to apply changes to a fresh environment.
+// For existing production databases, apply via the operational SQL in docs.
 const PLANS: PlanSeed[] = [
   {
     name: 'Starter',
@@ -69,7 +69,7 @@ const PLANS: PlanSeed[] = [
     stripePriceIdMonthly: 'price_1TTQseEpOLGVHpKlyaPh1zWt',
     stripePriceIdYearly: 'price_1TTQtnEpOLGVHpKlFKmFyH4V',
     maxProfiles: null,
-    maxLeadsPerMonth: null,
+    maxLeadsPerMonth: 30,
     maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
@@ -88,7 +88,7 @@ const PLANS: PlanSeed[] = [
     stripePriceIdMonthly: 'price_1TTQt0EpOLGVHpKln1zcaZYX',
     stripePriceIdYearly: 'price_1TTQu4EpOLGVHpKlwwzZWUOh',
     maxProfiles: null,
-    maxLeadsPerMonth: null,
+    maxLeadsPerMonth: 150,
     maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
