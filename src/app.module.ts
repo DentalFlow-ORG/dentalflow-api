@@ -30,6 +30,7 @@ import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ClinicModule } from './modules/clinic/clinic.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { PublicLeadsModule } from './modules/public-leads/public-leads.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -66,6 +67,7 @@ import { PrismaModule } from './prisma/prisma.module';
     NotificationModule,
     ClinicModule,
     ReportsModule,
+    PublicLeadsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

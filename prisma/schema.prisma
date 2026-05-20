@@ -1476,3 +1476,19 @@ model NotificationTemplate {
 
   @@map("notification_templates")
 }
+
+model WebsiteLead {
+  id             String    @id @default(cuid())
+  name           String
+  phone          String
+  clinicName     String?
+  preferredTime  String?
+  context        String?
+  consentGiven   Boolean   @default(false)
+  consentAt      DateTime?
+  ipHash         String?
+  createdAt      DateTime  @default(now())
+
+  @@index([phone, createdAt])
+  @@map("website_leads")
+}
