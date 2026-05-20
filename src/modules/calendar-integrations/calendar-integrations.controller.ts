@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
+import { RequirePlanFeature } from '../../common/decorators/require-plan-feature.decorator';
+import { PlanFeature } from '../billing/plan-feature.types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { AuthUser } from '../../common/types/auth-user.type';
@@ -11,6 +13,7 @@ import { CalendarIntegrationsService } from './calendar-integrations.service';
 
 @Controller('calendar-integrations/google')
 @RequiresBillingAccess()
+@RequirePlanFeature(PlanFeature.GOOGLE_CALENDAR)
 export class CalendarIntegrationsController {
   constructor(
     private readonly integrationsService: CalendarIntegrationsService,

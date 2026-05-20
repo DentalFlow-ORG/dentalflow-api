@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
+import { RequirePlanFeature } from '../../common/decorators/require-plan-feature.decorator';
+import { PlanFeature } from '../billing/plan-feature.types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -28,6 +30,7 @@ import { FiscalService } from './fiscal.service';
 @TenantScoped()
 @Roles('OWNER', 'ASSISTANT')
 @RequiresBillingAccess()
+@RequirePlanFeature(PlanFeature.FISCAL_CONTROL)
 export class FiscalController {
   constructor(
     private readonly fiscalService: FiscalService,

@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { BillingAccessGuard } from './common/guards/billing-access.guard';
+import { PlanFeatureGuard } from './common/guards/plan-feature.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { CommonModule } from './common/common.module';
@@ -76,6 +77,7 @@ import { PrismaModule } from './prisma/prisma.module';
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: BillingAccessGuard },
+    { provide: APP_GUARD, useClass: PlanFeatureGuard },
   ],
 })
 export class AppModule {}

@@ -8,6 +8,8 @@ import type { Response } from 'express';
 import { AuditAction } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
+import { RequirePlanFeature } from '../../common/decorators/require-plan-feature.decorator';
+import { PlanFeature } from '../billing/plan-feature.types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -37,6 +39,7 @@ function safeFilename(base: string): string {
 @Controller('reports')
 @TenantScoped()
 @RequiresBillingAccess()
+@RequirePlanFeature(PlanFeature.REPORTS)
 export class ReportsController {
   constructor(
     private readonly reports: ReportsService,

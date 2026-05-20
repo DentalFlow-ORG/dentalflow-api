@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
+import { RequirePlanFeature } from '../../common/decorators/require-plan-feature.decorator';
+import { PlanFeature } from '../billing/plan-feature.types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -33,6 +35,7 @@ import { FinanceService } from './finance.service';
 @TenantScoped()
 @Roles('OWNER')
 @RequiresBillingAccess()
+@RequirePlanFeature(PlanFeature.FINANCE)
 export class FinanceController {
   constructor(
     private readonly financeService: FinanceService,
