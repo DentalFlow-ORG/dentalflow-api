@@ -59,12 +59,21 @@ export class WhatsAppCloudProvider implements INotificationProvider {
       .catch(() => ({}))) as MetaApiResponse;
 
     if (!response.ok) {
+      const errorCode = responseBody.error?.code ?? 'unknown';
       this.logger.error(
-        `WhatsApp Cloud API error: status=${response.status} template=${payload.templateSlug} code=${responseBody.error?.code ?? 'unknown'}`,
+        `WhatsApp Cloud API error: status=${response.status} template=${payload.templateSlug} code=${errorCode}`,
       );
-      throw new Error(
-        `WhatsApp API retornou status ${response.status}. Verifique se o template "${payload.templateSlug}" esta aprovado no Meta.`,
-      );
+
+      let detail: string;
+      if (response.status === 401 || errorCode === 190) {
+        detail = 'Token de acesso inválido ou expirado. Verifique WHATSAPP_CLOUD_ACCESS_TOKEN no Meta Business Manager.';
+      } else if (response.status === 400) {
+        detail = `Requisição inválida para o template "${payload.templateSlug}". Verifique se o template está aprovado e os parâmetros estão corretos.`;
+      } else {
+        detail = `Erro ${response.status} ao enviar via WhatsApp. Template: "${payload.templateSlug}", código: ${errorCode}.`;
+      }
+
+      throw new Error(detail);
     }
 
     const providerRef = responseBody.messages?.[0]?.id ?? null;
