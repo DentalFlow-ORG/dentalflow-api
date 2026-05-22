@@ -10,7 +10,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -22,6 +21,15 @@ import { CreateClinicalRecordDto } from './dto/create-clinical-record.dto';
 import { UpdateClinicalRecordDto } from './dto/update-clinical-record.dto';
 import { CreateClinicalTemplateDto } from './dto/create-clinical-template.dto';
 import { UpdateClinicalTemplateDto } from './dto/update-clinical-template.dto';
+import {
+  ClinicalIdentifierQueryDto,
+  ListClinicalRecordsQueryDto,
+} from './dto/clinical-record-query.dto';
+import { UpsertOdontogramDto } from './dto/odontogram.dto';
+import {
+  AddClinicalAttachmentDto,
+  UpdateClinicalAttachmentDescriptionDto,
+} from './dto/clinical-attachment.dto';
 
 @Controller('clinical-records')
 @TenantScoped()
@@ -40,21 +48,16 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST')
   list(
     @CurrentUser() user: AuthUser,
-    @Query('status') status?: string,
-    @Query('dentistProfileId') dentistProfileId?: string,
+    @Query() query: ListClinicalRecordsQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
-    const allowedStatuses = ['DRAFT', 'COMPLETED', 'LOCKED', 'CANCELED'];
     return this.clinicalRecordsService.listRecords(
       clinicId,
       user.id,
       user.role,
       {
-        status:
-          status && allowedStatuses.includes(status)
-            ? (status as import('@prisma/client').ClinicalRecordStatus)
-            : undefined,
-        dentistProfileId,
+        status: query.status,
+        dentistProfileId: query.dentistProfileId,
       },
     );
   }
@@ -90,14 +93,14 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST')
   patientTimeline(
     @CurrentUser() user: AuthUser,
-    @Query('identifier') identifier: string,
+    @Query() query: ClinicalIdentifierQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.getPatientTimeline(
       clinicId,
       user.id,
       user.role,
-      identifier,
+      query.identifier,
     );
   }
 
@@ -109,14 +112,14 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST')
   getOdontogram(
     @CurrentUser() user: AuthUser,
-    @Query('identifier') identifier: string,
+    @Query() query: ClinicalIdentifierQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.getOdontogram(
       clinicId,
       user.id,
       user.role,
-      identifier,
+      query.identifier,
     );
   }
 
@@ -124,21 +127,16 @@ export class ClinicalRecordsController {
   @Roles('OWNER', 'DENTIST')
   upsertOdontogram(
     @CurrentUser() user: AuthUser,
-    @Body()
-    body: {
-      identifier: string;
-      patientName: string;
-      data: Prisma.InputJsonValue;
-    },
+    @Body() dto: UpsertOdontogramDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.upsertOdontogram(
       clinicId,
       user.id,
       user.role,
-      body.identifier,
-      body.patientName,
-      body.data,
+      dto.identifier,
+      dto.patientName,
+      dto.data,
     );
   }
 
@@ -256,16 +254,7 @@ export class ClinicalRecordsController {
   addAttachment(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body()
-    body: {
-      fileName: string;
-      fileType?: string;
-      mimeType?: string;
-      sizeBytes?: number;
-      dataBase64?: string;
-      thumbnailBase64?: string;
-      description?: string;
-    },
+    @Body() dto: AddClinicalAttachmentDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.addAttachmentMetadata(
@@ -273,7 +262,7 @@ export class ClinicalRecordsController {
       user.id,
       user.role,
       id,
-      body,
+      dto,
     );
   }
 
@@ -283,7 +272,7 @@ export class ClinicalRecordsController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('attachmentId') attachmentId: string,
-    @Body() body: { description: string },
+    @Body() dto: UpdateClinicalAttachmentDescriptionDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.clinicalRecordsService.updateAttachmentDescription(
@@ -292,7 +281,7 @@ export class ClinicalRecordsController {
       user.role,
       id,
       attachmentId,
-      body.description ?? '',
+      dto.description ?? '',
     );
   }
 

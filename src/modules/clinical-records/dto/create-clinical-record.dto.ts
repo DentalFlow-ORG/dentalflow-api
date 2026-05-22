@@ -7,6 +7,8 @@ import {
   MaxLength,
 } from 'class-validator';
 
+const CLINICAL_TEXT_MAX_LENGTH = 10_000;
+
 export class CreateClinicalRecordDto {
   @IsOptional()
   @IsString()
@@ -41,33 +43,41 @@ export class CreateClinicalRecordDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   anamnesis?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   clinicalEvolution?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   diagnosis?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   proceduresPerformed?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   treatmentPlan?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   prescription?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   recommendations?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(CLINICAL_TEXT_MAX_LENGTH)
   privateNotes?: string;
 }

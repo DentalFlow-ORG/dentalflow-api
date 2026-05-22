@@ -9,6 +9,8 @@ import {
   MaxLength,
 } from 'class-validator';
 
+const TEMPLATE_CONTENT_MAX_LENGTH = 10_000;
+
 export class CreateClinicalTemplateDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
@@ -23,6 +25,7 @@ export class CreateClinicalTemplateDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(TEMPLATE_CONTENT_MAX_LENGTH)
   content!: string;
 
   @IsOptional()
