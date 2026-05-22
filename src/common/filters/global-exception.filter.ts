@@ -133,6 +133,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     request: Request,
     statusCode: number,
   ): void {
+    if (statusCode === 401 || statusCode === 403) {
+      this.logger.warn({ statusCode, method: request.method, path: request.url });
+      return;
+    }
+
     if (statusCode < 500) return;
 
     const errorName =
