@@ -10,7 +10,10 @@ import { CreateStockCategoryDto } from './dto/create-stock-category.dto';
 import { UpdateStockCategoryDto } from './dto/update-stock-category.dto';
 import { CreateStockProductDto } from './dto/create-stock-product.dto';
 import { UpdateStockProductDto } from './dto/update-stock-product.dto';
-import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
+import {
+  CreateStockMovementDto,
+  type StockMovementTypeValue,
+} from './dto/create-stock-movement.dto';
 import { ListStockMovementsDto } from './dto/list-stock-movements.dto';
 import {
   ListStockProductsDto,
@@ -352,9 +355,13 @@ export class StockService {
         );
       }
 
-      await tx.stockProduct.update({
-        where: { id: product.id },
-        data: { currentQuantity: newQuantity },
+      const updatedQuantities = await this.applyAtomicStockUpdate(tx, {
+        clinicId,
+        productId: product.id,
+        previousQuantity,
+        quantity,
+        newQuantity,
+        type: dto.type,
       });
 
       return tx.stockMovement.create({
@@ -363,8 +370,8 @@ export class StockService {
           productId: product.id,
           type: dto.type,
           quantity,
-          previousQuantity,
-          newQuantity,
+          previousQuantity: updatedQuantities.previousQuantity,
+          newQuantity: updatedQuantities.newQuantity,
           reason: dto.reason,
           notes: dto.notes,
           performedByUserId,
@@ -374,6 +381,125 @@ export class StockService {
     });
 
     return this.serializeMovement(movement);
+  }
+
+  private async applyAtomicStockUpdate(
+    tx: Pick<PrismaService, 'stockProduct'>,
+    input: {
+      clinicId: string;
+      productId: string;
+      previousQuantity: Prisma.Decimal;
+      quantity: Prisma.Decimal;
+      newQuantity: Prisma.Decimal;
+      type: StockMovementTypeValue;
+    },
+  ): Promise<{ previousQuantity: Prisma.Decimal; newQuantity: Prisma.Decimal }> {
+    if (input.type === StockMovementType.IN) {
+      const updated = await tx.stockProduct.updateMany({
+        where: {
+          id: input.productId,
+          clinicId: input.clinicId,
+          isActive: true,
+        },
+        data: {
+          currentQuantity: { increment: input.quantity },
+        },
+      });
+
+      this.assertStockUpdateApplied(updated.count, input.type);
+
+      const product = await this.findUpdatedProductQuantity(
+        tx,
+        input.clinicId,
+        input.productId,
+      );
+
+      return {
+        previousQuantity: product.currentQuantity.minus(input.quantity),
+        newQuantity: product.currentQuantity,
+      };
+    }
+
+    if (
+      input.type === StockMovementType.OUT ||
+      input.type === StockMovementType.LOSS
+    ) {
+      const updated = await tx.stockProduct.updateMany({
+        where: {
+          id: input.productId,
+          clinicId: input.clinicId,
+          isActive: true,
+          currentQuantity: { gte: input.quantity },
+        },
+        data: {
+          currentQuantity: { decrement: input.quantity },
+        },
+      });
+
+      this.assertStockUpdateApplied(updated.count, input.type);
+
+      const product = await this.findUpdatedProductQuantity(
+        tx,
+        input.clinicId,
+        input.productId,
+      );
+
+      return {
+        previousQuantity: product.currentQuantity.plus(input.quantity),
+        newQuantity: product.currentQuantity,
+      };
+    }
+
+    const updated = await tx.stockProduct.updateMany({
+      where: {
+        id: input.productId,
+        clinicId: input.clinicId,
+        isActive: true,
+        currentQuantity: input.previousQuantity,
+      },
+      data: { currentQuantity: input.newQuantity },
+    });
+
+    this.assertStockUpdateApplied(updated.count, input.type);
+
+    return {
+      previousQuantity: input.previousQuantity,
+      newQuantity: input.newQuantity,
+    };
+  }
+
+  private async findUpdatedProductQuantity(
+    tx: Pick<PrismaService, 'stockProduct'>,
+    clinicId: string,
+    productId: string,
+  ) {
+    const product = await tx.stockProduct.findFirst({
+      where: { id: productId, clinicId },
+      select: { currentQuantity: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado.');
+    }
+
+    return product;
+  }
+
+  private assertStockUpdateApplied(
+    count: number,
+    type: StockMovementTypeValue,
+  ): void {
+    if (count === 1) return;
+
+    if (type === StockMovementType.OUT || type === StockMovementType.LOSS) {
+      throw new BadRequestException(
+        'A movimentação não pode deixar o estoque negativo.',
+      );
+    }
+
+    throw new ConflictException(
+      'O estoque foi atualizado por outra operação. Tente novamente.',
+    );
   }
 
   // ── Private helpers ──────────────────────────────────────────────
@@ -495,7 +621,7 @@ export class StockService {
       return;
     }
 
-    if (!hasQuantity || dto.quantity === 0) {
+    if (!hasQuantity || dto.quantity! <= 0) {
       throw new BadRequestException('Informe uma quantidade maior que zero.');
     }
 
