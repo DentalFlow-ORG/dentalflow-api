@@ -10,6 +10,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator'
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators'
 
 export class UpdateStockProductDto {
   @IsOptional()
@@ -22,6 +26,8 @@ export class UpdateStockProductDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   categoryId?: string
 
   @IsOptional()

@@ -10,6 +10,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator'
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators'
 
 export class CreateStockProductDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -20,6 +24,8 @@ export class CreateStockProductDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   categoryId!: string
 
   @IsOptional()

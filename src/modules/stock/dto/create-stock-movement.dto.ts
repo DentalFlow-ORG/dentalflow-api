@@ -8,6 +8,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator'
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators'
 
 export const STOCK_MOVEMENT_TYPE_VALUES = [
   'IN',
@@ -21,6 +25,8 @@ export type StockMovementTypeValue = (typeof STOCK_MOVEMENT_TYPE_VALUES)[number]
 export class CreateStockMovementDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   productId!: string
 
   @IsIn(STOCK_MOVEMENT_TYPE_VALUES)

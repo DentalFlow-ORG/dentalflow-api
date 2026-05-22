@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { MAX_MONEY_AMOUNT } from '../../../common/validators/input-validation.decorators';
 
 export class CreateServiceDto {
   @Transform(({ value }: { value: unknown }) =>
@@ -28,11 +29,13 @@ export class CreateServiceDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MAX_MONEY_AMOUNT)
   priceFrom?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(MAX_MONEY_AMOUNT)
   priceTo?: number;
 
   @IsOptional()
