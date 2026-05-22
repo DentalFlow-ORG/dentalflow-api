@@ -11,6 +11,7 @@ import { launchCampaignConfig } from './billing-campaign.config';
 import { ChangeSubscriptionPlanDto } from './dto/change-subscription-plan.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { StartTrialDto } from './dto/start-trial.dto';
+import { mapStripeSubscriptionStatus } from './billing-stripe-mappers';
 import { StripeService } from './stripe.service';
 
 type BillingIntervalValue = 'MONTHLY' | 'YEARLY';
@@ -41,6 +42,16 @@ const STRIPE_PORTAL_RETURN_URL: string =
   process.env.STRIPE_PORTAL_RETURN_URL ??
   'http://localhost:5173/app/assinatura';
 const STRIPE_CONFIGURED: boolean = Boolean(process.env.STRIPE_SECRET_KEY);
+
+function buildCheckoutSuccessUrl(): string {
+  if (STRIPE_SUCCESS_URL.includes('{CHECKOUT_SESSION_ID}')) {
+    return STRIPE_SUCCESS_URL;
+  }
+
+  const url = new URL(STRIPE_SUCCESS_URL);
+  url.searchParams.set('session_id', '{CHECKOUT_SESSION_ID}');
+  return url.toString();
+}
 
 @Injectable()
 export class BillingService {
@@ -136,7 +147,7 @@ export class BillingService {
       mode: 'subscription',
       customer: stripeCustomerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: STRIPE_SUCCESS_URL,
+      success_url: buildCheckoutSuccessUrl(),
       cancel_url: STRIPE_CANCEL_URL,
       discounts: launchCoupon ? [{ coupon: launchCoupon }] : undefined,
       metadata: {
@@ -607,18 +618,7 @@ export class BillingService {
   }
 
   private mapStripeStatus(stripeStatus: string): SubscriptionStatus {
-    const map: Record<string, SubscriptionStatus> = {
-      trialing: SubscriptionStatus.TRIALING,
-      active: SubscriptionStatus.ACTIVE,
-      past_due: SubscriptionStatus.PAST_DUE,
-      canceled: SubscriptionStatus.CANCELED,
-      unpaid: SubscriptionStatus.UNPAID,
-      paused: SubscriptionStatus.PAUSED,
-      incomplete: SubscriptionStatus.INCOMPLETE,
-      incomplete_expired: SubscriptionStatus.CANCELED,
-    };
-
-    return map[stripeStatus] ?? SubscriptionStatus.INCOMPLETE;
+    return mapStripeSubscriptionStatus(stripeStatus);
   }
 
   private normalizeInterval(interval: BillingInterval | null) {

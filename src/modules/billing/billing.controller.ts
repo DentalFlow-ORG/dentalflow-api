@@ -8,6 +8,8 @@ import { BillingService } from './billing.service';
 import { ChangeSubscriptionPlanDto } from './dto/change-subscription-plan.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { StartTrialDto } from './dto/start-trial.dto';
+import { SyncCheckoutSessionDto } from './dto/sync-checkout-session.dto';
+import { WebhookService } from './webhook.service';
 
 @Controller('billing')
 @TenantScoped()
@@ -16,6 +18,7 @@ export class BillingController {
   constructor(
     private readonly billingService: BillingService,
     private readonly accessPolicy: AccessPolicyService,
+    private readonly webhookService: WebhookService,
   ) {}
 
   @Get('plans')
@@ -44,6 +47,16 @@ export class BillingController {
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.billingService.createCheckoutSession(clinicId, user.id, dto);
+  }
+
+  @Post('checkout-session/sync')
+  async syncCheckoutSession(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: SyncCheckoutSessionDto,
+  ) {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    await this.webhookService.syncCheckoutSession(dto.sessionId, clinicId);
+    return this.billingService.getCurrentSubscriptionStatus(clinicId);
   }
 
   @Post('trial/start')

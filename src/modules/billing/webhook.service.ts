@@ -1,8 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { BillingInterval, SubscriptionStatus } from '@prisma/client';
+import { SubscriptionStatus } from '@prisma/client';
 import type StripeConstructor from 'stripe';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  mapStripePriceInterval,
+  mapStripeSubscriptionStatus,
+} from './billing-stripe-mappers';
 import { StripeService } from './stripe.service';
 
 type StripeEvent = ReturnType<
@@ -71,6 +75,7 @@ export class WebhookService {
 
     // 4. Dispatch to the appropriate handler
     try {
+      this.logger.log(`Processing Stripe event type=${event.type}`);
       await this.dispatch(event);
       await this.prisma.stripeEvent.update({
         where: { id: event.id },
@@ -89,6 +94,17 @@ export class WebhookService {
       // Failed events are stored with errorMessage and visible in the admin
       // finance dashboard for manual inspection and replay.
     }
+  }
+
+  async syncCheckoutSession(
+    sessionId: string,
+    expectedClinicId: string,
+  ): Promise<void> {
+    const session = await this.stripe
+      .getClient()
+      .checkout.sessions.retrieve(sessionId);
+
+    await this.onCheckoutSessionCompleted(session, expectedClinicId);
   }
 
   // -------------------------------------------------------------------
@@ -143,6 +159,7 @@ export class WebhookService {
    */
   private async onCheckoutSessionCompleted(
     session: StripeCheckoutSession,
+    expectedClinicId?: string,
   ): Promise<void> {
     const meta = session.metadata;
     const clinicId = meta?.clinicId;
@@ -163,6 +180,10 @@ export class WebhookService {
           `clinicId: ${clinicId}, planId: ${planId}, ` +
           `stripeCustomerId: ${stripeCustomerId}, stripeSubscriptionId: ${stripeSubscriptionId}`,
       );
+    }
+
+    if (expectedClinicId && clinicId !== expectedClinicId) {
+      throw new Error('Checkout session does not belong to the authenticated clinic.');
     }
 
     const stripeSubscription = await this.stripe
@@ -194,6 +215,8 @@ export class WebhookService {
       }
     }
 
+    const mappedStatus = this.mapStripeStatus(stripeSubscription.status);
+
     const subscription = await this.prisma.subscription.upsert({
       where: { clinicId },
       create: {
@@ -202,7 +225,7 @@ export class WebhookService {
         stripeCustomerId,
         stripeSubscriptionId,
         billingInterval,
-        status: this.mapStripeStatus(stripeSubscription.status),
+        status: mappedStatus,
         currentPeriodStart: firstItem
           ? new Date(firstItem.current_period_start * 1000)
           : undefined,
@@ -222,7 +245,7 @@ export class WebhookService {
         stripeCustomerId,
         stripeSubscriptionId,
         billingInterval,
-        status: this.mapStripeStatus(stripeSubscription.status),
+        status: mappedStatus,
         currentPeriodStart: firstItem
           ? new Date(firstItem.current_period_start * 1000)
           : undefined,
@@ -239,6 +262,11 @@ export class WebhookService {
       },
     });
     await this.syncSubscriptionItems(subscription.id, items);
+    this.logSubscriptionSync('checkout.session.completed', {
+      stripeSubscriptionId,
+      clinicId,
+      status: mappedStatus,
+    });
   }
 
   /**
@@ -259,11 +287,12 @@ export class WebhookService {
 
     const items = sub.items?.data ?? [];
     const firstItem = items[0];
+    const mappedStatus = this.mapStripeStatus(sub.status);
     await this.prisma.subscription.update({
       where: { id: existing.id },
       data: {
         stripeSubscriptionId: sub.id,
-        status: this.mapStripeStatus(sub.status),
+        status: mappedStatus,
         currentPeriodStart: firstItem
           ? new Date(firstItem.current_period_start * 1000)
           : undefined,
@@ -276,6 +305,11 @@ export class WebhookService {
       },
     });
     await this.syncSubscriptionItems(existing.id, items);
+    this.logSubscriptionSync('customer.subscription.upserted', {
+      stripeSubscriptionId: sub.id,
+      clinicId: existing.clinicId,
+      status: mappedStatus,
+    });
   }
 
   /**
@@ -304,6 +338,11 @@ export class WebhookService {
       },
     });
     await this.syncSubscriptionItems(existing.id, sub.items?.data ?? []);
+    this.logSubscriptionSync('customer.subscription.deleted', {
+      stripeSubscriptionId: sub.id,
+      clinicId: existing.clinicId,
+      status: SubscriptionStatus.CANCELED,
+    });
   }
 
   private async onInvoicePaymentSucceeded(
@@ -320,6 +359,11 @@ export class WebhookService {
         .getClient()
         .subscriptions.retrieve(stripeSubscriptionId);
       await this.onSubscriptionUpserted(subscription);
+      this.logSubscriptionSync('invoice.payment_succeeded', {
+        stripeSubscriptionId,
+        clinicId: subscription.metadata?.clinicId,
+        status: this.mapStripeStatus(subscription.status),
+      });
       return;
     }
 
@@ -329,6 +373,11 @@ export class WebhookService {
     await this.prisma.subscription.update({
       where: { id: existing.id },
       data: { status: SubscriptionStatus.ACTIVE },
+    });
+    this.logSubscriptionSync('invoice.payment_succeeded', {
+      stripeSubscriptionId: existing.stripeSubscriptionId,
+      clinicId: existing.clinicId,
+      status: SubscriptionStatus.ACTIVE,
     });
   }
 
@@ -351,6 +400,11 @@ export class WebhookService {
     await this.prisma.subscription.update({
       where: { id: existing.id },
       data: { status: SubscriptionStatus.PAST_DUE },
+    });
+    this.logSubscriptionSync('invoice.payment_failed', {
+      stripeSubscriptionId: existing.stripeSubscriptionId,
+      clinicId: existing.clinicId,
+      status: SubscriptionStatus.PAST_DUE,
     });
   }
 
@@ -399,9 +453,7 @@ export class WebhookService {
           stripeSubscriptionItemId: item.id,
           stripePriceId: price.id,
           priceNickname: price.nickname,
-          billingInterval: this.mapStripePriceInterval(
-            price.recurring?.interval,
-          ),
+          billingInterval: mapStripePriceInterval(price.recurring?.interval),
           unitAmount: price.unit_amount,
           unitAmountDecimal: price.unit_amount_decimal
             ? String(price.unit_amount_decimal)
@@ -413,9 +465,7 @@ export class WebhookService {
           subscriptionId,
           stripePriceId: price.id,
           priceNickname: price.nickname,
-          billingInterval: this.mapStripePriceInterval(
-            price.recurring?.interval,
-          ),
+          billingInterval: mapStripePriceInterval(price.recurring?.interval),
           unitAmount: price.unit_amount,
           unitAmountDecimal: price.unit_amount_decimal
             ? String(price.unit_amount_decimal)
@@ -439,14 +489,6 @@ export class WebhookService {
     ]);
   }
 
-  private mapStripePriceInterval(
-    interval: string | null | undefined,
-  ): BillingInterval | null {
-    if (interval === 'month') return BillingInterval.MONTHLY;
-    if (interval === 'year') return BillingInterval.YEARLY;
-    return null;
-  }
-
   /**
    * Looks up the local Subscription by Stripe subscription ID first,
    * then falls back to Stripe customer ID.
@@ -464,7 +506,21 @@ export class WebhookService {
           ...(stripeCustomerId ? [{ stripeCustomerId }] : []),
         ],
       },
+      orderBy: { updatedAt: 'desc' },
     });
+  }
+
+  private logSubscriptionSync(
+    eventType: string,
+    data: {
+      stripeSubscriptionId?: string | null;
+      clinicId?: string | null;
+      status: SubscriptionStatus;
+    },
+  ): void {
+    this.logger.log(
+      `Stripe subscription sync event=${eventType} stripeSubscriptionId=${data.stripeSubscriptionId ?? 'unknown'} clinicId=${data.clinicId ?? 'unknown'} status=${data.status}`,
+    );
   }
 
   /**
@@ -474,18 +530,6 @@ export class WebhookService {
   private mapStripeStatus(
     stripeStatus: StripeSubscription['status'],
   ): SubscriptionStatus {
-    const map: Partial<
-      Record<StripeSubscription['status'], SubscriptionStatus>
-    > = {
-      trialing: SubscriptionStatus.TRIALING,
-      active: SubscriptionStatus.ACTIVE,
-      past_due: SubscriptionStatus.PAST_DUE,
-      canceled: SubscriptionStatus.CANCELED,
-      unpaid: SubscriptionStatus.UNPAID,
-      paused: SubscriptionStatus.PAUSED,
-      incomplete: SubscriptionStatus.INCOMPLETE,
-      incomplete_expired: SubscriptionStatus.CANCELED,
-    };
-    return map[stripeStatus] ?? SubscriptionStatus.ACTIVE;
+    return mapStripeSubscriptionStatus(stripeStatus);
   }
 }
