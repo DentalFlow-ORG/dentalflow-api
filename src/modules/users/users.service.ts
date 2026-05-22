@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  PlanCapabilitiesService,
+  UserLimitUsage,
+} from '../billing/plan-capabilities.service';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { CreateMemberDto } from './dto/create-member.dto';
@@ -43,17 +46,12 @@ const MEMBER_LIST_SELECT = {
   createdAt: true,
 } as const;
 
-// Maps plan slug → max users allowed. NULL plan or unknown slug → DEFAULT.
-const PLAN_USER_LIMITS: Record<string, number> = {
-  basic: 8,
-  pro: 16,
-  enterprise: 24,
-};
-const DEFAULT_USER_LIMIT = 8;
-
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly planCapabilities: PlanCapabilitiesService,
+  ) {}
 
   // ─── Current user ────────────────────────────────────────────────────────────
 
@@ -67,36 +65,41 @@ export class UsersService {
   // ─── OWNER: clinic member management ─────────────────────────────────────────
 
   async findClinicMembers(clinicId: string) {
-    const users = await this.prisma.user.findMany({
-      where: {
-        clinicId,
-        role: { in: ['DENTIST', 'ASSISTANT'] },
-        deletedAt: null,
-      },
-      select: MEMBER_LIST_SELECT,
-      orderBy: { createdAt: 'asc' },
-    });
-    const profiles = await this.prisma.profile.findMany({
-      where: { clinicId, userId: { not: null } },
-      select: {
-        id: true,
-        userId: true,
-        slug: true,
-        displayName: true,
-        isPublished: true,
-      },
-    });
+    const [users, profiles, usage] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          clinicId,
+          role: { in: ['DENTIST', 'ASSISTANT'] },
+          deletedAt: null,
+        },
+        select: MEMBER_LIST_SELECT,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.profile.findMany({
+        where: { clinicId, userId: { not: null } },
+        select: {
+          id: true,
+          userId: true,
+          slug: true,
+          displayName: true,
+          isPublished: true,
+        },
+      }),
+      this.planCapabilities.getUserLimitUsage(clinicId),
+    ]);
 
     const profileByUserId = new Map(profiles.map((p) => [p.userId!, p]));
 
-    return users.map((user) => ({
+    const members = users.map((user) => ({
       ...user,
       profile: profileByUserId.get(user.id) ?? null,
     }));
+
+    return { members, usage };
   }
 
   async createMember(clinicId: string, dto: CreateMemberDto) {
-    await this.checkPlanUserLimit(clinicId);
+    await this.planCapabilities.assertUserLimitAvailable(clinicId);
 
     const existing = await this.prisma.user.findFirst({
       where: { email: dto.email },
@@ -207,8 +210,9 @@ export class UsersService {
       if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
+    // Check limit only when reactivating an inactive member
     if (dto.isActive === true && !member.isActive) {
-      await this.checkPlanUserLimit(clinicId);
+      await this.planCapabilities.assertUserLimitAvailable(clinicId);
     }
 
     const requiresInvalidation =
@@ -340,6 +344,11 @@ export class UsersService {
     });
     if (existing) throw new ConflictException('Este e-mail já está em uso');
 
+    // New clinic members count against the plan limit (new users are active by default)
+    if (dto.clinicId && clinicMemberRoles.includes(dto.role)) {
+      await this.planCapabilities.assertUserLimitAvailable(dto.clinicId);
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     return this.prisma.user.create({
@@ -359,7 +368,7 @@ export class UsersService {
   async adminUpdate(userId: string, dto: AdminUpdateUserDto) {
     const current = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: { id: true, role: true, clinicId: true },
+      select: { id: true, role: true, clinicId: true, isActive: true },
     });
     if (!current) throw new NotFoundException('Usuário não encontrado');
 
@@ -367,6 +376,8 @@ export class UsersService {
     const effectiveRole = dto.role ?? current.role;
     const effectiveClinicId =
       dto.clinicId !== undefined ? dto.clinicId : current.clinicId;
+    const effectiveIsActive =
+      dto.isActive !== undefined ? dto.isActive : current.isActive;
 
     const clinicMemberRoles = ['OWNER', 'DENTIST', 'ASSISTANT'];
     if (clinicMemberRoles.includes(effectiveRole) && !effectiveClinicId) {
@@ -397,6 +408,18 @@ export class UsersService {
         select: { id: true },
       });
       if (!clinic) throw new NotFoundException('Clínica não encontrada');
+    }
+
+    // Enforce limit when the update would add a net new active clinic member
+    if (clinicMemberRoles.includes(effectiveRole) && effectiveIsActive) {
+      const currentlyCountsForThisClinic =
+        current.isActive &&
+        current.clinicId === effectiveClinicId &&
+        clinicMemberRoles.includes(current.role);
+
+      if (!currentlyCountsForThisClinic) {
+        await this.planCapabilities.assertUserLimitAvailable(effectiveClinicId!);
+      }
     }
 
     const requiresInvalidation =
@@ -489,25 +512,6 @@ export class UsersService {
     });
     if (!member) throw new NotFoundException('Usuário não encontrado');
     return member;
-  }
-
-  private async checkPlanUserLimit(clinicId: string): Promise<void> {
-    const userCount = await this.prisma.user.count({
-      where: { clinicId, isActive: true, deletedAt: null },
-    });
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { clinicId },
-      select: { plan: { select: { slug: true } } },
-    });
-
-    const planSlug = subscription?.plan?.slug?.toLowerCase() ?? '';
-    const limit = PLAN_USER_LIMITS[planSlug] ?? DEFAULT_USER_LIMIT;
-
-    if (userCount >= limit) {
-      throw new ForbiddenException(
-        'Limite de usuários atingido para o plano atual',
-      );
-    }
   }
 
   private async findClinicMemberById(clinicId: string, userId: string) {

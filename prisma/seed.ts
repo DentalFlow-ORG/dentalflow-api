@@ -36,6 +36,7 @@ interface PlanSeed {
   priceYearly: number;
   stripePriceIdMonthly: string | null;
   stripePriceIdYearly: string | null;
+  maxUsersPerClinic: number;
   maxProfiles: number | null;
   maxLeadsPerMonth: number | null;
   maxServicesPerProfile: number | null;
@@ -68,6 +69,7 @@ const PLANS: PlanSeed[] = [
     priceYearly: 129900,
     stripePriceIdMonthly: 'price_1TTQseEpOLGVHpKlyaPh1zWt',
     stripePriceIdYearly: 'price_1TTQtnEpOLGVHpKlFKmFyH4V',
+    maxUsersPerClinic: 8,
     maxProfiles: null,
     maxLeadsPerMonth: 30,
     maxServicesPerProfile: null,
@@ -87,6 +89,7 @@ const PLANS: PlanSeed[] = [
     priceYearly: 219900,
     stripePriceIdMonthly: 'price_1TTQt0EpOLGVHpKln1zcaZYX',
     stripePriceIdYearly: 'price_1TTQu4EpOLGVHpKlwwzZWUOh',
+    maxUsersPerClinic: 16,
     maxProfiles: null,
     maxLeadsPerMonth: 150,
     maxServicesPerProfile: null,
@@ -106,6 +109,7 @@ const PLANS: PlanSeed[] = [
     priceYearly: 299900,
     stripePriceIdMonthly: 'price_1TTQtIEpOLGVHpKlwHHqMQEa',
     stripePriceIdYearly: 'price_1TTQuJEpOLGVHpKlCDg8dROV',
+    maxUsersPerClinic: 24,
     maxProfiles: null,
     maxLeadsPerMonth: null,
     maxServicesPerProfile: null,
@@ -150,6 +154,7 @@ async function seed(prisma: PrismaClient): Promise<void> {
         priceYearly: plan.priceYearly,
         stripePriceIdMonthly: plan.stripePriceIdMonthly,
         stripePriceIdYearly: plan.stripePriceIdYearly,
+        maxUsersPerClinic: plan.maxUsersPerClinic,
         maxProfiles: plan.maxProfiles,
         maxLeadsPerMonth: plan.maxLeadsPerMonth,
         maxServicesPerProfile: plan.maxServicesPerProfile,

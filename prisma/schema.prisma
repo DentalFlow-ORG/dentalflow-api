@@ -679,6 +679,7 @@ model Plan {
   stripePriceIdYearly   String?
   priceMonthly          Int      // in cents — e.g. 9900 = R$99,00
   priceYearly           Int      // in cents
+  maxUsersPerClinic     Int      @default(8)
   maxProfiles           Int?     // NULL = unlimited
   maxLeadsPerMonth      Int?     // NULL = unlimited
   maxServicesPerProfile Int?     // NULL = unlimited
