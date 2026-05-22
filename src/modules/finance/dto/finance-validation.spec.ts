@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 
 import { AppointmentPaymentDto } from './appointment-payment.dto';
+import { CreateFinancialCategoryDto } from './create-financial-category.dto';
 import { CreateFinancialTransactionDto } from './create-financial-transaction.dto';
 import { CreateFixedExpenseDto } from './create-fixed-expense.dto';
 import {
@@ -16,6 +17,8 @@ import {
   ListFinancialTransactionsDto,
 } from './finance-query.dto';
 import { FinanceIdParamDto } from './finance-param.dto';
+import { UpdateFinancialCategoryDto } from './update-financial-category.dto';
+import { UpdateFinancialTransactionDto } from './update-financial-transaction.dto';
 
 async function validateDto<T extends object>(
   cls: new () => T,
@@ -116,5 +119,75 @@ describe('finance DTO validation', () => {
     });
 
     expect(errors.some((error) => error.property === 'period')).toBe(true);
+  });
+});
+
+describe('finance DTO backend-owned fields', () => {
+  it('isDefault is not a declared field on CreateFinancialCategoryDto — no validation applied', async () => {
+    // Before hardening, @IsBoolean() would have caught a non-boolean isDefault.
+    // Now the field is undeclared: class-validator produces no error for it.
+    const errors = await validateDto(CreateFinancialCategoryDto, {
+      name: 'Hacked',
+      type: FinancialTransactionType.INCOME,
+      isDefault: 'not-a-boolean',
+    });
+
+    expect(errors.every((e) => e.property !== 'isDefault')).toBe(true);
+  });
+
+  it('isDefault is not a declared field on UpdateFinancialCategoryDto — no validation applied', async () => {
+    const errors = await validateDto(UpdateFinancialCategoryDto, {
+      name: 'Hacked',
+      isDefault: 'not-a-boolean',
+    });
+
+    expect(errors.every((e) => e.property !== 'isDefault')).toBe(true);
+  });
+
+  it('source is not a declared field on CreateFinancialTransactionDto — no validation applied', async () => {
+    // Before hardening, @IsEnum(FinancialTransactionSource) would have caught an invalid source.
+    // Now the field is undeclared: class-validator produces no error for it.
+    const errors = await validateDto(CreateFinancialTransactionDto, {
+      type: FinancialTransactionType.EXPENSE,
+      categoryId: 'category_1',
+      amount: 100,
+      description: 'Test',
+      transactionDate: '2026-05-22',
+      source: 'NOT_A_VALID_SOURCE',
+    });
+
+    expect(errors.every((e) => e.property !== 'source')).toBe(true);
+  });
+
+  it('source is not a declared field on UpdateFinancialTransactionDto — no validation applied', async () => {
+    const errors = await validateDto(UpdateFinancialTransactionDto, {
+      description: 'Test',
+      source: 'NOT_A_VALID_SOURCE',
+    });
+
+    expect(errors.every((e) => e.property !== 'source')).toBe(true);
+  });
+
+  it('CreateFinancialCategoryDto accepts a valid payload without isDefault', async () => {
+    const errors = await validateDto(CreateFinancialCategoryDto, {
+      name: 'Materiais extras',
+      type: FinancialTransactionType.EXPENSE,
+      color: '#FF0000',
+    });
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it('CreateFinancialTransactionDto accepts a valid payload without source', async () => {
+    const errors = await validateDto(CreateFinancialTransactionDto, {
+      type: FinancialTransactionType.INCOME,
+      categoryId: 'category_1',
+      amount: 150,
+      description: 'Consulta',
+      transactionDate: '2026-05-22',
+      status: FinancialTransactionStatus.PAID,
+    });
+
+    expect(errors).toHaveLength(0);
   });
 });

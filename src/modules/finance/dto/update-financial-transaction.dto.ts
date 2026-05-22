@@ -1,6 +1,5 @@
 import { Transform } from 'class-transformer';
 import {
-  FinancialTransactionSource,
   FinancialTransactionStatus,
   FinancialTransactionType,
 } from '@prisma/client';
@@ -25,10 +24,6 @@ export class UpdateFinancialTransactionDto {
   @IsOptional()
   @IsEnum(FinancialTransactionType)
   type?: FinancialTransactionType;
-
-  @IsOptional()
-  @IsEnum(FinancialTransactionSource)
-  source?: FinancialTransactionSource;
 
   @IsOptional()
   @IsString()
