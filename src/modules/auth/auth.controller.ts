@@ -194,7 +194,7 @@ export class AuthController {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
       secure: appConfig.nodeEnv === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: `/${appConfig.apiPrefix}/auth`,
       maxAge: parseDurationMs(authConfig.jwtRefreshExpiresIn),
     });
@@ -204,7 +204,7 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, {
       httpOnly: true,
       secure: appConfig.nodeEnv === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       path: `/${appConfig.apiPrefix}/auth`,
     });
   }

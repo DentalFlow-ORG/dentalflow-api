@@ -82,6 +82,22 @@ src/
 - usar webhooks
 - validar backend
 
+## Desenvolvimento local — webhook forwarding
+
+Em ambiente local o Stripe não consegue entregar eventos ao servidor. Para testar o fluxo de assinatura (checkout, ativação, cancelamento) é necessário o Stripe CLI:
+
+```bash
+stripe listen --forward-to http://localhost:3000/api/billing/webhook
+```
+
+O comando imprime um webhook signing secret temporário (`whsec_...`). Copie o valor e defina em `.env`:
+
+```
+STRIPE_WEBHOOK_SECRET=whsec_<valor gerado pelo stripe listen>
+```
+
+Sem este passo, `checkout.session.completed` e `customer.subscription.*` nunca chegam ao backend e a assinatura permanece com status `incomplete`.
+
 ---
 
 # 📌 Status
