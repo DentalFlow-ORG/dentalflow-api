@@ -17,7 +17,11 @@ describe('App (e2e)', () => {
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix(prefix);
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     await app.init();
   });
@@ -43,14 +47,10 @@ describe('App (e2e)', () => {
   });
 
   it('GET /api/auth/me requires authentication', () => {
-    return request(app.getHttpServer())
-      .get(`/${prefix}/auth/me`)
-      .expect(401);
+    return request(app.getHttpServer()).get(`/${prefix}/auth/me`).expect(401);
   });
 
   it('GET /api/patients requires authentication', () => {
-    return request(app.getHttpServer())
-      .get(`/${prefix}/patients`)
-      .expect(401);
+    return request(app.getHttpServer()).get(`/${prefix}/patients`).expect(401);
   });
 });
