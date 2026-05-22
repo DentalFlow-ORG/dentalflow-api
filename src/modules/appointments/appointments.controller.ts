@@ -22,6 +22,8 @@ import { UpdateAppointmentPaymentDto } from './dto/update-appointment-payment.dt
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
+import { ListAppointmentsQueryDto } from './dto/appointment-query.dto';
+import { AppointmentIdParamDto } from './dto/appointment-param.dto';
 
 @Controller('appointments')
 @TenantScoped()
@@ -36,14 +38,14 @@ export class AppointmentsController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   list(
     @CurrentUser() user: AuthUser,
-    @Query('date') date?: string,
+    @Query() query: ListAppointmentsQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.listAppointments(
       clinicId,
       user.id,
       user.role,
-      date,
+      query.date,
     );
   }
 
@@ -71,13 +73,13 @@ export class AppointmentsController {
 
   @Get(':id')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  findById(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  findById(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.findAppointmentById(
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
     );
   }
 
@@ -85,7 +87,7 @@ export class AppointmentsController {
   @Roles('OWNER', 'ASSISTANT')
   update(
     @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
+    @Param() params: AppointmentIdParamDto,
     @Body() dto: UpdateAppointmentDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
@@ -93,7 +95,7 @@ export class AppointmentsController {
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       dto,
     );
   }
@@ -102,7 +104,7 @@ export class AppointmentsController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   updateStatus(
     @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
+    @Param() params: AppointmentIdParamDto,
     @Body() dto: UpdateAppointmentStatusDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
@@ -110,7 +112,7 @@ export class AppointmentsController {
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       dto,
     );
   }
@@ -120,29 +122,28 @@ export class AppointmentsController {
   @HttpCode(HttpStatus.OK)
   cancel(
     @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body()
-    dto: Pick<UpdateAppointmentStatusDto, 'canceledBy' | 'cancellationReason'>,
+    @Param() params: AppointmentIdParamDto,
+    @Body() dto: CancelAppointmentDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.cancelAppointment(
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       dto,
     );
   }
 
   @Patch(':id/confirm')
   @Roles('OWNER', 'ASSISTANT')
-  confirmAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  confirmAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       { status: 'CONFIRMED' },
     );
   }
@@ -151,7 +152,7 @@ export class AppointmentsController {
   @Roles('OWNER', 'ASSISTANT')
   cancelAction(
     @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
+    @Param() params: AppointmentIdParamDto,
     @Body() dto: CancelAppointmentDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
@@ -159,33 +160,33 @@ export class AppointmentsController {
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       { cancellationReason: dto.cancellationReason, canceledBy: 'CLINIC' },
     );
   }
 
   @Patch(':id/complete')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  completeAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  completeAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       { status: 'COMPLETED' },
     );
   }
 
   @Patch(':id/no-show')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  noShowAction(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  noShowAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,
       user.id,
       user.role,
-      id,
+      params.id,
       { status: 'NO_SHOW' },
     );
   }
@@ -194,14 +195,14 @@ export class AppointmentsController {
   @Roles('OWNER', 'ASSISTANT')
   updatePayment(
     @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
+    @Param() params: AppointmentIdParamDto,
     @Body() dto: UpdateAppointmentPaymentDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
     return this.appointmentsService.updateAppointmentPayment(
       clinicId,
       user.id,
-      id,
+      params.id,
       dto,
     );
   }

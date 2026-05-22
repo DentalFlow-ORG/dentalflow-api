@@ -1,5 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
+  IsEmail,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -7,29 +9,40 @@ import {
   Max,
   MaxLength,
   Min,
-  IsInt,
-  IsEmail,
 } from 'class-validator';
+import {
+  IsCalendarDate,
+  IsClockTime,
+  IsSafeId,
+  MAX_CENTS_AMOUNT,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const timePattern = /^\d{2}:\d{2}$/;
 const phonePattern = /^\D*(?:\d\D*){10,11}$/;
 
 export class CreateAppointmentDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   profileId!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   serviceId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   leadId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   patientUserId?: string;
 
   @Transform(({ value }: { value: unknown }) =>
@@ -49,19 +62,19 @@ export class CreateAppointmentDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @IsNotEmpty({ message: 'Informe um telefone com WhatsApp válido.' })
+  @IsNotEmpty({ message: 'Informe um telefone com WhatsApp valido.' })
   @Matches(phonePattern, {
-    message: 'Informe um telefone com WhatsApp válido.',
+    message: 'Informe um telefone com WhatsApp valido.',
   })
   @MaxLength(20)
   patientPhone!: string;
 
   @IsString()
-  @Matches(datePattern, { message: 'Data da consulta deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   appointmentDate!: string;
 
   @IsString()
-  @Matches(timePattern, { message: 'Horário da consulta deve estar no formato HH:mm' })
+  @IsClockTime()
   startTime!: string;
 
   @IsOptional()
@@ -83,5 +96,6 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_CENTS_AMOUNT)
   estimatedAmountCents?: number;
 }

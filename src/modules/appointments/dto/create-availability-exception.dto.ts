@@ -1,11 +1,12 @@
-import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const timePattern = /^\d{2}:\d{2}$/;
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsCalendarDate,
+  IsClockTime,
+} from '../../../common/validators/input-validation.decorators';
 
 export class CreateAvailabilityExceptionDto {
   @IsString()
-  @Matches(datePattern, { message: 'Data da exceção deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   exceptionDate!: string;
 
   @IsOptional()
@@ -14,12 +15,12 @@ export class CreateAvailabilityExceptionDto {
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'Horário inicial deve estar no formato HH:mm' })
+  @IsClockTime()
   startTime?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'Horário final deve estar no formato HH:mm' })
+  @IsClockTime()
   endTime?: string;
 
   @IsOptional()

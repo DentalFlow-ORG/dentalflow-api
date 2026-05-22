@@ -8,17 +8,22 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
-
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+import {
+  IsCalendarDate,
+  IsSafeId,
+  MAX_ID_LENGTH,
+  MAX_MONEY_AMOUNT,
+} from '../../../common/validators/input-validation.decorators';
 
 export class CreateFixedExpenseDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   categoryId!: string;
 
   @Transform(({ value }: { value: unknown }) =>
@@ -31,6 +36,7 @@ export class CreateFixedExpenseDto {
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(MAX_MONEY_AMOUNT)
   amount!: number;
 
   @IsEnum(FixedExpenseRecurrence)
@@ -42,12 +48,12 @@ export class CreateFixedExpenseDto {
   dueDay!: number;
 
   @IsString()
-  @Matches(datePattern, { message: 'Data inicial deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   startDate!: string;
 
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data final deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   endDate?: string;
 
   @IsOptional()

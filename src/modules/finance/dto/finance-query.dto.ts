@@ -1,11 +1,23 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import {
   FinancialTransactionStatus,
   FinancialTransactionType,
 } from '@prisma/client';
-
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+import {
+  IsCalendarDate,
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
 export enum FinanceGroupByOption {
   DAY = 'day',
@@ -16,12 +28,12 @@ export enum FinanceGroupByOption {
 export class FinancePeriodQueryDto {
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data inicial deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   from?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data final deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   to?: string;
 
   @IsOptional()
@@ -40,6 +52,8 @@ export class ListFinancialTransactionsDto extends FinancePeriodQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   categoryId?: string;
 
   @IsOptional()
@@ -54,4 +68,13 @@ export class ListFinancialTransactionsDto extends FinancePeriodQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class GenerateFixedExpenseOccurrenceQueryDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: 'Periodo deve estar no formato AAAA-MM',
+  })
+  period?: string;
 }

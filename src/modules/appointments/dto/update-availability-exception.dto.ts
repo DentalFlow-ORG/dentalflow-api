@@ -1,6 +1,5 @@
-import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-
-const timePattern = /^\d{2}:\d{2}$/;
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsClockTime } from '../../../common/validators/input-validation.decorators';
 
 export class UpdateAvailabilityExceptionDto {
   @IsOptional()
@@ -9,12 +8,12 @@ export class UpdateAvailabilityExceptionDto {
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'Horário inicial deve estar no formato HH:mm' })
+  @IsClockTime()
   startTime?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(timePattern, { message: 'Horário final deve estar no formato HH:mm' })
+  @IsClockTime()
   endTime?: string;
 
   @IsOptional()

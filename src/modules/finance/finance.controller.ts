@@ -24,8 +24,13 @@ import { CreateFinancialTransactionDto } from './dto/create-financial-transactio
 import { CreateFixedExpenseDto } from './dto/create-fixed-expense.dto';
 import {
   FinancePeriodQueryDto,
+  GenerateFixedExpenseOccurrenceQueryDto,
   ListFinancialTransactionsDto,
 } from './dto/finance-query.dto';
+import {
+  AppointmentPaymentParamDto,
+  FinanceIdParamDto,
+} from './dto/finance-param.dto';
 import { UpdateFinancialCategoryDto } from './dto/update-financial-category.dto';
 import { UpdateFinancialTransactionDto } from './dto/update-financial-transaction.dto';
 import { UpdateFixedExpenseDto } from './dto/update-fixed-expense.dto';
@@ -74,12 +79,12 @@ export class FinanceController {
   @Patch('categories/:id')
   updateCategory(
     @CurrentUser() user: AuthUser,
-    @Param('id') categoryId: string,
+    @Param() params: FinanceIdParamDto,
     @Body() dto: UpdateFinancialCategoryDto,
   ) {
     return this.financeService.updateCategory(
       this.accessPolicy.assertOwnerAccess(user),
-      categoryId,
+      params.id,
       dto,
     );
   }
@@ -88,11 +93,11 @@ export class FinanceController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteCategory(
     @CurrentUser() user: AuthUser,
-    @Param('id') categoryId: string,
+    @Param() params: FinanceIdParamDto,
   ) {
     return this.financeService.deleteCategory(
       this.accessPolicy.assertOwnerAccess(user),
-      categoryId,
+      params.id,
     );
   }
 
@@ -119,12 +124,12 @@ export class FinanceController {
   @Patch('transactions/:id')
   updateTransaction(
     @CurrentUser() user: AuthUser,
-    @Param('id') transactionId: string,
+    @Param() params: FinanceIdParamDto,
     @Body() dto: UpdateFinancialTransactionDto,
   ) {
     return this.financeService.updateTransaction(
       this.accessPolicy.assertOwnerAccess(user),
-      transactionId,
+      params.id,
       dto,
     );
   }
@@ -133,11 +138,11 @@ export class FinanceController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteTransaction(
     @CurrentUser() user: AuthUser,
-    @Param('id') transactionId: string,
+    @Param() params: FinanceIdParamDto,
   ) {
     return this.financeService.deleteTransaction(
       this.accessPolicy.assertOwnerAccess(user),
-      transactionId,
+      params.id,
     );
   }
 
@@ -160,12 +165,12 @@ export class FinanceController {
   @Patch('fixed-expenses/:id')
   updateFixedExpense(
     @CurrentUser() user: AuthUser,
-    @Param('id') fixedExpenseId: string,
+    @Param() params: FinanceIdParamDto,
     @Body() dto: UpdateFixedExpenseDto,
   ) {
     return this.financeService.updateFixedExpense(
       this.accessPolicy.assertOwnerAccess(user),
-      fixedExpenseId,
+      params.id,
       dto,
     );
   }
@@ -174,26 +179,26 @@ export class FinanceController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteFixedExpense(
     @CurrentUser() user: AuthUser,
-    @Param('id') fixedExpenseId: string,
+    @Param() params: FinanceIdParamDto,
   ) {
     return this.financeService.deleteFixedExpense(
       this.accessPolicy.assertOwnerAccess(user),
-      fixedExpenseId,
+      params.id,
     );
   }
 
   @Post('fixed-expenses/:id/generate')
   generateFixedExpenseOccurrence(
     @CurrentUser() user: AuthUser,
-    @Param('id') fixedExpenseId: string,
-    @Query('period') period?: string,
+    @Param() params: FinanceIdParamDto,
+    @Query() query: GenerateFixedExpenseOccurrenceQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.financeService.generateFixedExpenseOccurrence(
       clinicId,
       user.id,
-      fixedExpenseId,
-      period,
+      params.id,
+      query.period,
     );
   }
 
@@ -213,11 +218,11 @@ export class FinanceController {
   @Post('appointment-payments/:appointmentId/cancel')
   cancelAppointmentPayment(
     @CurrentUser() user: AuthUser,
-    @Param('appointmentId') appointmentId: string,
+    @Param() params: AppointmentPaymentParamDto,
   ) {
     return this.financeService.cancelAppointmentPayment(
       this.accessPolicy.assertOwnerAccess(user),
-      appointmentId,
+      params.appointmentId,
     );
   }
 }
