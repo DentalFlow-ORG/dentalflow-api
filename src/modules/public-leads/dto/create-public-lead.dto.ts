@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  Equals,
   IsBoolean,
   IsOptional,
   IsString,
@@ -35,6 +36,7 @@ export class CreatePublicLeadDto {
   @MaxLength(500)
   context?: string;
 
+  @Equals(true, { message: 'Você deve aceitar a política de privacidade.' })
   @IsBoolean()
   acceptedPrivacyPolicy!: boolean;
 

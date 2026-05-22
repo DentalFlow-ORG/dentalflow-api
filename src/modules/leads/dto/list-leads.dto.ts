@@ -5,13 +5,19 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { LeadSource, LeadStatus } from '@prisma/client';
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
 export class ListLeadsDto {
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   search?: string;
 
   @IsOptional()
@@ -24,6 +30,8 @@ export class ListLeadsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   assignedToUserId?: string;
 
   @IsOptional()

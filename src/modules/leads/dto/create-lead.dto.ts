@@ -9,6 +9,10 @@ import {
   MaxLength,
 } from 'class-validator';
 import { LeadSource } from '@prisma/client';
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
 export class CreateLeadDto {
   @Transform(({ value }: { value: unknown }) =>
@@ -35,10 +39,14 @@ export class CreateLeadDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   serviceId?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   assignedToUserId?: string;
 
   @IsOptional()
