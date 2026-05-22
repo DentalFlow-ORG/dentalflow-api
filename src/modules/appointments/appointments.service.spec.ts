@@ -1,5 +1,11 @@
-import { ConflictException } from '@nestjs/common';
-import { AppointmentStatus, UserRole } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { AppointmentPaymentStatus, AppointmentStatus, UserRole } from '@prisma/client';
 
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -53,6 +59,14 @@ const prismaMock = {
   $transaction: jest.fn((callback: (tx: typeof txMock) => unknown) =>
     callback(txMock),
   ),
+  appointment: {
+    findFirst: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
+  clinic: {
+    findUnique: jest.fn(),
+  },
 };
 
 const calendarIntegrationsMock = {
@@ -317,6 +331,149 @@ describe('AppointmentsService scheduling concurrency', () => {
         deletedAt: null,
       },
       select: { id: true },
+    });
+  });
+});
+
+describe('AppointmentsService status and payment guards', () => {
+  let service: AppointmentsService;
+
+  const pendingAppointment = {
+    id: APPOINTMENT_ID,
+    status: AppointmentStatus.PENDING,
+    appointmentDate: new Date(`${APPOINTMENT_DATE}T00:00:00.000Z`),
+    startTime: new Date('1970-01-01T09:00:00.000Z'),
+    profile: { userId: USER_ID },
+  };
+
+  beforeEach(() => {
+    prismaMock.appointment.findFirst.mockResolvedValue(pendingAppointment);
+    prismaMock.appointment.update.mockResolvedValue({
+      ...pendingAppointment,
+      status: AppointmentStatus.CONFIRMED,
+    });
+    prismaMock.clinic.findUnique.mockResolvedValue({ timezone: 'America/Sao_Paulo' });
+    calendarIntegrationsMock.deleteAppointmentEvent.mockResolvedValue(undefined);
+
+    service = new AppointmentsService(
+      prismaMock as never,
+      calendarIntegrationsMock as never,
+      auditLogMock as never,
+    );
+  });
+
+  describe('cancelAppointment guard', () => {
+    it('throws UnprocessableEntityException when status is COMPLETED', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue({
+        ...pendingAppointment,
+        status: AppointmentStatus.COMPLETED,
+      });
+
+      await expect(
+        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException when status is CANCELED', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue({
+        ...pendingAppointment,
+        status: AppointmentStatus.CANCELED,
+      });
+
+      await expect(
+        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws NotFoundException when appointment does not belong to clinic', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateAppointmentStatus', () => {
+    it('throws UnprocessableEntityException for COMPLETED → CANCELED transition', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue({
+        ...pendingAppointment,
+        status: AppointmentStatus.COMPLETED,
+      });
+
+      await expect(
+        service.updateAppointmentStatus(
+          CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+          { status: AppointmentStatus.CANCELED },
+        ),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException for PENDING → NO_SHOW transition', async () => {
+      await expect(
+        service.updateAppointmentStatus(
+          CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+          { status: AppointmentStatus.NO_SHOW },
+        ),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws ForbiddenException when DENTIST attempts to CONFIRM', async () => {
+      await expect(
+        service.updateAppointmentStatus(
+          CLINIC_ID, USER_ID, UserRole.DENTIST, APPOINTMENT_ID,
+          { status: AppointmentStatus.CONFIRMED },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('transitions PENDING → CONFIRMED successfully', async () => {
+      const confirmed = { ...pendingAppointment, status: AppointmentStatus.CONFIRMED };
+      prismaMock.appointment.update.mockResolvedValue(confirmed);
+
+      const result = await service.updateAppointmentStatus(
+        CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+        { status: AppointmentStatus.CONFIRMED },
+      );
+
+      expect(prismaMock.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: APPOINTMENT_ID },
+          data: expect.objectContaining({ status: AppointmentStatus.CONFIRMED }),
+        }),
+      );
+      expect(result).toMatchObject({ status: AppointmentStatus.CONFIRMED });
+    });
+  });
+
+  describe('updateAppointmentPayment', () => {
+    it('throws NotFoundException for cross-clinic appointment', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateAppointmentPayment(CLINIC_ID, USER_ID, APPOINTMENT_ID, {
+          paymentStatus: AppointmentPaymentStatus.PAID,
+          paidAmountCents: 5000,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when status is PAID with no paidAmountCents', async () => {
+      prismaMock.appointment.findFirst.mockResolvedValue({
+        id: APPOINTMENT_ID,
+        clinicId: CLINIC_ID,
+        serviceId: null,
+        profileId: 'profile-1',
+        patientName: 'Paciente',
+        service: null,
+        profile: { id: 'profile-1' },
+      });
+
+      await expect(
+        service.updateAppointmentPayment(CLINIC_ID, USER_ID, APPOINTMENT_ID, {
+          paymentStatus: AppointmentPaymentStatus.PAID,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });
