@@ -257,6 +257,12 @@ export class UsersService {
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+
+      // Unpublish any linked dentist profile so it no longer appears publicly
+      await tx.profile.updateMany({
+        where: { userId, isPublished: true },
+        data: { isPublished: false },
+      });
     });
   }
 

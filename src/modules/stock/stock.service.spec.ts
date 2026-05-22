@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 
 import { StockService } from './stock.service';
@@ -6,6 +6,7 @@ import { StockService } from './stock.service';
 const CLINIC_ID = 'clinic-1';
 const USER_ID = 'user-1';
 const PRODUCT_ID = 'product-1';
+const CATEGORY_ID = 'category-1';
 
 const txMock = {
   stockProduct: {
@@ -21,6 +22,15 @@ const prismaMock = {
   $transaction: jest.fn((callback: (tx: typeof txMock) => unknown) =>
     callback(txMock),
   ),
+  stockCategory: {
+    findFirst: jest.fn(),
+    delete: jest.fn(),
+  },
+  stockProduct: {
+    findFirst: jest.fn(),
+    count: jest.fn(),
+    update: jest.fn(),
+  },
 };
 
 function product(quantity: number, overrides: { clinicId?: string; isActive?: boolean } = {}) {
@@ -217,5 +227,69 @@ describe('StockService', () => {
         expect(txMock.stockMovement.create).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe('deleteCategory', () => {
+    beforeEach(() => {
+      prismaMock.stockCategory.findFirst.mockResolvedValue({ id: CATEGORY_ID, clinicId: CLINIC_ID });
+      prismaMock.stockProduct.count.mockResolvedValue(0);
+      prismaMock.stockCategory.delete.mockResolvedValue({ id: CATEGORY_ID });
+    });
+
+    it('throws ConflictException when the category has linked products', async () => {
+      prismaMock.stockProduct.count.mockResolvedValue(2);
+
+      await expect(service.deleteCategory(CLINIC_ID, CATEGORY_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prismaMock.stockCategory.delete).not.toHaveBeenCalled();
+    });
+
+    it('hard-deletes the category when it has no products', async () => {
+      await service.deleteCategory(CLINIC_ID, CATEGORY_ID);
+
+      expect(prismaMock.stockCategory.delete).toHaveBeenCalledWith({
+        where: { id: CATEGORY_ID },
+      });
+    });
+
+    it('throws NotFoundException for a category belonging to a different clinic', async () => {
+      prismaMock.stockCategory.findFirst.mockResolvedValue(null);
+
+      await expect(service.deleteCategory(CLINIC_ID, CATEGORY_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.stockCategory.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivateProduct', () => {
+    beforeEach(() => {
+      prismaMock.stockProduct.findFirst.mockResolvedValue({
+        id: PRODUCT_ID,
+        clinicId: CLINIC_ID,
+        isActive: true,
+        category: { id: CATEGORY_ID },
+      });
+      prismaMock.stockProduct.update.mockResolvedValue({ id: PRODUCT_ID, isActive: false });
+    });
+
+    it('sets isActive: false on the product', async () => {
+      await service.deactivateProduct(CLINIC_ID, PRODUCT_ID);
+
+      expect(prismaMock.stockProduct.update).toHaveBeenCalledWith({
+        where: { id: PRODUCT_ID },
+        data: { isActive: false },
+      });
+    });
+
+    it('throws NotFoundException for a product belonging to a different clinic', async () => {
+      prismaMock.stockProduct.findFirst.mockResolvedValue(null);
+
+      await expect(service.deactivateProduct(CLINIC_ID, PRODUCT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.stockProduct.update).not.toHaveBeenCalled();
+    });
   });
 });
