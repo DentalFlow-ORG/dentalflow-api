@@ -7,6 +7,7 @@ export interface AuthResponseUser {
   firstName: string;
   lastName: string;
   role: UserRole;
+  isProfileComplete: boolean;
 }
 
 export interface AuthResponse {

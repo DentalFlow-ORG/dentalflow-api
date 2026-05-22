@@ -92,4 +92,53 @@ export function validateEnv(): void {
       }
     }
   }
+
+  const googleAuthEnabled = process.env.GOOGLE_AUTH_ENABLED === 'true';
+  if (googleAuthEnabled) {
+    const requiredGoogleAuth = [
+      'GOOGLE_CLIENT_ID',
+      'GOOGLE_CLIENT_SECRET',
+      'GOOGLE_CALLBACK_URL',
+      'FRONTEND_AUTH_SUCCESS_URL',
+      'FRONTEND_AUTH_COMPLETE_PROFILE_URL',
+    ];
+    const missingGoogleAuth = requiredGoogleAuth.filter((key) => !process.env[key]);
+
+    if (missingGoogleAuth.length > 0) {
+      throw new Error(
+        `GOOGLE_AUTH_ENABLED=true requires the following env vars:\n` +
+          missingGoogleAuth.map((key) => `  ${key}`).join('\n'),
+      );
+    }
+
+    if (
+      isProduction &&
+      (!process.env.GOOGLE_CALLBACK_URL?.startsWith('https://') ||
+        !process.env.FRONTEND_AUTH_SUCCESS_URL?.startsWith('https://') ||
+        !process.env.FRONTEND_AUTH_COMPLETE_PROFILE_URL?.startsWith('https://'))
+    ) {
+      throw new Error(
+        'Google OAuth redirect URLs must use HTTPS in production.',
+      );
+    }
+
+    const allowedOrigins = (process.env.FRONTEND_ORIGIN ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const frontendRedirects = [
+      process.env.FRONTEND_AUTH_SUCCESS_URL,
+      process.env.FRONTEND_AUTH_COMPLETE_PROFILE_URL,
+    ];
+
+    for (const redirect of frontendRedirects) {
+      if (!redirect) continue;
+      const redirectOrigin = new URL(redirect).origin;
+      if (allowedOrigins.length > 0 && !allowedOrigins.includes(redirectOrigin)) {
+        throw new Error(
+          'Google OAuth frontend redirect URLs must use an origin listed in FRONTEND_ORIGIN.',
+        );
+      }
+    }
+  }
 }

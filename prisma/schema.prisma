@@ -296,7 +296,9 @@ model User {
   phone                      String?
   avatarUrl                  String?
   role                       UserRole  @default(DENTIST)
+  googleId                   String?   @unique
   isEmailVerified            Boolean   @default(false)
+  isProfileComplete          Boolean   @default(true)
   emailVerificationToken     String?
   emailVerificationExpiresAt DateTime?
   passwordResetToken         String?
@@ -311,6 +313,7 @@ model User {
   clinic         Clinic?        @relation(fields: [clinicId], references: [id])
   profile        Profile?
   refreshTokens  RefreshToken[]
+  authOAuthStates AuthOAuthState[] @relation("AuthOAuthStates")
   leadActivities LeadActivity[]
   assignedLeads  Lead[]         @relation("AssignedLeads")
   patientAppointments Appointment[] @relation("PatientAppointments")
@@ -338,6 +341,19 @@ model User {
   @@index([clinicId])
   @@index([role])
   @@map("users")
+}
+
+model AuthOAuthState {
+  id        String   @id @default(cuid())
+  state     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String?
+
+  user User? @relation("AuthOAuthStates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("auth_oauth_states")
 }
 
 model RefreshToken {

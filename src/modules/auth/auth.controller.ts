@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   Res,
   UnauthorizedException,
@@ -18,6 +19,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/types/auth-user.type';
 import { AuthService, TokenMetadata } from './auth.service';
+import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SignInDto } from './dto/sign-in.dto';
 
@@ -39,6 +41,76 @@ function parseDurationMs(duration: string): number {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Get('google')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async startGoogleAuth(@Res() res: Response) {
+    try {
+      const url = await this.authService.createGoogleAuthUrl();
+      res.redirect(url);
+    } catch {
+      const fallbackUrl = new URL('/acessar', appConfig.frontendOrigin);
+      fallbackUrl.searchParams.set('mode', 'login');
+      fallbackUrl.searchParams.set('googleAuth', 'disabled');
+      res.redirect(fallbackUrl.toString());
+    }
+  }
+
+  @Public()
+  @Get('google/callback')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async googleCallback(
+    @Query('code') code: string | undefined,
+    @Query('state') state: string | undefined,
+    @Query('error') error: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const fallbackUrl = new URL('/acessar', appConfig.frontendOrigin);
+    fallbackUrl.searchParams.set('mode', 'login');
+
+    if (error) {
+      fallbackUrl.searchParams.set('googleAuth', 'cancelled');
+      res.redirect(fallbackUrl.toString());
+      return;
+    }
+
+    try {
+      const result = await this.authService.handleGoogleCallback(
+        code,
+        state,
+        this.extractMetadata(req),
+      );
+      this.setRefreshCookie(res, result.refreshToken);
+      const redirectUrl = result.user.isProfileComplete
+        ? appConfig.frontendAuthSuccessUrl
+        : appConfig.frontendAuthCompleteProfileUrl;
+      res.redirect(redirectUrl);
+    } catch {
+      fallbackUrl.searchParams.set('googleAuth', 'error');
+      res.redirect(fallbackUrl.toString());
+    }
+  }
+
+  @AnyAuthenticated()
+  @Post('complete-profile')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async completeProfile(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CompleteProfileDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.completeProfile(
+      user.id,
+      dto,
+      this.extractMetadata(req),
+    );
+    this.setRefreshCookie(res, result.refreshToken);
+    return { accessToken: result.accessToken, user: result.user };
+  }
 
   @Public()
   @Post('register')

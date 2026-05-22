@@ -28,4 +28,10 @@ export const appConfig = {
   nodeEnv: (process.env.NODE_ENV ?? 'development') as NodeEnvironment,
   frontendOrigin: frontendOrigins[0] ?? 'http://localhost:5173',
   frontendOrigins,
+  frontendAuthSuccessUrl:
+    process.env.FRONTEND_AUTH_SUCCESS_URL ??
+    `${frontendOrigins[0] ?? 'http://localhost:5173'}/acessar/oauth/sucesso`,
+  frontendAuthCompleteProfileUrl:
+    process.env.FRONTEND_AUTH_COMPLETE_PROFILE_URL ??
+    `${frontendOrigins[0] ?? 'http://localhost:5173'}/acessar/completar-perfil`,
 } as const;
