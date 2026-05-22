@@ -62,6 +62,8 @@ const APPOINTMENT_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = 
   CANCELED:  [],
 };
 
+type AppointmentDbClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class AppointmentsService {
   constructor(
@@ -135,70 +137,83 @@ export class AppointmentsService {
     role: UserRole,
     dto: CreateAppointmentDto,
   ) {
-    const profile = await this.assertProfileInClinic(clinicId, dto.profileId);
-    this.assertDentistAppointmentAccess(role, userId, profile.userId);
-
-    const service = dto.serviceId
-      ? await this.assertServiceInProfile(
-          clinicId,
-          dto.profileId,
-          dto.serviceId,
-        )
-      : null;
-
-    if (dto.leadId) {
-      await this.assertLeadInClinic(clinicId, dto.leadId);
-    }
-    if (dto.patientUserId) {
-      await this.assertPatientUser(dto.patientUserId);
-    }
-
-    const durationMinutes =
-      dto.durationMinutes ?? service?.durationMinutes ?? 30;
     const appointmentDate = parseDate(dto.appointmentDate);
     const startTime = parseTime(dto.startTime);
-    const endTime = addMinutes(startTime, durationMinutes);
-    await this.assertAppointmentIsNotInPast(
-      clinicId,
-      dto.appointmentDate,
-      dto.startTime,
-    );
 
-    await this.assertProfileAvailability(
-      clinicId,
-      profile.id,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-    await this.assertNoAppointmentConflict(
-      clinicId,
-      profile.id,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-
-    return this.prisma.appointment.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const profile = await this.assertProfileInClinic(
         clinicId,
-        profileId: profile.id,
-        serviceId: service?.id,
-        leadId: dto.leadId,
-        patientUserId: dto.patientUserId,
-        patientName: dto.patientName,
-        patientEmail: dto.patientEmail,
-        patientPhone: dto.patientPhone,
+        dto.profileId,
+        tx,
+      );
+      this.assertDentistAppointmentAccess(role, userId, profile.userId);
+
+      const service = dto.serviceId
+        ? await this.assertServiceInProfile(
+            clinicId,
+            dto.profileId,
+            dto.serviceId,
+            tx,
+          )
+        : null;
+
+      if (dto.leadId) {
+        await this.assertLeadInClinic(clinicId, dto.leadId, tx);
+      }
+      if (dto.patientUserId) {
+        await this.assertPatientUser(dto.patientUserId, tx);
+      }
+
+      const durationMinutes =
+        dto.durationMinutes ?? service?.durationMinutes ?? 30;
+      const endTime = addMinutes(startTime, durationMinutes);
+      await this.assertAppointmentIsNotInPast(
+        clinicId,
+        dto.appointmentDate,
+        dto.startTime,
+        tx,
+      );
+
+      await this.acquireScheduleLock(tx, clinicId, profile.id, appointmentDate);
+      await this.assertProfileAvailability(
+        clinicId,
+        profile.id,
         appointmentDate,
         startTime,
         endTime,
-        durationMinutes,
-        notes: dto.notes,
-        patientNotes: dto.patientNotes,
-        estimatedAmountCents: dto.estimatedAmountCents ?? null,
-        status: 'PENDING',
-      },
-      include: APPOINTMENT_INCLUDE,
+        tx,
+      );
+      await this.assertNoAppointmentConflict(
+        clinicId,
+        profile.id,
+        appointmentDate,
+        startTime,
+        endTime,
+        undefined,
+        tx,
+      );
+
+      return tx.appointment.create({
+        data: {
+          clinicId,
+          profileId: profile.id,
+          serviceId: service?.id,
+          leadId: dto.leadId,
+          patientUserId: dto.patientUserId,
+          patientName: dto.patientName,
+          patientEmail: dto.patientEmail,
+          patientPhone: dto.patientPhone,
+          appointmentDate,
+          startTime,
+          endTime,
+          durationMinutes,
+          notes: dto.notes,
+          patientNotes: dto.patientNotes,
+          estimatedAmountCents: dto.estimatedAmountCents ?? null,
+          status: 'PENDING',
+        },
+        include: APPOINTMENT_INCLUDE,
+      });
     });
   }
 
@@ -209,85 +224,92 @@ export class AppointmentsService {
     appointmentId: string,
     dto: UpdateAppointmentDto,
   ) {
-    const existing = await this.prisma.appointment.findFirst({
-      where: { id: appointmentId, clinicId },
-      include: {
-        service: true,
-        profile: { select: { userId: true } },
-      },
-    });
-    if (!existing) throw new NotFoundException('Consulta não encontrada');
-    this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.appointment.findFirst({
+        where: { id: appointmentId, clinicId },
+        include: {
+          service: true,
+          profile: { select: { userId: true } },
+        },
+      });
+      if (!existing) throw new NotFoundException('Consulta não encontrada');
+      this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
 
-    if (dto.patientUserId) {
-      await this.assertPatientUser(dto.patientUserId);
-    }
+      if (dto.patientUserId) {
+        await this.assertPatientUser(dto.patientUserId, tx);
+      }
 
-    const service = dto.serviceId
-      ? await this.assertServiceInProfile(
-          clinicId,
-          existing.profileId,
-          dto.serviceId,
-        )
-      : existing.service;
-    const durationMinutes =
-      dto.durationMinutes ??
-      service?.durationMinutes ??
-      existing.durationMinutes;
-    const appointmentDate = dto.appointmentDate
-      ? parseDate(dto.appointmentDate)
-      : existing.appointmentDate;
-    const startTime = dto.startTime
-      ? parseTime(dto.startTime)
-      : existing.startTime;
-    const endTime = addMinutes(startTime, durationMinutes);
-    await this.assertAppointmentIsNotInPast(
-      clinicId,
-      formatDateInputValue(appointmentDate),
-      formatTimeInputValue(startTime),
-    );
+      const service = dto.serviceId
+        ? await this.assertServiceInProfile(
+            clinicId,
+            existing.profileId,
+            dto.serviceId,
+            tx,
+          )
+        : existing.service;
+      const durationMinutes =
+        dto.durationMinutes ??
+        service?.durationMinutes ??
+        existing.durationMinutes;
+      const appointmentDate = dto.appointmentDate
+        ? parseDate(dto.appointmentDate)
+        : existing.appointmentDate;
+      const startTime = dto.startTime
+        ? parseTime(dto.startTime)
+        : existing.startTime;
+      const endTime = addMinutes(startTime, durationMinutes);
+      await this.assertAppointmentIsNotInPast(
+        clinicId,
+        formatDateInputValue(appointmentDate),
+        formatTimeInputValue(startTime),
+        tx,
+      );
 
-    await this.assertProfileAvailability(
-      clinicId,
-      existing.profileId,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-    await this.assertNoAppointmentConflict(
-      clinicId,
-      existing.profileId,
-      appointmentDate,
-      startTime,
-      endTime,
-      appointmentId,
-    );
-
-    const scheduleChanged = Boolean(
-      dto.appointmentDate || dto.startTime || dto.durationMinutes,
-    );
-
-    return this.prisma.appointment.update({
-      where: { id: appointmentId },
-      data: {
-        serviceId: dto.serviceId,
-        patientUserId: dto.patientUserId,
-        patientName: dto.patientName,
-        patientEmail: dto.patientEmail,
-        patientPhone: dto.patientPhone,
+      await this.acquireScheduleLock(tx, clinicId, existing.profileId, appointmentDate);
+      await this.assertProfileAvailability(
+        clinicId,
+        existing.profileId,
         appointmentDate,
         startTime,
         endTime,
-        durationMinutes,
-        status:
-          existing.status === 'NO_SHOW' && scheduleChanged
-            ? 'PENDING'
-            : undefined,
-        notes: dto.notes,
-        patientNotes: dto.patientNotes,
-        estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
-      },
-      include: APPOINTMENT_INCLUDE,
+        tx,
+      );
+      await this.assertNoAppointmentConflict(
+        clinicId,
+        existing.profileId,
+        appointmentDate,
+        startTime,
+        endTime,
+        appointmentId,
+        tx,
+      );
+
+      const scheduleChanged = Boolean(
+        dto.appointmentDate || dto.startTime || dto.durationMinutes,
+      );
+
+      return tx.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          serviceId: dto.serviceId,
+          patientUserId: dto.patientUserId,
+          patientName: dto.patientName,
+          patientEmail: dto.patientEmail,
+          patientPhone: dto.patientPhone,
+          appointmentDate,
+          startTime,
+          endTime,
+          durationMinutes,
+          status:
+            existing.status === 'NO_SHOW' && scheduleChanged
+              ? 'PENDING'
+              : undefined,
+          notes: dto.notes,
+          patientNotes: dto.patientNotes,
+          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
+        },
+        include: APPOINTMENT_INCLUDE,
+      });
     });
   }
 
@@ -895,8 +917,12 @@ export class AppointmentsService {
     return profile;
   }
 
-  private async assertProfileInClinic(clinicId: string, profileId: string) {
-    const profile = await this.prisma.profile.findFirst({
+  private async assertProfileInClinic(
+    clinicId: string,
+    profileId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const profile = await db.profile.findFirst({
       where: { id: profileId, clinicId },
       select: { id: true, userId: true },
     });
@@ -909,8 +935,9 @@ export class AppointmentsService {
     clinicId: string,
     profileId: string,
     serviceId: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const service = await this.prisma.service.findFirst({
+    const service = await db.service.findFirst({
       where: { id: serviceId, clinicId, profileId, isActive: true },
       select: { id: true, durationMinutes: true },
     });
@@ -918,16 +945,23 @@ export class AppointmentsService {
     return service;
   }
 
-  private async assertLeadInClinic(clinicId: string, leadId: string) {
-    const lead = await this.prisma.lead.findFirst({
+  private async assertLeadInClinic(
+    clinicId: string,
+    leadId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const lead = await db.lead.findFirst({
       where: { id: leadId, clinicId },
       select: { id: true },
     });
     if (!lead) throw new NotFoundException('Lead não encontrado');
   }
 
-  private async assertPatientUser(patientUserId: string) {
-    const patient = await this.prisma.user.findFirst({
+  private async assertPatientUser(
+    patientUserId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const patient = await db.user.findFirst({
       where: {
         id: patientUserId,
         role: 'PATIENT',
@@ -1066,14 +1100,25 @@ export class AppointmentsService {
     }
   }
 
+  private async acquireScheduleLock(
+    tx: Prisma.TransactionClient,
+    clinicId: string,
+    profileId: string,
+    appointmentDate: Date,
+  ) {
+    const lockKey = `${clinicId}:${profileId}:${formatDateInputValue(appointmentDate)}`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  }
+
   private async assertProfileAvailability(
     clinicId: string,
     profileId: string,
     appointmentDate: Date,
     startTime: Date,
     endTime: Date,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const exception = await this.prisma.availabilityException.findFirst({
+    const exception = await db.availabilityException.findFirst({
       where: { clinicId, profileId, exceptionDate: appointmentDate },
     });
 
@@ -1097,7 +1142,7 @@ export class AppointmentsService {
       );
     }
 
-    const availability = await this.prisma.availability.findMany({
+    const availability = await db.availability.findMany({
       where: {
         clinicId,
         profileId,
@@ -1149,8 +1194,9 @@ export class AppointmentsService {
     startTime: Date,
     endTime: Date,
     ignoredAppointmentId?: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const existing = await this.prisma.appointment.findFirst({
+    const existing = await db.appointment.findFirst({
       where: {
         clinicId,
         profileId,
@@ -1172,8 +1218,9 @@ export class AppointmentsService {
     clinicId: string,
     appointmentDate: string,
     startTime: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const clinic = await this.prisma.clinic.findUnique({
+    const clinic = await db.clinic.findUnique({
       where: { id: clinicId },
       select: { timezone: true },
     });
