@@ -20,7 +20,9 @@ import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/types/auth-user.type';
 import { AuthService, TokenMetadata } from './auth.service';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignInDto } from './dto/sign-in.dto';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -151,6 +153,22 @@ export class AuthController {
     const result = await this.authService.refresh(rawToken, this.extractMetadata(req));
     this.setRefreshCookie(res, result.refreshToken);
     return { accessToken: result.accessToken };
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    return this.authService.forgotPassword(dto, this.extractMetadata(req));
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    return this.authService.resetPassword(dto, this.extractMetadata(req));
   }
 
   @AnyAuthenticated()

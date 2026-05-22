@@ -18,7 +18,12 @@ jest.mock('../../config/google-auth.config', () => ({
 
 jest.mock('bcrypt');
 
-import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
@@ -31,6 +36,7 @@ const txMock = {
   user: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   refreshToken: { create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
   termsAcceptance: { create: jest.fn() },
+  passwordResetToken: { update: jest.fn() },
 };
 
 const prismaMock = {
@@ -54,6 +60,11 @@ const prismaMock = {
     delete: jest.fn(),
     deleteMany: jest.fn(),
   },
+  passwordResetToken: {
+    create: jest.fn(),
+    updateMany: jest.fn(),
+    findUnique: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -69,6 +80,10 @@ const rateLimiterMock = {
   reset: jest.fn(),
 };
 
+const mailMock = {
+  sendPasswordResetEmail: jest.fn(),
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildService(): AuthService {
@@ -78,6 +93,7 @@ function buildService(): AuthService {
     accessPolicyMock as never,
     auditLogMock as never,
     rateLimiterMock as never,
+    mailMock as never,
   );
 }
 
@@ -538,6 +554,189 @@ describe('AuthService', () => {
       prismaMock.user.findFirst.mockResolvedValue({ ...incompleteUser, role: 'OWNER' });
 
       await expect(service.completeProfile('user-1', dto)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── forgotPassword ──────────────────────────────────────────────────────────
+
+  describe('forgotPassword', () => {
+    const dto = { email: 'owner@clinic.com' };
+    const dbUser = { id: 'user-1', email: 'owner@clinic.com' };
+
+    beforeEach(() => {
+      prismaMock.user.findFirst.mockResolvedValue(null);
+      prismaMock.passwordResetToken.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.passwordResetToken.create.mockResolvedValue(undefined);
+      mailMock.sendPasswordResetEmail.mockResolvedValue(undefined);
+    });
+
+    it('returns the generic success message when the email does not exist', async () => {
+      const result = await service.forgotPassword(dto);
+
+      expect(result).toMatchObject({ message: expect.any(String) });
+      expect(prismaMock.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(mailMock.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('creates a PasswordResetToken and calls MailService when the user exists', async () => {
+      prismaMock.user.findFirst.mockResolvedValue(dbUser);
+
+      await service.forgotPassword(dto);
+
+      expect(prismaMock.passwordResetToken.create).toHaveBeenCalledTimes(1);
+      expect(mailMock.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+      expect(mailMock.sendPasswordResetEmail).toHaveBeenCalledWith(
+        dbUser.email,
+        expect.any(String),
+      );
+    });
+
+    it('invalidates previous active reset tokens before creating a new one', async () => {
+      prismaMock.user.findFirst.mockResolvedValue(dbUser);
+
+      await service.forgotPassword(dto);
+
+      expect(prismaMock.passwordResetToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: dbUser.id, usedAt: null }),
+          data: expect.objectContaining({ usedAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('logs USER_PASSWORD_RESET_REQUESTED audit event when user exists', async () => {
+      prismaMock.user.findFirst.mockResolvedValue(dbUser);
+
+      await service.forgotPassword(dto);
+
+      expect(auditLogMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'USER_PASSWORD_RESET_REQUESTED', actorUserId: dbUser.id }),
+      );
+    });
+
+    it('stores only the token hash, never the raw token', async () => {
+      prismaMock.user.findFirst.mockResolvedValue(dbUser);
+
+      await service.forgotPassword(dto);
+
+      const createCall = prismaMock.passwordResetToken.create.mock.calls[0][0] as {
+        data: { tokenHash: string };
+      };
+      const mailCall = mailMock.sendPasswordResetEmail.mock.calls[0] as [string, string];
+      const storedHash: string = createCall.data.tokenHash;
+      const sentRawToken: string = mailCall[1];
+
+      // hash is SHA-256 hex (64 chars); raw token is 128 hex chars — never equal
+      expect(storedHash).not.toBe(sentRawToken);
+      expect(storedHash).toHaveLength(64);
+      expect(storedHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
+  // ── resetPassword ───────────────────────────────────────────────────────────
+
+  describe('resetPassword', () => {
+    const dto = { token: 'valid-raw-token', newPassword: 'N3wP@ssword!' };
+    const futureDate = new Date(Date.now() + 60 * 60 * 1000);
+
+    const storedRecord = {
+      id: 'prt-1',
+      userId: 'user-1',
+      expiresAt: futureDate,
+      usedAt: null,
+      user: { id: 'user-1', isActive: true, deletedAt: null },
+    };
+
+    beforeEach(() => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue(storedRecord);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new-hashed-password');
+      txMock.passwordResetToken.update.mockResolvedValue(undefined);
+      txMock.user.update.mockResolvedValue(undefined);
+      txMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('throws UnprocessableEntityException when token is not found', async () => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue(null);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException when token is expired', async () => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue({
+        ...storedRecord,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException when token is already used', async () => {
+      prismaMock.passwordResetToken.findUnique.mockResolvedValue({
+        ...storedRecord,
+        usedAt: new Date(Date.now() - 5000),
+      });
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('updates passwordHash inside the transaction', async () => {
+      await service.resetPassword(dto);
+
+      expect(txMock.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: storedRecord.userId },
+          data: expect.objectContaining({ passwordHash: 'new-hashed-password' }),
+        }),
+      );
+    });
+
+    it('marks the reset token as used inside the transaction', async () => {
+      await service.resetPassword(dto);
+
+      expect(txMock.passwordResetToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: storedRecord.id },
+          data: expect.objectContaining({ usedAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('increments tokenVersion inside the transaction', async () => {
+      await service.resetPassword(dto);
+
+      expect(txMock.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tokenVersion: { increment: 1 } }),
+        }),
+      );
+    });
+
+    it('revokes all active refresh tokens for the user inside the transaction', async () => {
+      await service.resetPassword(dto);
+
+      expect(txMock.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: storedRecord.userId, revokedAt: null }),
+          data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('logs USER_PASSWORD_CHANGED audit event on success', async () => {
+      await service.resetPassword(dto);
+
+      expect(auditLogMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'USER_PASSWORD_CHANGED',
+          actorUserId: storedRecord.userId,
+        }),
+      );
+    });
+
+    it('returns a generic success message', async () => {
+      const result = await service.resetPassword(dto);
+
+      expect(result).toMatchObject({ message: expect.any(String) });
     });
   });
 });

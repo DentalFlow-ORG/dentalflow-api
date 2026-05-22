@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Logger,
   UnauthorizedException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
@@ -18,23 +19,29 @@ import { AccessPolicyService } from '../../common/services/access-policy.service
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignInDto } from './dto/sign-in.dto';
 import {
   AuthResponse,
   AuthResponseUser,
   LogoutResponse,
+  MessageResponse,
   RefreshResponse,
 } from './types/auth-response.type';
 import {
   LoginIdentityRateLimitExceededException,
   LoginIdentityRateLimiterService,
 } from './login-identity-rate-limiter.service';
+import { MailService } from '../mail/mail.service';
 
 export const PRIVACY_POLICY_VERSION = '2026-05-15';
 export const TERMS_VERSION = '2026-05-15';
 
 const BCRYPT_ROUNDS = 12;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_ERROR_MESSAGE = 'Solicitação inválida ou expirada.';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
@@ -108,6 +115,7 @@ export class AuthService {
     private readonly accessPolicy: AccessPolicyService,
     private readonly auditLog: AuditLogService,
     private readonly loginIdentityRateLimiter: LoginIdentityRateLimiterService,
+    private readonly mail: MailService,
   ) {}
 
   async register(
@@ -707,6 +715,117 @@ export class AuthService {
     ]);
 
     return this.issueAuthResponse(updated, metadata, 'complete-profile');
+  }
+
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+    metadata: TokenMetadata = {},
+  ): Promise<MessageResponse> {
+    const GENERIC_RESPONSE = {
+      message:
+        'Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.',
+    };
+
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
+    const user = await this.prisma.user.findFirst({
+      where: { email: normalizedEmail, isActive: true, deletedAt: null },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      return GENERIC_RESPONSE;
+    }
+
+    // Invalidate any previous unused reset tokens for this user
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() },
+    });
+
+    const rawToken = generateRawToken();
+    const tokenHash = hashToken(rawToken);
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    await this.mail.sendPasswordResetEmail(user.email, rawToken);
+
+    void this.auditLog.log({
+      actorUserId: user.id,
+      action: 'USER_PASSWORD_RESET_REQUESTED',
+      entityType: 'User',
+      entityId: user.id,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.deviceInfo,
+    });
+
+    return GENERIC_RESPONSE;
+  }
+
+  async resetPassword(
+    dto: ResetPasswordDto,
+    metadata: TokenMetadata = {},
+  ): Promise<MessageResponse> {
+    const tokenHash = hashToken(dto.token);
+
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        userId: true,
+        expiresAt: true,
+        usedAt: true,
+        user: {
+          select: { id: true, isActive: true, deletedAt: true },
+        },
+      },
+    });
+
+    if (
+      !record ||
+      record.usedAt !== null ||
+      record.expiresAt < new Date() ||
+      !record.user.isActive ||
+      record.user.deletedAt !== null
+    ) {
+      throw new UnprocessableEntityException(RESET_ERROR_MESSAGE);
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      });
+
+      await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
+      });
+
+      await tx.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    void this.auditLog.log({
+      actorUserId: record.userId,
+      action: 'USER_PASSWORD_CHANGED',
+      entityType: 'User',
+      entityId: record.userId,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.deviceInfo,
+    });
+
+    return { message: 'Senha redefinida com sucesso.' };
   }
 
   async getCurrentUser(userId: string): Promise<AuthResponseUser> {

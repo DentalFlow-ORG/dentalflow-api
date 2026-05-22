@@ -10,6 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_COMPLEXITY_REGEX,
+} from '../../../common/validators/password-policy';
 
 const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
 const personNamePattern = /^[\p{L}\s.'-]+$/u;
@@ -33,6 +37,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72)
+  @Matches(PASSWORD_COMPLEXITY_REGEX, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password!: string;
 
   @Transform(({ value }: { value: unknown }) => trimValue(value))

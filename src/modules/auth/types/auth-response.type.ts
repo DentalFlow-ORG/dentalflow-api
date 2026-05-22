@@ -24,3 +24,7 @@ export interface RefreshResponse {
 export interface LogoutResponse {
   success: true;
 }
+
+export interface MessageResponse {
+  message: string;
+}
