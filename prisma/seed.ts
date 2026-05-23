@@ -34,6 +34,9 @@ interface PlanSeed {
   description: string;
   priceMonthly: number;
   priceYearly: number;
+  stripePriceIdMonthly: string | null;
+  stripePriceIdYearly: string | null;
+  maxUsersPerClinic: number;
   maxProfiles: number | null;
   maxLeadsPerMonth: number | null;
   maxServicesPerProfile: number | null;
@@ -45,48 +48,68 @@ interface PlanSeed {
   displayOrder: number;
 }
 
+// Slugs that were replaced by the current plan lineup.
+// Marked inactive so they are hidden from the frontend without deleting the
+// rows (existing Subscription FK references are preserved).
+const LEGACY_PLAN_SLUGS = ['basic', 'pro', 'enterprise'];
+
+// PLAN LIMITS — ACTIVE
+// maxLeadsPerMonth: enforced by LeadsService.assertQuotaNotExceeded().
+//   null = unlimited (Premium).
+// maxProfiles / maxServicesPerProfile: not yet enforced — kept null.
+// Re-run `pnpm prisma db seed` to apply changes to a fresh environment.
+// For existing production databases, apply via the operational SQL in docs.
 const PLANS: PlanSeed[] = [
   {
-    name: 'Basic',
-    slug: 'basic',
+    name: 'Starter',
+    slug: 'starter',
     description:
       'Ideal para dentistas autônomos que querem começar a captar pacientes online.',
-    priceMonthly: 0,
-    priceYearly: 0,
-    maxProfiles: 1,
-    maxLeadsPerMonth: 50,
-    maxServicesPerProfile: 5,
-    hasAppointments: false,
-    hasAnalytics: false,
-    hasCustomDomain: false,
-    hasPrioritySupport: false,
+    priceMonthly: 12990,
+    priceYearly: 129900,
+    stripePriceIdMonthly: 'price_1TTQseEpOLGVHpKlyaPh1zWt',
+    stripePriceIdYearly: 'price_1TTQtnEpOLGVHpKlFKmFyH4V',
+    maxUsersPerClinic: 8,
+    maxProfiles: null,
+    maxLeadsPerMonth: 30,
+    maxServicesPerProfile: null,
+    hasAppointments: true,
+    hasAnalytics: true,
+    hasCustomDomain: true,
+    hasPrioritySupport: true,
     isPublic: true,
     displayOrder: 1,
   },
   {
-    name: 'Pro',
-    slug: 'pro',
+    name: 'Professional',
+    slug: 'professional',
     description:
-      'Para clínicas em crescimento que precisam de agendamento e métricas.',
-    priceMonthly: 9900,
-    priceYearly: 99000,
-    maxProfiles: 3,
-    maxLeadsPerMonth: 300,
-    maxServicesPerProfile: 20,
+      'Para clínicas em crescimento que precisam de agendamento e métricas completas.',
+    priceMonthly: 21990,
+    priceYearly: 219900,
+    stripePriceIdMonthly: 'price_1TTQt0EpOLGVHpKln1zcaZYX',
+    stripePriceIdYearly: 'price_1TTQu4EpOLGVHpKlwwzZWUOh',
+    maxUsersPerClinic: 16,
+    maxProfiles: null,
+    maxLeadsPerMonth: 150,
+    maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
-    hasCustomDomain: false,
-    hasPrioritySupport: false,
+    hasCustomDomain: true,
+    hasPrioritySupport: true,
     isPublic: true,
     displayOrder: 2,
   },
   {
-    name: 'Enterprise',
-    slug: 'enterprise',
+    name: 'Premium',
+    slug: 'premium',
     description:
       'Para grandes clínicas e redes odontológicas com múltiplos profissionais.',
-    priceMonthly: 29900,
-    priceYearly: 299000,
+    priceMonthly: 29990,
+    priceYearly: 299900,
+    stripePriceIdMonthly: 'price_1TTQtIEpOLGVHpKlwHHqMQEa',
+    stripePriceIdYearly: 'price_1TTQuJEpOLGVHpKlCDg8dROV',
+    maxUsersPerClinic: 24,
     maxProfiles: null,
     maxLeadsPerMonth: null,
     maxServicesPerProfile: null,
@@ -114,6 +137,13 @@ async function seed(prisma: PrismaClient): Promise<void> {
   console.log(`  - ${SPECIALTIES.length} specialties upserted`);
 
   console.log('Seeding plans...');
+  if (LEGACY_PLAN_SLUGS.length > 0) {
+    await prisma.plan.updateMany({
+      where: { slug: { in: LEGACY_PLAN_SLUGS } },
+      data: { isActive: false, isPublic: false },
+    });
+    console.log(`  - ${LEGACY_PLAN_SLUGS.length} legacy plans deactivated`);
+  }
   for (const plan of PLANS) {
     await prisma.plan.upsert({
       where: { slug: plan.slug },
@@ -122,6 +152,9 @@ async function seed(prisma: PrismaClient): Promise<void> {
         description: plan.description,
         priceMonthly: plan.priceMonthly,
         priceYearly: plan.priceYearly,
+        stripePriceIdMonthly: plan.stripePriceIdMonthly,
+        stripePriceIdYearly: plan.stripePriceIdYearly,
+        maxUsersPerClinic: plan.maxUsersPerClinic,
         maxProfiles: plan.maxProfiles,
         maxLeadsPerMonth: plan.maxLeadsPerMonth,
         maxServicesPerProfile: plan.maxServicesPerProfile,
@@ -277,6 +310,64 @@ async function seed(prisma: PrismaClient): Promise<void> {
   });
 
   console.log('  - role users upserted');
+
+  console.log('Seeding notification templates...');
+  const NOTIFICATION_TEMPLATES = [
+    {
+      slug: 'appointment_reminder_24h',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Lembramos que você tem uma consulta agendada para amanhã, {{2}} às {{3}}, na {{4}}. Aguardamos você!',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'appointment_confirmation_request',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Confirme sua consulta em {{2}} às {{3}} na {{4}} respondendo SIM para confirmar ou NÃO para cancelar.',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'appointment_rescheduled',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Sua consulta foi reagendada para {{2}} às {{3}} na {{4}}. Em caso de dúvidas, entre em contato conosco.',
+      variables: ['patientName', 'date', 'time', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'payment_pending_notice',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Informamos que há um valor pendente de {{2}} na {{4}}. Entre em contato para regularizar.',
+      variables: ['patientName', 'amount', 'clinicName'],
+      isActive: true,
+    },
+    {
+      slug: 'post_appointment_simple',
+      channel: 'WHATSAPP' as const,
+      category: 'UTILITY' as const,
+      bodyPt:
+        'Olá, {{1}}! Obrigado pela sua visita à {{4}}. Esperamos que tenha gostado do atendimento. Estamos sempre à disposição!',
+      variables: ['patientName', 'clinicName'],
+      isActive: true,
+    },
+  ];
+
+  for (const tpl of NOTIFICATION_TEMPLATES) {
+    await prisma.notificationTemplate.upsert({
+      where: { slug: tpl.slug },
+      update: { bodyPt: tpl.bodyPt, variables: tpl.variables, isActive: tpl.isActive },
+      create: tpl,
+    });
+  }
+  console.log(`  - ${NOTIFICATION_TEMPLATES.length} notification templates upserted`);
 }
 
 async function main(): Promise<void> {

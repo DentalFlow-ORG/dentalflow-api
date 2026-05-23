@@ -60,15 +60,10 @@ type CalendarInfoResponse = {
 type AppointmentSyncRow = {
   id: string;
   googleCalendarEventId: string | null;
-  patientName: string;
-  patientEmail: string | null;
-  patientPhone: string | null;
   appointmentDate: Date | string;
   startTime: Date | string;
   endTime: Date | string;
-  notes: string | null;
   profileName: string;
-  serviceName: string | null;
   timezone: string;
 }
 
@@ -403,20 +398,14 @@ export class CalendarIntegrationsService {
       SELECT
         a."id",
         a."googleCalendarEventId",
-        a."patientName",
-        a."patientEmail",
-        a."patientPhone",
         a."appointmentDate",
         a."startTime",
         a."endTime",
-        a."notes",
         p."displayName" AS "profileName",
-        s."name" AS "serviceName",
         c."timezone" AS "timezone"
       FROM "appointments" a
       INNER JOIN "profiles" p ON p."id" = a."profileId"
       INNER JOIN "clinics" c ON c."id" = a."clinicId"
-      LEFT JOIN "services" s ON s."id" = a."serviceId"
       WHERE
         a."clinicId" = ${clinicId}
         AND a."status" NOT IN ('CANCELED')
@@ -488,14 +477,12 @@ export class CalendarIntegrationsService {
     const startTime = formatTimeInputValue(appointment.startTime);
     const endTime = formatTimeInputValue(appointment.endTime);
     const body = {
-      summary: `Consulta - ${appointment.patientName}`,
+      summary: 'Consulta odontologica',
       description: [
+        'Evento sincronizado pelo DentalFlow.',
         `Profissional: ${appointment.profileName}`,
-        appointment.serviceName ? `Serviço: ${appointment.serviceName}` : null,
-        appointment.patientEmail ? `E-mail: ${appointment.patientEmail}` : null,
-        appointment.patientPhone ? `Telefone: ${appointment.patientPhone}` : null,
-        appointment.notes ? `Observações: ${appointment.notes}` : null,
-      ].filter(Boolean).join('\n'),
+        'Dados do paciente ficam disponiveis apenas no DentalFlow.',
+      ].join('\n'),
       start: { dateTime: `${date}T${startTime}:00`, timeZone },
       end: { dateTime: `${date}T${endTime}:00`, timeZone },
     };

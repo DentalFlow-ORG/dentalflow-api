@@ -1,36 +1,39 @@
 import { Transform } from 'class-transformer';
 import {
-  FinancialTransactionSource,
   FinancialTransactionStatus,
   FinancialTransactionType,
 } from '@prisma/client';
 import {
   IsEnum,
+  IsISO8601,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
-  Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
-
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+import {
+  IsCalendarDate,
+  IsSafeId,
+  MAX_ID_LENGTH,
+  MAX_MONEY_AMOUNT,
+} from '../../../common/validators/input-validation.decorators';
 
 export class CreateFinancialTransactionDto {
   @IsEnum(FinancialTransactionType)
   type!: FinancialTransactionType;
 
-  @IsOptional()
-  @IsEnum(FinancialTransactionSource)
-  source?: FinancialTransactionSource;
-
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   categoryId!: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(MAX_MONEY_AMOUNT)
   amount!: number;
 
   @Transform(({ value }: { value: unknown }) =>
@@ -42,16 +45,17 @@ export class CreateFinancialTransactionDto {
   description!: string;
 
   @IsString()
-  @Matches(datePattern, { message: 'Data da transação deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   transactionDate!: string;
 
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data de vencimento deve estar no formato AAAA-MM-DD' })
+  @IsCalendarDate()
   dueDate?: string;
 
   @IsOptional()
   @IsString()
+  @IsISO8601()
   paidAt?: string;
 
   @IsOptional()

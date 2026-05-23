@@ -1,0 +1,132 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../../prisma/prisma.service';
+import type {
+  INotificationProvider,
+  SendPayload,
+  SendResult,
+} from './notification-provider.interface';
+
+type MetaApiResponse = {
+  messages?: Array<{ id: string }>;
+  error?: { message: string; code: number };
+};
+
+@Injectable()
+export class WhatsAppCloudProvider implements INotificationProvider {
+  private readonly logger = new Logger(WhatsAppCloudProvider.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async send(payload: SendPayload): Promise<SendResult> {
+    const apiVersion = process.env.WHATSAPP_CLOUD_API_VERSION ?? 'v19.0';
+    const phoneNumberId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID ?? '';
+    const accessToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN ?? '';
+    const language = process.env.WHATSAPP_DEFAULT_LANGUAGE ?? 'pt_BR';
+
+    if (!phoneNumberId || !accessToken) {
+      throw new Error(
+        'WhatsApp Cloud API nao configurada. Verifique WHATSAPP_CLOUD_PHONE_NUMBER_ID e WHATSAPP_CLOUD_ACCESS_TOKEN.',
+      );
+    }
+
+    const digits = payload.phone.replace(/\D/g, '');
+    const to = digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+    const components = await this.buildTemplateComponents(payload);
+
+    const response = await fetch(
+      `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'template',
+          template: {
+            name: payload.templateSlug,
+            language: { code: language },
+            components,
+          },
+        }),
+      },
+    );
+
+    const responseBody = (await response
+      .json()
+      .catch(() => ({}))) as MetaApiResponse;
+
+    if (!response.ok) {
+      const errorCode = responseBody.error?.code ?? 'unknown';
+      this.logger.error(
+        `WhatsApp Cloud API error: status=${response.status} template=${payload.templateSlug} code=${errorCode}`,
+      );
+
+      let detail: string;
+      if (response.status === 401 || errorCode === 190) {
+        detail = 'Token de acesso inválido ou expirado. Verifique WHATSAPP_CLOUD_ACCESS_TOKEN no Meta Business Manager.';
+      } else if (response.status === 400) {
+        detail = `Requisição inválida para o template "${payload.templateSlug}". Verifique se o template está aprovado e os parâmetros estão corretos.`;
+      } else {
+        detail = `Erro ${response.status} ao enviar via WhatsApp. Template: "${payload.templateSlug}", código: ${errorCode}.`;
+      }
+
+      throw new Error(detail);
+    }
+
+    const providerRef = responseBody.messages?.[0]?.id ?? null;
+    this.logger.log(
+      `WhatsApp sent: template=${payload.templateSlug} ref=${providerRef ?? 'none'}`,
+    );
+
+    return { providerRef };
+  }
+
+  private async buildTemplateComponents(payload: SendPayload): Promise<unknown[]> {
+    if (!payload.appointmentId) return [];
+
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id: payload.appointmentId },
+      select: {
+        patientName: true,
+        appointmentDate: true,
+        startTime: true,
+        clinic: { select: { name: true } },
+      },
+    });
+
+    if (!appointment) return [];
+
+    const date = formatDatePtBR(appointment.appointmentDate);
+    const time = formatTimePtBR(appointment.startTime);
+
+    return [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: appointment.patientName },
+          { type: 'text', text: date },
+          { type: 'text', text: time },
+          { type: 'text', text: appointment.clinic?.name ?? '' },
+        ],
+      },
+    ];
+  }
+}
+
+function formatDatePtBR(value: Date): string {
+  if (Number.isNaN(value.getTime())) return 'Data não informada';
+  return value.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+function formatTimePtBR(value: Date): string {
+  if (Number.isNaN(value.getTime())) return 'Hora não informada';
+  return value.toISOString().slice(11, 16);
+}

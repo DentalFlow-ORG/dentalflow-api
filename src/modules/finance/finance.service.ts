@@ -178,7 +178,12 @@ export class FinanceService {
 
     return this.prisma.financialCategory.update({
       where: { id: categoryId },
-      data: dto,
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.type !== undefined ? { type: dto.type } : {}),
+        ...(dto.color !== undefined ? { color: dto.color } : {}),
+        ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
+      },
     });
   }
 
@@ -250,7 +255,7 @@ export class FinanceService {
       data: {
         clinicId,
         type: dto.type,
-        source: dto.source ?? FinancialTransactionSource.MANUAL,
+        source: FinancialTransactionSource.MANUAL,
         categoryId: dto.categoryId,
         amount: this.toDecimal(dto.amount),
         description: dto.description,
@@ -281,7 +286,6 @@ export class FinanceService {
       where: { id: transactionId },
       data: {
         ...(dto.type ? { type: dto.type } : {}),
-        ...(dto.source ? { source: dto.source } : {}),
         ...(dto.categoryId ? { categoryId: dto.categoryId } : {}),
         ...(dto.amount ? { amount: this.toDecimal(dto.amount) } : {}),
         ...(dto.description ? { description: dto.description } : {}),

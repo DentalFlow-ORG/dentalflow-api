@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { IsEmail } from 'class-validator';
 import { normalizeEmail, normalizePhone, trimValue } from '../../../common/utils/transform.helpers';
+import { MAX_ID_LENGTH } from '../../../common/validators/input-validation.decorators';
 
 const personNamePattern = /^[\p{L}\s.'-]+$/u;
 const brPhonePattern = /^\d{10,11}$/;
@@ -86,5 +87,6 @@ export class CreateMemberDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @MaxLength(MAX_ID_LENGTH, { each: true })
   specialtyIds?: string[];
 }

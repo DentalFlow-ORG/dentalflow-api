@@ -7,6 +7,7 @@ export interface AuthResponseUser {
   firstName: string;
   lastName: string;
   role: UserRole;
+  isProfileComplete: boolean;
 }
 
 export interface AuthResponse {
@@ -22,4 +23,8 @@ export interface RefreshResponse {
 
 export interface LogoutResponse {
   success: true;
+}
+
+export interface MessageResponse {
+  message: string;
 }

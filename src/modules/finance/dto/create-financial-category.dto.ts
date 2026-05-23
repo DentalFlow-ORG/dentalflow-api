@@ -1,7 +1,6 @@
 import { Transform } from 'class-transformer';
 import { FinancialTransactionType } from '@prisma/client';
 import {
-  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -30,8 +29,4 @@ export class CreateFinancialCategoryDto {
   @IsString()
   @MaxLength(40)
   icon?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isDefault?: boolean;
 }

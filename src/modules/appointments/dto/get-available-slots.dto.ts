@@ -4,20 +4,25 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
+import {
+  IsCalendarDate,
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
 export class GetAvailableSlotsDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   profileId!: string;
 
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'date deve estar no formato AAAA-MM-DD',
-  })
+  @IsCalendarDate()
   date!: string;
 
   @IsOptional()
@@ -29,5 +34,7 @@ export class GetAvailableSlotsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
   serviceId?: string;
 }

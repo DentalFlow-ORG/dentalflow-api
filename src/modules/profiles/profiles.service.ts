@@ -37,6 +37,7 @@ export class ProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(clinicId: string, dto: CreateProfileDto) {
+    await this.assertProfileLimit(clinicId);
     await this.assertSlugAvailable(dto.slug);
 
     return this.prisma.profile.create({
@@ -180,6 +181,7 @@ export class ProfilesService {
     dto: CreateServiceDto,
   ) {
     await this.assertClinicOwnership(clinicId, profileId);
+    await this.assertServiceLimit(clinicId, profileId);
     await this.assertServiceDisplayOrderAvailable(profileId, dto.displayOrder);
 
     return this.prisma.service.create({
@@ -230,6 +232,19 @@ export class ProfilesService {
   async removeService(clinicId: string, profileId: string, serviceId: string) {
     await this.assertClinicOwnership(clinicId, profileId);
     await this.assertServiceOwnership(profileId, serviceId);
+
+    const [appointmentCount, transactionCount, leadCount] = await Promise.all([
+      this.prisma.appointment.count({ where: { serviceId } }),
+      this.prisma.financialTransaction.count({ where: { serviceId } }),
+      this.prisma.lead.count({ where: { serviceId } }),
+    ]);
+
+    if (appointmentCount > 0 || transactionCount > 0 || leadCount > 0) {
+      throw new ConflictException(
+        'Este serviço possui registros vinculados e não pode ser removido.',
+      );
+    }
+
     await this.prisma.service.delete({ where: { id: serviceId } });
   }
 
@@ -272,6 +287,40 @@ export class ProfilesService {
       where: { profileId },
       include: { specialty: true },
     });
+  }
+
+  private async assertProfileLimit(clinicId: string) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { clinicId },
+      select: { plan: { select: { maxProfiles: true } } },
+    });
+
+    const maxProfiles = subscription?.plan?.maxProfiles ?? null;
+    if (maxProfiles === null) return;
+
+    const count = await this.prisma.profile.count({ where: { clinicId } });
+    if (count >= maxProfiles) {
+      throw new ForbiddenException(
+        `Limite de ${maxProfiles} perfis atingido para o plano atual`,
+      );
+    }
+  }
+
+  private async assertServiceLimit(clinicId: string, profileId: string) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { clinicId },
+      select: { plan: { select: { maxServicesPerProfile: true } } },
+    });
+
+    const maxServices = subscription?.plan?.maxServicesPerProfile ?? null;
+    if (maxServices === null) return;
+
+    const count = await this.prisma.service.count({ where: { profileId } });
+    if (count >= maxServices) {
+      throw new ForbiddenException(
+        `Limite de ${maxServices} serviços por perfil atingido para o plano atual`,
+      );
+    }
   }
 
   private async assertSlugAvailable(slug: string) {

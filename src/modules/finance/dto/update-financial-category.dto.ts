@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { FinancialTransactionType } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateFinancialCategoryDto {
   @IsOptional()
@@ -24,8 +24,4 @@ export class UpdateFinancialCategoryDto {
   @IsString()
   @MaxLength(40)
   icon?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isDefault?: boolean;
 }

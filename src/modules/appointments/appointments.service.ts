@@ -4,11 +4,22 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import {
+  AppointmentPaymentStatus,
+  AppointmentStatus,
+  FinancialTransactionSource,
+  FinancialTransactionStatus,
+  FinancialTransactionType,
+  Prisma,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
+import { UpdateAppointmentPaymentDto } from './dto/update-appointment-payment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
@@ -19,7 +30,15 @@ import { CalendarIntegrationsService } from '../calendar-integrations/calendar-i
 
 const APPOINTMENT_INCLUDE = {
   profile: { select: { id: true, displayName: true, userId: true } },
-  service: { select: { id: true, name: true, durationMinutes: true } },
+  service: {
+    select: {
+      id: true,
+      name: true,
+      durationMinutes: true,
+      priceFrom: true,
+      priceTo: true,
+    },
+  },
   patient: {
     select: { id: true, firstName: true, lastName: true, email: true },
   },
@@ -33,18 +52,60 @@ const DEFAULT_BUSINESS_HOURS = {
   weekdays: [1, 2, 3, 4, 5],
 } as const;
 
+// Defines which status transitions are allowed by the business rules.
+// Both the service and the frontend must follow the same machine.
+const APPOINTMENT_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
+  PENDING:   ['CONFIRMED', 'CANCELED'],
+  CONFIRMED: ['COMPLETED', 'NO_SHOW', 'CANCELED'],
+  COMPLETED: [],
+  NO_SHOW:   [],
+  CANCELED:  [],
+};
+
+type AppointmentDbClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendarIntegrations: CalendarIntegrationsService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
-  async listAppointments(clinicId: string, userId: string, role: UserRole) {
+  async listAppointments(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    date?: string,
+  ) {
+    // MVP read-time normalization: stale CONFIRMED appointments are promoted to
+    // NO_SHOW before the query runs so the caller always receives correct state.
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const { date: todayStr } = getZonedDateTimeParts(
+      new Date(),
+      clinic?.timezone ?? 'America/Sao_Paulo',
+    );
+    await this.normalizeStaleNoShows(clinicId, todayStr);
+
+    let dateFilter = {};
+    if (date) {
+      const [y, m, d] = date.split('-').map(Number);
+      dateFilter = {
+        appointmentDate: {
+          gte: new Date(Date.UTC(y, m - 1, d)),
+          lt: new Date(Date.UTC(y, m - 1, d + 1)),
+        },
+      };
+    }
+
     return this.prisma.appointment.findMany({
       where: {
         clinicId,
         ...(role === 'DENTIST' ? { profile: { userId } } : {}),
+        ...dateFilter,
       },
       include: APPOINTMENT_INCLUDE,
       orderBy: [{ appointmentDate: 'asc' }, { startTime: 'asc' }],
@@ -76,69 +137,83 @@ export class AppointmentsService {
     role: UserRole,
     dto: CreateAppointmentDto,
   ) {
-    const profile = await this.assertProfileInClinic(clinicId, dto.profileId);
-    this.assertDentistAppointmentAccess(role, userId, profile.userId);
-
-    const service = dto.serviceId
-      ? await this.assertServiceInProfile(
-          clinicId,
-          dto.profileId,
-          dto.serviceId,
-        )
-      : null;
-
-    if (dto.leadId) {
-      await this.assertLeadInClinic(clinicId, dto.leadId);
-    }
-    if (dto.patientUserId) {
-      await this.assertPatientUser(dto.patientUserId);
-    }
-
-    const durationMinutes =
-      dto.durationMinutes ?? service?.durationMinutes ?? 30;
     const appointmentDate = parseDate(dto.appointmentDate);
     const startTime = parseTime(dto.startTime);
-    const endTime = addMinutes(startTime, durationMinutes);
-    await this.assertAppointmentIsNotInPast(
-      clinicId,
-      dto.appointmentDate,
-      dto.startTime,
-    );
 
-    await this.assertProfileAvailability(
-      clinicId,
-      profile.id,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-    await this.assertNoAppointmentConflict(
-      clinicId,
-      profile.id,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-
-    return this.prisma.appointment.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const profile = await this.assertProfileInClinic(
         clinicId,
-        profileId: profile.id,
-        serviceId: service?.id,
-        leadId: dto.leadId,
-        patientUserId: dto.patientUserId,
-        patientName: dto.patientName,
-        patientEmail: dto.patientEmail,
-        patientPhone: dto.patientPhone,
+        dto.profileId,
+        tx,
+      );
+      this.assertDentistAppointmentAccess(role, userId, profile.userId);
+
+      const service = dto.serviceId
+        ? await this.assertServiceInProfile(
+            clinicId,
+            dto.profileId,
+            dto.serviceId,
+            tx,
+          )
+        : null;
+
+      if (dto.leadId) {
+        await this.assertLeadInClinic(clinicId, dto.leadId, tx);
+      }
+      if (dto.patientUserId) {
+        await this.assertPatientUser(dto.patientUserId, tx);
+      }
+
+      const durationMinutes =
+        dto.durationMinutes ?? service?.durationMinutes ?? 30;
+      const endTime = addMinutes(startTime, durationMinutes);
+      await this.assertAppointmentIsNotInPast(
+        clinicId,
+        dto.appointmentDate,
+        dto.startTime,
+        tx,
+      );
+
+      await this.acquireScheduleLock(tx, clinicId, profile.id, appointmentDate);
+      await this.assertProfileAvailability(
+        clinicId,
+        profile.id,
         appointmentDate,
         startTime,
         endTime,
-        durationMinutes,
-        notes: dto.notes,
-        patientNotes: dto.patientNotes,
-        status: 'PENDING',
-      },
-      include: APPOINTMENT_INCLUDE,
+        tx,
+      );
+      await this.assertNoAppointmentConflict(
+        clinicId,
+        profile.id,
+        appointmentDate,
+        startTime,
+        endTime,
+        undefined,
+        tx,
+      );
+
+      return tx.appointment.create({
+        data: {
+          clinicId,
+          profileId: profile.id,
+          serviceId: service?.id,
+          leadId: dto.leadId,
+          patientUserId: dto.patientUserId,
+          patientName: dto.patientName,
+          patientEmail: dto.patientEmail,
+          patientPhone: dto.patientPhone,
+          appointmentDate,
+          startTime,
+          endTime,
+          durationMinutes,
+          notes: dto.notes,
+          patientNotes: dto.patientNotes,
+          estimatedAmountCents: dto.estimatedAmountCents ?? null,
+          status: 'PENDING',
+        },
+        include: APPOINTMENT_INCLUDE,
+      });
     });
   }
 
@@ -149,84 +224,92 @@ export class AppointmentsService {
     appointmentId: string,
     dto: UpdateAppointmentDto,
   ) {
-    const existing = await this.prisma.appointment.findFirst({
-      where: { id: appointmentId, clinicId },
-      include: {
-        service: true,
-        profile: { select: { userId: true } },
-      },
-    });
-    if (!existing) throw new NotFoundException('Consulta não encontrada');
-    this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.appointment.findFirst({
+        where: { id: appointmentId, clinicId },
+        include: {
+          service: true,
+          profile: { select: { userId: true } },
+        },
+      });
+      if (!existing) throw new NotFoundException('Consulta não encontrada');
+      this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
 
-    if (dto.patientUserId) {
-      await this.assertPatientUser(dto.patientUserId);
-    }
+      if (dto.patientUserId) {
+        await this.assertPatientUser(dto.patientUserId, tx);
+      }
 
-    const service = dto.serviceId
-      ? await this.assertServiceInProfile(
-          clinicId,
-          existing.profileId,
-          dto.serviceId,
-        )
-      : existing.service;
-    const durationMinutes =
-      dto.durationMinutes ??
-      service?.durationMinutes ??
-      existing.durationMinutes;
-    const appointmentDate = dto.appointmentDate
-      ? parseDate(dto.appointmentDate)
-      : existing.appointmentDate;
-    const startTime = dto.startTime
-      ? parseTime(dto.startTime)
-      : existing.startTime;
-    const endTime = addMinutes(startTime, durationMinutes);
-    await this.assertAppointmentIsNotInPast(
-      clinicId,
-      formatDateInputValue(appointmentDate),
-      formatTimeInputValue(startTime),
-    );
+      const service = dto.serviceId
+        ? await this.assertServiceInProfile(
+            clinicId,
+            existing.profileId,
+            dto.serviceId,
+            tx,
+          )
+        : existing.service;
+      const durationMinutes =
+        dto.durationMinutes ??
+        service?.durationMinutes ??
+        existing.durationMinutes;
+      const appointmentDate = dto.appointmentDate
+        ? parseDate(dto.appointmentDate)
+        : existing.appointmentDate;
+      const startTime = dto.startTime
+        ? parseTime(dto.startTime)
+        : existing.startTime;
+      const endTime = addMinutes(startTime, durationMinutes);
+      await this.assertAppointmentIsNotInPast(
+        clinicId,
+        formatDateInputValue(appointmentDate),
+        formatTimeInputValue(startTime),
+        tx,
+      );
 
-    await this.assertProfileAvailability(
-      clinicId,
-      existing.profileId,
-      appointmentDate,
-      startTime,
-      endTime,
-    );
-    await this.assertNoAppointmentConflict(
-      clinicId,
-      existing.profileId,
-      appointmentDate,
-      startTime,
-      endTime,
-      appointmentId,
-    );
-
-    const scheduleChanged = Boolean(
-      dto.appointmentDate || dto.startTime || dto.durationMinutes,
-    );
-
-    return this.prisma.appointment.update({
-      where: { id: appointmentId },
-      data: {
-        serviceId: dto.serviceId,
-        patientUserId: dto.patientUserId,
-        patientName: dto.patientName,
-        patientEmail: dto.patientEmail,
-        patientPhone: dto.patientPhone,
+      await this.acquireScheduleLock(tx, clinicId, existing.profileId, appointmentDate);
+      await this.assertProfileAvailability(
+        clinicId,
+        existing.profileId,
         appointmentDate,
         startTime,
         endTime,
-        durationMinutes,
-        status:
-          existing.status === 'NO_SHOW' && scheduleChanged
-            ? 'PENDING'
-            : undefined,
-        notes: dto.notes,
-        patientNotes: dto.patientNotes,
-      },
-      include: APPOINTMENT_INCLUDE,
+        tx,
+      );
+      await this.assertNoAppointmentConflict(
+        clinicId,
+        existing.profileId,
+        appointmentDate,
+        startTime,
+        endTime,
+        appointmentId,
+        tx,
+      );
+
+      const scheduleChanged = Boolean(
+        dto.appointmentDate || dto.startTime || dto.durationMinutes,
+      );
+
+      return tx.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          serviceId: dto.serviceId,
+          patientUserId: dto.patientUserId,
+          patientName: dto.patientName,
+          patientEmail: dto.patientEmail,
+          patientPhone: dto.patientPhone,
+          appointmentDate,
+          startTime,
+          endTime,
+          durationMinutes,
+          status:
+            existing.status === 'NO_SHOW' && scheduleChanged
+              ? 'PENDING'
+              : undefined,
+          notes: dto.notes,
+          patientNotes: dto.patientNotes,
+          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
+        },
+        include: APPOINTMENT_INCLUDE,
+      });
     });
   }
 
@@ -241,10 +324,14 @@ export class AppointmentsService {
       where: { id: appointmentId, clinicId },
       select: {
         id: true,
+        status: true,
+        appointmentDate: true,
+        startTime: true,
         profile: { select: { userId: true } },
       },
     });
     if (!appointment) throw new NotFoundException('Consulta não encontrada');
+
     this.assertDentistAppointmentAccess(
       role,
       userId,
@@ -254,6 +341,19 @@ export class AppointmentsService {
     if (role === 'DENTIST' && !['COMPLETED', 'NO_SHOW'].includes(dto.status)) {
       throw new ForbiddenException(
         'Profissionais só podem marcar consultas como concluídas ou não comparecimento',
+      );
+    }
+
+    // Enforce the state machine: reject invalid transitions with clear messages.
+    this.assertValidStatusTransition(appointment.status, dto.status);
+
+    // Temporal guard: COMPLETED and NO_SHOW are only valid after the appointment time.
+    if (dto.status === 'COMPLETED' || dto.status === 'NO_SHOW') {
+      await this.assertAppointmentHasOccurred(
+        clinicId,
+        appointment.appointmentDate,
+        appointment.startTime,
+        dto.status,
       );
     }
 
@@ -292,6 +392,7 @@ export class AppointmentsService {
       where: { id: appointmentId, clinicId },
       select: {
         id: true,
+        status: true,
         profile: { select: { userId: true } },
       },
     });
@@ -302,10 +403,215 @@ export class AppointmentsService {
       appointment.profile.userId,
     );
 
+    if (appointment.status !== 'PENDING' && appointment.status !== 'CONFIRMED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento não pode ser cancelado no status atual.',
+      );
+    }
+
     return this.updateAppointmentStatus(clinicId, userId, role, appointmentId, {
       status: 'CANCELED',
       canceledBy: dto?.canceledBy ?? 'CLINIC',
       cancellationReason: dto?.cancellationReason,
+    });
+  }
+
+  async updateAppointmentPayment(
+    clinicId: string,
+    userId: string,
+    appointmentId: string,
+    dto: UpdateAppointmentPaymentDto,
+  ) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, clinicId },
+      include: {
+        service: { select: { id: true, name: true } },
+        profile: { select: { id: true } },
+      },
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Consulta não encontrada.');
+    }
+
+    // Validate paid amount for statuses that require it
+    if (
+      (dto.paymentStatus === AppointmentPaymentStatus.PAID ||
+        dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID) &&
+      (!dto.paidAmountCents || dto.paidAmountCents < 1)
+    ) {
+      throw new BadRequestException(
+        'Informe o valor pago para registrar o pagamento.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Update appointment payment fields
+      await tx.appointment.update({
+        where: { id: appointmentId },
+        data: {
+          paymentStatus: dto.paymentStatus,
+          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
+          paidAmountCents:
+            dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING ||
+            dto.paymentStatus === AppointmentPaymentStatus.CANCELED
+              ? null
+              : (dto.paidAmountCents ?? null),
+          paymentMethod: dto.paymentMethod ?? null,
+          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
+          paymentNotes: dto.paymentNotes ?? null,
+        },
+      });
+
+      // 2. Sync FinancialTransaction based on paymentStatus
+      if (
+        dto.paymentStatus === AppointmentPaymentStatus.PAID ||
+        dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID
+      ) {
+        // Ensure default INCOME category exists (idempotent)
+        await tx.financialCategory.upsert({
+          where: {
+            clinicId_type_name: {
+              clinicId,
+              type: FinancialTransactionType.INCOME,
+              name: 'Servicos odontologicos',
+            },
+          },
+          create: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            name: 'Servicos odontologicos',
+            color: '#10B981',
+            icon: 'stethoscope',
+            isDefault: true,
+          },
+          update: {},
+        });
+
+        const category = await tx.financialCategory.findFirst({
+          where: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            ...(dto.categoryId
+              ? { id: dto.categoryId }
+              : { name: 'Servicos odontologicos' }),
+          },
+        });
+
+        if (!category) {
+          throw new BadRequestException(
+            'Categoria financeira não encontrada. Configure as categorias antes de registrar o pagamento.',
+          );
+        }
+
+        const amountCents = dto.paidAmountCents!;
+        // FinancialTransaction.amount is stored as Decimal (BRL value, not centavos)
+        const amount = new Prisma.Decimal(amountCents).div(100).toDecimalPlaces(2);
+
+        const isPaid = dto.paymentStatus === AppointmentPaymentStatus.PAID;
+        // PARTIALLY_PAID: register as PENDING (partial amount) — documented decision:
+        // FinancialTransactionStatus has no PARTIAL state; partial = PENDING with partial amount.
+        const txStatus = isPaid
+          ? FinancialTransactionStatus.PAID
+          : FinancialTransactionStatus.PENDING;
+
+        const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+        const transactionDate = this.dateOnly(paymentDate);
+        const paidAt = isPaid ? paymentDate : null;
+
+        const prefix =
+          dto.paymentStatus === AppointmentPaymentStatus.PARTIALLY_PAID
+            ? '[Parcial] '
+            : '';
+        const description = `${prefix}${appointment.service?.name ?? 'Serviço odontológico'} - ${appointment.patientName}`;
+
+        await tx.financialTransaction.upsert({
+          where: {
+            clinicId_appointmentId_source: {
+              clinicId,
+              appointmentId,
+              source: FinancialTransactionSource.SERVICE_PAYMENT,
+            },
+          },
+          create: {
+            clinicId,
+            type: FinancialTransactionType.INCOME,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+            categoryId: category.id,
+            amount,
+            description,
+            transactionDate,
+            paidAt,
+            status: txStatus,
+            appointmentId,
+            serviceId: appointment.serviceId ?? undefined,
+            profileId: appointment.profileId,
+            createdByUserId: userId,
+          },
+          update: {
+            categoryId: category.id,
+            amount,
+            description,
+            transactionDate,
+            paidAt,
+            status: txStatus,
+            serviceId: appointment.serviceId ?? undefined,
+            profileId: appointment.profileId,
+          },
+        });
+      } else if (dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING) {
+        // Set existing transaction to PENDING if it exists; do not create one
+        const existing = await tx.financialTransaction.findFirst({
+          where: {
+            clinicId,
+            appointmentId,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+          },
+        });
+        if (existing) {
+          await tx.financialTransaction.update({
+            where: { id: existing.id },
+            data: {
+              status: FinancialTransactionStatus.PENDING,
+              paidAt: null,
+            },
+          });
+        }
+      } else {
+        // REFUNDED or CANCELED: cancel the linked transaction if it exists
+        const existing = await tx.financialTransaction.findFirst({
+          where: {
+            clinicId,
+            appointmentId,
+            source: FinancialTransactionSource.SERVICE_PAYMENT,
+          },
+        });
+        if (existing) {
+          await tx.financialTransaction.update({
+            where: { id: existing.id },
+            data: { status: FinancialTransactionStatus.CANCELED },
+          });
+        }
+      }
+    });
+
+    void this.auditLog.log({
+      actorUserId: userId,
+      clinicId,
+      action: 'APPOINTMENT_PAYMENT_UPDATED',
+      entityType: 'Appointment',
+      entityId: appointmentId,
+      metadata: {
+        paymentStatus: dto.paymentStatus,
+        paidAmountCents: dto.paidAmountCents,
+        estimatedAmountCents: dto.estimatedAmountCents,
+        paymentMethod: dto.paymentMethod,
+      },
+    });
+
+    return this.prisma.appointment.findFirst({
+      where: { id: appointmentId },
+      include: APPOINTMENT_INCLUDE,
     });
   }
 
@@ -611,8 +917,12 @@ export class AppointmentsService {
     return profile;
   }
 
-  private async assertProfileInClinic(clinicId: string, profileId: string) {
-    const profile = await this.prisma.profile.findFirst({
+  private async assertProfileInClinic(
+    clinicId: string,
+    profileId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const profile = await db.profile.findFirst({
       where: { id: profileId, clinicId },
       select: { id: true, userId: true },
     });
@@ -625,8 +935,9 @@ export class AppointmentsService {
     clinicId: string,
     profileId: string,
     serviceId: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const service = await this.prisma.service.findFirst({
+    const service = await db.service.findFirst({
       where: { id: serviceId, clinicId, profileId, isActive: true },
       select: { id: true, durationMinutes: true },
     });
@@ -634,16 +945,23 @@ export class AppointmentsService {
     return service;
   }
 
-  private async assertLeadInClinic(clinicId: string, leadId: string) {
-    const lead = await this.prisma.lead.findFirst({
+  private async assertLeadInClinic(
+    clinicId: string,
+    leadId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const lead = await db.lead.findFirst({
       where: { id: leadId, clinicId },
       select: { id: true },
     });
     if (!lead) throw new NotFoundException('Lead não encontrado');
   }
 
-  private async assertPatientUser(patientUserId: string) {
-    const patient = await this.prisma.user.findFirst({
+  private async assertPatientUser(
+    patientUserId: string,
+    db: AppointmentDbClient = this.prisma,
+  ) {
+    const patient = await db.user.findFirst({
       where: {
         id: patientUserId,
         role: 'PATIENT',
@@ -683,6 +1001,93 @@ export class AppointmentsService {
     return exception;
   }
 
+  private async normalizeStaleNoShows(
+    clinicId: string,
+    todayDateStr: string,
+  ): Promise<void> {
+    await this.prisma.appointment.updateMany({
+      where: {
+        clinicId,
+        status: 'CONFIRMED',
+        appointmentDate: { lt: new Date(`${todayDateStr}T00:00:00.000Z`) },
+      },
+      data: { status: 'NO_SHOW' },
+    });
+  }
+
+  private assertValidStatusTransition(
+    currentStatus: AppointmentStatus,
+    targetStatus: AppointmentStatus,
+  ): void {
+    if (APPOINTMENT_TRANSITIONS[currentStatus].includes(targetStatus)) return;
+
+    if (currentStatus === 'PENDING' && targetStatus === 'NO_SHOW') {
+      throw new UnprocessableEntityException(
+        'Não é possível marcar como não compareceu um agendamento que ainda não foi confirmado.',
+      );
+    }
+    if (currentStatus === 'PENDING' && targetStatus === 'COMPLETED') {
+      throw new UnprocessableEntityException(
+        'Não é possível concluir um agendamento que ainda não foi confirmado.',
+      );
+    }
+    if (currentStatus === 'COMPLETED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi concluído e não pode ser alterado.',
+      );
+    }
+    if (currentStatus === 'NO_SHOW') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi marcado como não compareceu e não pode ser alterado.',
+      );
+    }
+    if (currentStatus === 'CANCELED') {
+      throw new UnprocessableEntityException(
+        'Este agendamento já foi cancelado e não pode ser alterado.',
+      );
+    }
+
+    throw new UnprocessableEntityException(
+      `Transição de status inválida: ${currentStatus} → ${targetStatus}.`,
+    );
+  }
+
+  private async assertAppointmentHasOccurred(
+    clinicId: string,
+    appointmentDate: Date,
+    startTime: Date,
+    targetStatus: AppointmentStatus,
+  ): Promise<void> {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const now = getZonedDateTimeParts(
+      new Date(),
+      clinic?.timezone ?? 'America/Sao_Paulo',
+    );
+
+    const apptDate = formatDateInputValue(appointmentDate);
+    const apptTime = formatTimeInputValue(startTime);
+
+    const isInFuture =
+      apptDate > now.date || (apptDate === now.date && apptTime > now.time);
+
+    if (isInFuture) {
+      throw new UnprocessableEntityException(
+        targetStatus === 'COMPLETED'
+          ? 'Não é possível concluir um agendamento que ainda não ocorreu.'
+          : 'Não é possível registrar não comparecimento para um agendamento futuro.',
+      );
+    }
+  }
+
+  private dateOnly(date: Date): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
   private assertDentistAppointmentAccess(
     role: UserRole,
     userId: string,
@@ -695,14 +1100,25 @@ export class AppointmentsService {
     }
   }
 
+  private async acquireScheduleLock(
+    tx: Prisma.TransactionClient,
+    clinicId: string,
+    profileId: string,
+    appointmentDate: Date,
+  ) {
+    const lockKey = `${clinicId}:${profileId}:${formatDateInputValue(appointmentDate)}`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  }
+
   private async assertProfileAvailability(
     clinicId: string,
     profileId: string,
     appointmentDate: Date,
     startTime: Date,
     endTime: Date,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const exception = await this.prisma.availabilityException.findFirst({
+    const exception = await db.availabilityException.findFirst({
       where: { clinicId, profileId, exceptionDate: appointmentDate },
     });
 
@@ -726,7 +1142,7 @@ export class AppointmentsService {
       );
     }
 
-    const availability = await this.prisma.availability.findMany({
+    const availability = await db.availability.findMany({
       where: {
         clinicId,
         profileId,
@@ -778,8 +1194,9 @@ export class AppointmentsService {
     startTime: Date,
     endTime: Date,
     ignoredAppointmentId?: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const existing = await this.prisma.appointment.findFirst({
+    const existing = await db.appointment.findFirst({
       where: {
         clinicId,
         profileId,
@@ -801,8 +1218,9 @@ export class AppointmentsService {
     clinicId: string,
     appointmentDate: string,
     startTime: string,
+    db: AppointmentDbClient = this.prisma,
   ) {
-    const clinic = await this.prisma.clinic.findUnique({
+    const clinic = await db.clinic.findUnique({
       where: { id: clinicId },
       select: { timezone: true },
     });

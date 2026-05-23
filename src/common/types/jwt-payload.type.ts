@@ -4,4 +4,5 @@ export interface JwtPayload {
   sub: string;
   clinicId: string | null;
   role: UserRole;
+  tokenVersion: number;
 }

@@ -13,6 +13,7 @@ const CLINIC_OPERATIONS_ROLES: readonly UserRole[] = [
   'ASSISTANT',
 ];
 const OWNER_LEVEL_ROLES: readonly UserRole[] = ['OWNER'];
+const OWNER_OR_ASSISTANT_ROLES: readonly UserRole[] = ['OWNER', 'ASSISTANT'];
 
 @Injectable()
 export class AccessPolicyService {
@@ -81,6 +82,16 @@ export class AccessPolicyService {
       !this.includesRole(CLINIC_OPERATIONS_ROLES, user.role)
     ) {
       throw new ForbiddenException('Acesso operacional da clínica obrigatório');
+    }
+
+    return user.clinicId;
+  }
+
+  assertOwnerOrAssistantAccess(user: AuthUser): string {
+    this.assertValidRoleTenantShape(user);
+
+    if (!user.clinicId || !this.includesRole(OWNER_OR_ASSISTANT_ROLES, user.role)) {
+      throw new ForbiddenException('Acesso de proprietário ou assistente obrigatório');
     }
 
     return user.clinicId;

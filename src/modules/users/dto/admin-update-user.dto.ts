@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -10,6 +10,8 @@ import {
   MinLength,
 } from 'class-validator';
 import { UserRole } from '@prisma/client';
+
+const ALLOWED_ADMIN_ROLES: UserRole[] = ['ADMIN', 'OWNER', 'DENTIST', 'ASSISTANT'];
 import { normalizeEmail, normalizePhone, trimValue } from '../../../common/utils/transform.helpers';
 
 const personNamePattern = /^[\p{L}\s.'-]+$/u;
@@ -45,7 +47,7 @@ export class AdminUpdateUserDto {
   phone?: string;
 
   @IsOptional()
-  @IsEnum(UserRole)
+  @IsIn(ALLOWED_ADMIN_ROLES, { message: 'role must be ADMIN, OWNER, DENTIST or ASSISTANT' })
   role?: UserRole;
 
   @IsOptional()

@@ -10,6 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
@@ -19,9 +20,15 @@ import { CreateAvailabilityDto } from './dto/create-availability.dto';
 import { CreateAvailabilityExceptionDto } from './dto/create-availability-exception.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
+import {
+  AvailabilityExceptionParamDto,
+  AvailabilityParamDto,
+  ProfileParamDto,
+} from './dto/appointment-param.dto';
 
 @Controller('profiles/:profileId')
 @TenantScoped()
+@RequiresBillingAccess()
 export class AvailabilityController {
   constructor(
     private readonly appointmentsService: AppointmentsService,
@@ -32,14 +39,14 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   listAvailability(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
+    @Param() params: ProfileParamDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.listAvailability(
       clinicId,
       user.id,
       user.role,
-      profileId,
+      params.profileId,
     );
   }
 
@@ -47,7 +54,7 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST')
   createAvailability(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
+    @Param() params: ProfileParamDto,
     @Body() dto: CreateAvailabilityDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
@@ -55,7 +62,7 @@ export class AvailabilityController {
       clinicId,
       user.id,
       user.role,
-      profileId,
+      params.profileId,
       dto,
     );
   }
@@ -64,8 +71,7 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST')
   updateAvailability(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
-    @Param('availabilityId') availabilityId: string,
+    @Param() params: AvailabilityParamDto,
     @Body() dto: UpdateAvailabilityDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
@@ -73,8 +79,8 @@ export class AvailabilityController {
       clinicId,
       user.id,
       user.role,
-      profileId,
-      availabilityId,
+      params.profileId,
+      params.availabilityId,
       dto,
     );
   }
@@ -84,16 +90,15 @@ export class AvailabilityController {
   @HttpCode(HttpStatus.NO_CONTENT)
   removeAvailability(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
-    @Param('availabilityId') availabilityId: string,
+    @Param() params: AvailabilityParamDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
     return this.appointmentsService.removeAvailability(
       clinicId,
       user.id,
       user.role,
-      profileId,
-      availabilityId,
+      params.profileId,
+      params.availabilityId,
     );
   }
 
@@ -101,14 +106,14 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
   listAvailabilityExceptions(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
+    @Param() params: ProfileParamDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.listAvailabilityExceptions(
       clinicId,
       user.id,
       user.role,
-      profileId,
+      params.profileId,
     );
   }
 
@@ -116,7 +121,7 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST')
   createAvailabilityException(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
+    @Param() params: ProfileParamDto,
     @Body() dto: CreateAvailabilityExceptionDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
@@ -124,7 +129,7 @@ export class AvailabilityController {
       clinicId,
       user.id,
       user.role,
-      profileId,
+      params.profileId,
       dto,
     );
   }
@@ -133,8 +138,7 @@ export class AvailabilityController {
   @Roles('OWNER', 'DENTIST')
   updateAvailabilityException(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
-    @Param('exceptionId') exceptionId: string,
+    @Param() params: AvailabilityExceptionParamDto,
     @Body() dto: UpdateAvailabilityExceptionDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
@@ -142,8 +146,8 @@ export class AvailabilityController {
       clinicId,
       user.id,
       user.role,
-      profileId,
-      exceptionId,
+      params.profileId,
+      params.exceptionId,
       dto,
     );
   }
@@ -153,16 +157,15 @@ export class AvailabilityController {
   @HttpCode(HttpStatus.NO_CONTENT)
   removeAvailabilityException(
     @CurrentUser() user: AuthUser,
-    @Param('profileId') profileId: string,
-    @Param('exceptionId') exceptionId: string,
+    @Param() params: AvailabilityExceptionParamDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
     return this.appointmentsService.removeAvailabilityException(
       clinicId,
       user.id,
       user.role,
-      profileId,
-      exceptionId,
+      params.profileId,
+      params.exceptionId,
     );
   }
 }

@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  PlanCapabilitiesService,
+  UserLimitUsage,
+} from '../billing/plan-capabilities.service';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { CreateMemberDto } from './dto/create-member.dto';
@@ -43,17 +46,12 @@ const MEMBER_LIST_SELECT = {
   createdAt: true,
 } as const;
 
-// Maps plan slug → max users allowed. NULL plan or unknown slug → DEFAULT.
-const PLAN_USER_LIMITS: Record<string, number> = {
-  basic: 8,
-  pro: 16,
-  enterprise: 24,
-};
-const DEFAULT_USER_LIMIT = 8;
-
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly planCapabilities: PlanCapabilitiesService,
+  ) {}
 
   // ─── Current user ────────────────────────────────────────────────────────────
 
@@ -67,7 +65,7 @@ export class UsersService {
   // ─── OWNER: clinic member management ─────────────────────────────────────────
 
   async findClinicMembers(clinicId: string) {
-    const [users, profiles] = await Promise.all([
+    const [users, profiles, usage] = await Promise.all([
       this.prisma.user.findMany({
         where: {
           clinicId,
@@ -87,18 +85,21 @@ export class UsersService {
           isPublished: true,
         },
       }),
+      this.planCapabilities.getUserLimitUsage(clinicId),
     ]);
 
     const profileByUserId = new Map(profiles.map((p) => [p.userId!, p]));
 
-    return users.map((user) => ({
+    const members = users.map((user) => ({
       ...user,
       profile: profileByUserId.get(user.id) ?? null,
     }));
+
+    return { members, usage };
   }
 
   async createMember(clinicId: string, dto: CreateMemberDto) {
-    await this.checkPlanUserLimit(clinicId);
+    await this.planCapabilities.assertUserLimitAvailable(clinicId);
 
     const existing = await this.prisma.user.findFirst({
       where: { email: dto.email },
@@ -125,7 +126,9 @@ export class UsersService {
           select: { id: true },
         });
         if (found.length !== dto.specialtyIds.length) {
-          throw new BadRequestException('Uma ou mais especialidades são inválidas');
+          throw new BadRequestException(
+            'Uma ou mais especialidades são inválidas',
+          );
         }
       }
     }
@@ -179,21 +182,19 @@ export class UsersService {
       return { userId: user.id, profileId: profile.id };
     });
 
-    const [user, profile] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: userId },
-        select: MEMBER_LIST_SELECT,
-      }),
-      profileId
-        ? this.prisma.profile.findUnique({
-            where: { id: profileId },
-            include: {
-              profileSpecialties: { include: { specialty: true } },
-              services: { orderBy: { displayOrder: 'asc' } },
-            },
-          })
-        : Promise.resolve(null),
-    ]);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: MEMBER_LIST_SELECT,
+    });
+    const profile = profileId
+      ? await this.prisma.profile.findUnique({
+          where: { id: profileId },
+          include: {
+            profileSpecialties: { include: { specialty: true } },
+            services: { orderBy: { displayOrder: 'asc' } },
+          },
+        })
+      : null;
 
     return { user, profile };
   }
@@ -209,28 +210,35 @@ export class UsersService {
       if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
+    // Check limit only when reactivating an inactive member
     if (dto.isActive === true && !member.isActive) {
-      await this.checkPlanUserLimit(clinicId);
+      await this.planCapabilities.assertUserLimitAvailable(clinicId);
     }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
-        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
-        ...(dto.role !== undefined && { role: dto.role }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-      },
-    });
+    const requiresInvalidation =
+      dto.isActive === false || dto.role !== undefined;
 
-    if (dto.isActive === false) {
-      await this.prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+          ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+          ...(dto.email !== undefined && { email: dto.email }),
+          ...(dto.phone !== undefined && { phone: dto.phone }),
+          ...(dto.role !== undefined && { role: dto.role }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(requiresInvalidation && { tokenVersion: { increment: 1 } }),
+        },
       });
-    }
+
+      if (requiresInvalidation) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+    });
 
     return this.findClinicMemberById(clinicId, userId);
   }
@@ -249,6 +257,12 @@ export class UsersService {
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+
+      // Unpublish any linked dentist profile so it no longer appears publicly
+      await tx.profile.updateMany({
+        where: { userId, isPublished: true },
+        data: { isPublished: false },
+      });
     });
   }
 
@@ -263,10 +277,9 @@ export class UsersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
-        data: { passwordHash },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
-      // Force re-login after a password change
       await tx.refreshToken.updateMany({
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -288,16 +301,14 @@ export class UsersService {
     const take = Math.min(limit, 100);
     const skip = (page - 1) * take;
 
-    const [total, users] = await Promise.all([
-      this.prisma.user.count({ where: { deletedAt: null } }),
-      this.prisma.user.findMany({
-        where: { deletedAt: null },
-        select: USER_SAFE_SELECT,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take,
-      }),
-    ]);
+    const total = await this.prisma.user.count({ where: { deletedAt: null } });
+    const users = await this.prisma.user.findMany({
+      where: { deletedAt: null },
+      select: USER_SAFE_SELECT,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
+    });
 
     return { data: users, total, page, limit: take };
   }
@@ -339,6 +350,11 @@ export class UsersService {
     });
     if (existing) throw new ConflictException('Este e-mail já está em uso');
 
+    // New clinic members count against the plan limit (new users are active by default)
+    if (dto.clinicId && clinicMemberRoles.includes(dto.role)) {
+      await this.planCapabilities.assertUserLimitAvailable(dto.clinicId);
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     return this.prisma.user.create({
@@ -356,11 +372,33 @@ export class UsersService {
   }
 
   async adminUpdate(userId: string, dto: AdminUpdateUserDto) {
-    const user = await this.prisma.user.findFirst({
+    const current = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, role: true, clinicId: true, isActive: true },
     });
-    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (!current) throw new NotFoundException('Usuário não encontrado');
+
+    // Resolve the effective role and clinicId after the update
+    const effectiveRole = dto.role ?? current.role;
+    const effectiveClinicId =
+      dto.clinicId !== undefined ? dto.clinicId : current.clinicId;
+    const effectiveIsActive =
+      dto.isActive !== undefined ? dto.isActive : current.isActive;
+
+    const clinicMemberRoles = ['OWNER', 'DENTIST', 'ASSISTANT'];
+    if (clinicMemberRoles.includes(effectiveRole) && !effectiveClinicId) {
+      throw new BadRequestException(
+        `clinicId é obrigatório para o papel ${effectiveRole}`,
+      );
+    }
+    if (
+      (effectiveRole === 'ADMIN' || effectiveRole === 'PATIENT') &&
+      effectiveClinicId
+    ) {
+      throw new BadRequestException(
+        `clinicId deve ser omitido para o papel ${effectiveRole}`,
+      );
+    }
 
     if (dto.email) {
       const conflict = await this.prisma.user.findFirst({
@@ -370,35 +408,56 @@ export class UsersService {
       if (conflict) throw new ConflictException('Este e-mail já está em uso');
     }
 
-    if (dto.clinicId !== undefined && dto.clinicId !== null) {
+    if (effectiveClinicId) {
       const clinic = await this.prisma.clinic.findFirst({
-        where: { id: dto.clinicId, deletedAt: null },
+        where: { id: effectiveClinicId, deletedAt: null },
         select: { id: true },
       });
       if (!clinic) throw new NotFoundException('Clínica não encontrada');
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
-        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
-        ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
-        ...(dto.role !== undefined && { role: dto.role }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        ...(dto.clinicId !== undefined && { clinicId: dto.clinicId }),
-      },
-      select: USER_SAFE_SELECT,
-    });
+    // Enforce limit when the update would add a net new active clinic member
+    if (clinicMemberRoles.includes(effectiveRole) && effectiveIsActive) {
+      const currentlyCountsForThisClinic =
+        current.isActive &&
+        current.clinicId === effectiveClinicId &&
+        clinicMemberRoles.includes(current.role);
 
-    // Revoke tokens if the account was deactivated
-    if (dto.isActive === false) {
-      await this.prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
+      if (!currentlyCountsForThisClinic) {
+        await this.planCapabilities.assertUserLimitAvailable(effectiveClinicId!);
+      }
     }
+
+    const requiresInvalidation =
+      dto.isActive === false ||
+      dto.role !== undefined ||
+      dto.clinicId !== undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+          ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+          ...(dto.email !== undefined && { email: dto.email }),
+          ...(dto.phone !== undefined && { phone: dto.phone }),
+          ...(dto.role !== undefined && { role: dto.role }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(dto.clinicId !== undefined && { clinicId: dto.clinicId }),
+          ...(requiresInvalidation && { tokenVersion: { increment: 1 } }),
+        },
+        select: USER_SAFE_SELECT,
+      });
+
+      if (requiresInvalidation) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+
+      return result;
+    });
 
     return updated;
   }
@@ -435,7 +494,7 @@ export class UsersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
-        data: { passwordHash },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       });
 
       await tx.refreshToken.updateMany({
@@ -461,47 +520,26 @@ export class UsersService {
     return member;
   }
 
-  private async checkPlanUserLimit(clinicId: string): Promise<void> {
-    const [userCount, subscription] = await Promise.all([
-      this.prisma.user.count({
-        where: { clinicId, isActive: true, deletedAt: null },
-      }),
-      this.prisma.subscription.findUnique({
-        where: { clinicId },
-        select: { plan: { select: { slug: true } } },
-      }),
-    ]);
-
-    const planSlug = subscription?.plan?.slug?.toLowerCase() ?? '';
-    const limit = PLAN_USER_LIMITS[planSlug] ?? DEFAULT_USER_LIMIT;
-
-    if (userCount >= limit) {
-      throw new ForbiddenException('Limite de usuários atingido para o plano atual');
-    }
-  }
-
   private async findClinicMemberById(clinicId: string, userId: string) {
-    const [member, profile] = await Promise.all([
-      this.prisma.user.findFirst({
-        where: {
-          id: userId,
-          clinicId,
-          role: { in: ['DENTIST', 'ASSISTANT'] },
-          deletedAt: null,
-        },
-        select: MEMBER_LIST_SELECT,
-      }),
-      this.prisma.profile.findFirst({
-        where: { clinicId, userId },
-        select: {
-          id: true,
-          userId: true,
-          slug: true,
-          displayName: true,
-          isPublished: true,
-        },
-      }),
-    ]);
+    const member = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        clinicId,
+        role: { in: ['DENTIST', 'ASSISTANT'] },
+        deletedAt: null,
+      },
+      select: MEMBER_LIST_SELECT,
+    });
+    const profile = await this.prisma.profile.findFirst({
+      where: { clinicId, userId },
+      select: {
+        id: true,
+        userId: true,
+        slug: true,
+        displayName: true,
+        isPublished: true,
+      },
+    });
 
     if (!member) throw new NotFoundException('Usuário não encontrado');
 
