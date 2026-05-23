@@ -11,6 +11,7 @@ const rules: EnvRule[] = [
   { key: 'DATABASE_URL', required: true, description: 'PostgreSQL connection string' },
   { key: 'DIRECT_URL', required: isProduction, description: 'Direct PostgreSQL URL for Prisma migrations (bypasses PgBouncer)' },
   { key: 'FRONTEND_ORIGIN', required: isProduction, description: 'Allowed CORS origin' },
+  { key: 'FRONTEND_URL', required: isProduction, description: 'Frontend base URL for transactional email links (e.g. https://app.dentalflow.com.br)' },
   { key: 'STRIPE_SECRET_KEY', required: isProduction, description: 'Stripe API secret key' },
   { key: 'STRIPE_WEBHOOK_SECRET', required: isProduction, description: 'Stripe webhook signing secret' },
   { key: 'STRIPE_SUCCESS_URL', required: isProduction, description: 'Stripe checkout success redirect URL' },
@@ -20,6 +21,8 @@ const rules: EnvRule[] = [
   { key: 'GOOGLE_CALENDAR_CLIENT_SECRET', required: isProduction, description: 'Google Calendar OAuth client secret' },
   { key: 'GOOGLE_CALENDAR_REDIRECT_URI', required: isProduction, description: 'Google Calendar OAuth redirect URI (must match Google Cloud Console)' },
   { key: 'GOOGLE_CALENDAR_TOKEN_SECRET', required: isProduction, description: 'Secret for encrypting Google tokens' },
+  { key: 'RESEND_API_KEY', required: false, description: 'Resend API key for transactional email (optional — omit to use stub logging in dev/test)' },
+  { key: 'MAIL_FROM', required: false, description: 'Sender address for transactional email, required when RESEND_API_KEY is set (e.g. "DentalFlow <no-reply@your-domain.com>")' },
   { key: 'FISCAL_PROVIDER', required: false, description: 'Future fiscal provider identifier' },
   { key: 'FISCAL_PROVIDER_MODE', required: false, description: 'Future fiscal provider mode' },
 ];
@@ -73,6 +76,13 @@ export function validateEnv(): void {
             '\nSet them or set NOTIFICATION_PROVIDER=local to use the simulated provider.',
         );
       }
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL ?? '';
+    if (!frontendUrl.startsWith('https://')) {
+      throw new Error(
+        'FRONTEND_URL must use HTTPS in production (e.g. https://app.dentalflow.com.br).',
+      );
     }
 
     const origins = (process.env.FRONTEND_ORIGIN ?? '')
