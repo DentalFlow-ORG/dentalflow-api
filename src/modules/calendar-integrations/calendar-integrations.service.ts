@@ -64,6 +64,7 @@ type AppointmentSyncRow = {
   endTime: Date | string;
   profileName: string;
   timezone: string;
+  patientName: string | null;
 }
 
 type AppointmentGoogleEventRow = {
@@ -275,14 +276,25 @@ export class CalendarIntegrationsService {
     const accessToken = await this.getValidAccessToken(integration);
     const appointments = await this.findAppointmentsToSync(clinicId);
 
-    let synced = 0;
-    for (const appointment of appointments) {
-      const eventId = await this.upsertGoogleEvent(
-        accessToken,
-        integration.googleCalendarId,
-        appointment,
-      );
+    const settled = await Promise.allSettled(
+      appointments.map(async (appointment) => {
+        const eventId = await this.upsertGoogleEvent(
+          accessToken,
+          integration.googleCalendarId,
+          appointment,
+        );
+        return { appointment, eventId };
+      }),
+    );
 
+    let synced = 0;
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        console.warn(`[CalendarIntegrations] Failed to upsert event — reason: ${reason}`);
+        continue;
+      }
+      const { appointment, eventId } = result.value;
       if (eventId && eventId !== appointment.googleCalendarEventId) {
         await this.prisma.$executeRaw`
           UPDATE "appointments"
@@ -417,10 +429,12 @@ export class CalendarIntegrationsService {
         a."startTime",
         a."endTime",
         p."displayName" AS "profileName",
-        c."timezone" AS "timezone"
+        c."timezone" AS "timezone",
+        pat."name" AS "patientName"
       FROM "appointments" a
       INNER JOIN "profiles" p ON p."id" = a."profileId"
       INNER JOIN "clinics" c ON c."id" = a."clinicId"
+      LEFT JOIN "patients" pat ON pat."id" = a."patientId"
       WHERE
         a."clinicId" = ${clinicId}
         AND a."status" NOT IN ('CANCELED')
@@ -444,10 +458,13 @@ export class CalendarIntegrationsService {
   ) {
     const appointments = await this.findAppointmentsWithGoogleEvents(clinicId);
 
-    for (const appointment of appointments) {
-      if (!appointment.googleCalendarEventId) continue;
-      await this.deleteGoogleEvent(accessToken, calendarId, appointment.googleCalendarEventId);
-    }
+    await Promise.allSettled(
+      appointments
+        .filter((a) => a.googleCalendarEventId)
+        .map((a) =>
+          this.deleteGoogleEvent(accessToken, calendarId, a.googleCalendarEventId as string),
+        ),
+    );
 
     await this.prisma.$executeRaw`
       UPDATE "appointments"
@@ -492,7 +509,9 @@ export class CalendarIntegrationsService {
     const startTime = formatTimeInputValue(appointment.startTime);
     const endTime = formatTimeInputValue(appointment.endTime);
     const body = {
-      summary: 'Consulta odontologica',
+      summary: appointment.patientName
+        ? `Consulta - ${appointment.patientName}`
+        : 'Consulta odontologica',
       description: [
         'Evento sincronizado pelo DentalFlow.',
         `Profissional: ${appointment.profileName}`,
