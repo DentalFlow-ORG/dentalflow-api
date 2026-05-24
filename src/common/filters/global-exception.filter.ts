@@ -134,7 +134,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     statusCode: number,
   ): void {
     if (statusCode === 401 || statusCode === 403) {
-      this.logger.warn({ statusCode, method: request.method, path: request.url });
       return;
     }
 
