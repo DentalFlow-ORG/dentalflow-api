@@ -16,7 +16,8 @@ const GOOGLE_CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
 ];
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
-const SYNC_CHUNK_SIZE = 5;
+const GOOGLE_API_DELAY_MS = 300;
+const RATE_LIMIT_RETRY_DELAYS_MS = [500, 1500, 3000];
 
 type GoogleCalendarStatus = {
   connected: boolean;
@@ -82,6 +83,8 @@ type GoogleEventResponse = {
     errors?: Array<{ domain?: string; reason?: string; message?: string }>;
   };
 }
+
+type DeleteEventResult = 'deleted' | 'alreadyMissing' | 'failed';
 
 @Injectable()
 export class CalendarIntegrationsService {
@@ -219,16 +222,27 @@ export class CalendarIntegrationsService {
       };
     }
 
-    // Best-effort: clean up Google Calendar events and revoke the token.
-    // If the token is already expired, revoked externally, or Google returns any error,
-    // we log a warning and still complete the local disconnect so the user is never stuck.
-    try {
-      const accessToken = await this.getValidAccessToken(integration);
-      await this.deleteSyncedGoogleEvents(clinicId, integration.googleCalendarId, accessToken);
-      await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
-    } catch {
-      console.warn('[CalendarIntegrations] Google cleanup during disconnect failed — proceeding with local disconnect.');
+    const accessToken = await this.getValidAccessToken(integration);
+    const cleanup = await this.deleteSyncedGoogleEvents(
+      clinicId,
+      integration.googleCalendarId,
+      accessToken,
+    );
+
+    console.warn(
+      `[CalendarIntegrations] Disconnect cleanup — deleted: ${cleanup.deleted}, ` +
+      `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
+    );
+
+    // If any events could not be removed, keep the integration active so the user can retry.
+    // Token is not revoked and disconnectedAt is not set — the connection remains intact.
+    if (cleanup.failed > 0) {
+      throw new BadRequestException(
+        'Não foi possível remover todos os eventos do Google Agenda. Tente desconectar novamente em alguns instantes.',
+      );
     }
+
+    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
 
     await this.prisma.$executeRaw`
       UPDATE "google_calendar_integrations"
@@ -258,17 +272,19 @@ export class CalendarIntegrationsService {
     if (!appointment?.googleCalendarEventId) return;
 
     const accessToken = await this.getValidAccessToken(integration);
-    await this.deleteGoogleEvent(
+    const result = await this.deleteGoogleEvent(
       accessToken,
       integration.googleCalendarId,
       appointment.googleCalendarEventId,
     );
 
-    await this.prisma.$executeRaw`
-      UPDATE "appointments"
-      SET "googleCalendarEventId" = NULL
-      WHERE "id" = ${appointmentId} AND "clinicId" = ${clinicId}
-    `;
+    if (result === 'deleted' || result === 'alreadyMissing') {
+      await this.prisma.$executeRaw`
+        UPDATE "appointments"
+        SET "googleCalendarEventId" = NULL
+        WHERE "id" = ${appointmentId} AND "clinicId" = ${clinicId}
+      `;
+    }
   }
 
   async sync(clinicId: string) {
@@ -282,28 +298,19 @@ export class CalendarIntegrationsService {
     const accessToken = await this.getValidAccessToken(integration);
     const appointments = await this.findAppointmentsToSync(clinicId);
 
-    const chunks = chunkArray(appointments, SYNC_CHUNK_SIZE);
     let synced = 0;
     let failed = 0;
 
-    for (const chunk of chunks) {
-      const settled = await Promise.allSettled(
-        chunk.map((appointment) =>
-          this.upsertGoogleEvent(accessToken, integration.googleCalendarId, appointment)
-            .then((eventId) => ({ appointment, eventId })),
-        ),
-      );
+    for (let i = 0; i < appointments.length; i++) {
+      if (i > 0) await sleep(GOOGLE_API_DELAY_MS);
+      const appointment = appointments[i];
 
-      for (let i = 0; i < settled.length; i++) {
-        const result = settled[i];
-        const appointment = chunk[i];
-
-        if (result.status === 'rejected') {
-          failed += 1;
-          continue;
-        }
-
-        const { eventId } = result.value;
+      try {
+        const eventId = await this.upsertGoogleEvent(
+          accessToken,
+          integration.googleCalendarId,
+          appointment,
+        );
         if (eventId && eventId !== appointment.googleCalendarEventId) {
           await this.prisma.$executeRaw`
             UPDATE "appointments"
@@ -312,6 +319,8 @@ export class CalendarIntegrationsService {
           `;
         }
         synced += 1;
+      } catch {
+        failed += 1;
       }
     }
 
@@ -470,22 +479,45 @@ export class CalendarIntegrationsService {
     clinicId: string,
     calendarId: string,
     accessToken: string,
-  ) {
+  ): Promise<{ deleted: number; alreadyMissing: number; failed: number }> {
     const appointments = await this.findAppointmentsWithGoogleEvents(clinicId);
 
-    await Promise.allSettled(
-      appointments
-        .filter((a) => a.googleCalendarEventId)
-        .map((a) =>
-          this.deleteGoogleEvent(accessToken, calendarId, a.googleCalendarEventId as string),
-        ),
-    );
+    let deleted = 0;
+    let alreadyMissing = 0;
+    let failed = 0;
 
-    await this.prisma.$executeRaw`
-      UPDATE "appointments"
-      SET "googleCalendarEventId" = NULL
-      WHERE "clinicId" = ${clinicId} AND "googleCalendarEventId" IS NOT NULL
-    `;
+    for (let i = 0; i < appointments.length; i++) {
+      if (i > 0) await sleep(GOOGLE_API_DELAY_MS);
+      const appt = appointments[i];
+      if (!appt.googleCalendarEventId) continue;
+
+      const result = await this.deleteGoogleEvent(
+        accessToken,
+        calendarId,
+        appt.googleCalendarEventId,
+      );
+
+      if (result === 'deleted') {
+        deleted += 1;
+        await this.prisma.$executeRaw`
+          UPDATE "appointments"
+          SET "googleCalendarEventId" = NULL
+          WHERE "id" = ${appt.id} AND "clinicId" = ${clinicId}
+        `;
+      } else if (result === 'alreadyMissing') {
+        alreadyMissing += 1;
+        await this.prisma.$executeRaw`
+          UPDATE "appointments"
+          SET "googleCalendarEventId" = NULL
+          WHERE "id" = ${appt.id} AND "clinicId" = ${clinicId}
+        `;
+      } else {
+        failed += 1;
+        // googleCalendarEventId is intentionally preserved so the event is not orphaned
+      }
+    }
+
+    return { deleted, alreadyMissing, failed };
   }
 
   private async upsertGoogleEvent(
@@ -519,11 +551,12 @@ export class CalendarIntegrationsService {
     appointment: AppointmentSyncRow,
     eventId?: string,
   ): Promise<GoogleEventResponse> {
+    const op = eventId ? 'update' : 'create';
     const timeZone = appointment.timezone || 'America/Sao_Paulo';
     const date = formatDateInputValue(appointment.appointmentDate);
     const startTime = formatTimeInputValue(appointment.startTime);
     const endTime = formatTimeInputValue(appointment.endTime);
-    const body = {
+    const requestBody = JSON.stringify({
       summary: appointment.patientName
         ? `Consulta - ${appointment.patientName}`
         : 'Consulta odontologica',
@@ -534,23 +567,39 @@ export class CalendarIntegrationsService {
       ].join('\n'),
       start: { dateTime: `${date}T${startTime}:00`, timeZone },
       end: { dateTime: `${date}T${endTime}:00`, timeZone },
-    };
+    });
     const encodedCalendarId = encodeURIComponent(calendarId);
     const url = eventId
       ? `${GOOGLE_CALENDAR_API_URL}/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}`
       : `${GOOGLE_CALENDAR_API_URL}/calendars/${encodedCalendarId}/events`;
-    const response = await fetch(url, {
-      method: eventId ? 'PATCH' : 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const payload = (await response.json()) as GoogleEventResponse;
+    const method = eventId ? 'PATCH' : 'POST';
+    const maxAttempts = 1 + RATE_LIMIT_RETRY_DELAYS_MS.length;
 
-    if (!response.ok && payload.error?.code !== 404) {
-      const op = eventId ? 'update' : 'create';
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      });
+      const payload = (await response.json()) as GoogleEventResponse;
+
+      if (response.ok || payload.error?.code === 404) {
+        return payload;
+      }
+
+      if (isRateLimitError(payload, response.status) && attempt < maxAttempts - 1) {
+        const delay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
+        console.warn(
+          `[CalendarIntegrations] Rate limited — op: ${op}, appointmentId: ${appointment.id}, ` +
+          `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
+        );
+        await sleep(delay);
+        continue;
+      }
+
       const reason = payload.error?.errors?.[0]?.reason ?? 'none';
       console.warn(
         `[CalendarIntegrations] Google API error — op: ${op}, appointmentId: ${appointment.id}, ` +
@@ -561,24 +610,53 @@ export class CalendarIntegrationsService {
       throw new BadRequestException('Erro ao sincronizar evento no Google Agenda.');
     }
 
-    return payload;
+    throw new BadRequestException('Erro ao sincronizar evento no Google Agenda.');
   }
 
-  private async deleteGoogleEvent(accessToken: string, calendarId: string, eventId: string) {
+  private async deleteGoogleEvent(
+    accessToken: string,
+    calendarId: string,
+    eventId: string,
+  ): Promise<DeleteEventResult> {
     const encodedCalendarId = encodeURIComponent(calendarId);
-    const response = await fetch(
-      `${GOOGLE_CALENDAR_API_URL}/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}`,
-      {
+    const url = `${GOOGLE_CALENDAR_API_URL}/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}`;
+    const maxAttempts = 1 + RATE_LIMIT_RETRY_DELAYS_MS.length;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const response = await fetch(url, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
+      });
 
-    if (response.ok || response.status === 404 || response.status === 410) {
-      return;
+      if (response.ok || response.status === 204) return 'deleted';
+      if (response.status === 404 || response.status === 410) return 'alreadyMissing';
+
+      let payload: GoogleEventResponse = {};
+      try {
+        payload = (await response.json()) as GoogleEventResponse;
+      } catch {
+        // ignore parse failure — treat as non-retryable
+      }
+
+      if (isRateLimitError(payload, response.status) && attempt < maxAttempts - 1) {
+        const delay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
+        console.warn(
+          `[CalendarIntegrations] Rate limited during delete — ` +
+          `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
+        );
+        await sleep(delay);
+        continue;
+      }
+
+      console.warn(
+        `[CalendarIntegrations] Delete event failed — httpStatus: ${response.status}, ` +
+        `errorCode: ${payload.error?.code ?? 'none'}, ` +
+        `reason: ${payload.error?.errors?.[0]?.reason ?? 'none'}`,
+      );
+      return 'failed';
     }
 
-    throw new BadRequestException('Não foi possível remover evento no Google Agenda.');
+    return 'failed';
   }
 
   private assertConfig() {
@@ -616,12 +694,13 @@ export class CalendarIntegrationsService {
   }
 }
 
-function chunkArray<T>(arr: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    chunks.push(arr.slice(i, i + size));
-  }
-  return chunks;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function isRateLimitError(payload: GoogleEventResponse, httpStatus: number): boolean {
+  if (httpStatus === 429) return true;
+  if (payload.error?.status === 'RESOURCE_EXHAUSTED') return true;
+  const reason = payload.error?.errors?.[0]?.reason ?? '';
+  return reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded';
 }
 
 function formatDateInputValue(date: Date | string): string {
