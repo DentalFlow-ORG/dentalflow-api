@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -192,10 +191,17 @@ export class CalendarIntegrationsService {
       DELETE FROM "google_calendar_oauth_states" WHERE "id" = ${state}
     `;
 
-    await this.sync(storedState.clinicId);
+    // Initial sync is best-effort — a failure here must not undo a successful connection.
+    try {
+      await this.sync(storedState.clinicId);
+    } catch {
+      console.warn('[CalendarIntegrations] Initial sync after connect failed — connection is still active.');
+    }
   }
 
   async disconnect(clinicId: string) {
+    this.assertConfig();
+
     const integration = await this.findActiveIntegration(clinicId);
     if (!integration) {
       return {
@@ -206,9 +212,16 @@ export class CalendarIntegrationsService {
       };
     }
 
-    const accessToken = await this.getValidAccessToken(integration);
-    await this.deleteSyncedGoogleEvents(clinicId, integration.googleCalendarId, accessToken);
-    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+    // Best-effort: clean up Google Calendar events and revoke the token.
+    // If the token is already expired, revoked externally, or Google returns any error,
+    // we log a warning and still complete the local disconnect so the user is never stuck.
+    try {
+      const accessToken = await this.getValidAccessToken(integration);
+      await this.deleteSyncedGoogleEvents(clinicId, integration.googleCalendarId, accessToken);
+      await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+    } catch {
+      console.warn('[CalendarIntegrations] Google cleanup during disconnect failed — proceeding with local disconnect.');
+    }
 
     await this.prisma.$executeRaw`
       UPDATE "google_calendar_integrations"
@@ -252,9 +265,11 @@ export class CalendarIntegrationsService {
   }
 
   async sync(clinicId: string) {
+    this.assertConfig();
+
     const integration = await this.findActiveIntegration(clinicId);
     if (!integration) {
-      throw new NotFoundException('Google Agenda não está conectado.');
+      throw new BadRequestException('Google Agenda não está conectado.');
     }
 
     const accessToken = await this.getValidAccessToken(integration);
