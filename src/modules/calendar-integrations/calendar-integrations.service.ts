@@ -16,6 +16,7 @@ const GOOGLE_CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
 ];
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const SYNC_CHUNK_SIZE = 5;
 
 type GoogleCalendarStatus = {
   connected: boolean;
@@ -74,7 +75,12 @@ type AppointmentGoogleEventRow = {
 
 type GoogleEventResponse = {
   id?: string;
-  error?: { code?: number; message?: string };
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+    errors?: Array<{ domain?: string; reason?: string; message?: string }>;
+  };
 }
 
 @Injectable()
@@ -276,33 +282,43 @@ export class CalendarIntegrationsService {
     const accessToken = await this.getValidAccessToken(integration);
     const appointments = await this.findAppointmentsToSync(clinicId);
 
-    const settled = await Promise.allSettled(
-      appointments.map(async (appointment) => {
-        const eventId = await this.upsertGoogleEvent(
-          accessToken,
-          integration.googleCalendarId,
-          appointment,
-        );
-        return { appointment, eventId };
-      }),
-    );
-
+    const chunks = chunkArray(appointments, SYNC_CHUNK_SIZE);
     let synced = 0;
-    for (const result of settled) {
-      if (result.status === 'rejected') {
-        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-        console.warn(`[CalendarIntegrations] Failed to upsert event — reason: ${reason}`);
-        continue;
+    let failed = 0;
+
+    for (const chunk of chunks) {
+      const settled = await Promise.allSettled(
+        chunk.map((appointment) =>
+          this.upsertGoogleEvent(accessToken, integration.googleCalendarId, appointment)
+            .then((eventId) => ({ appointment, eventId })),
+        ),
+      );
+
+      for (let i = 0; i < settled.length; i++) {
+        const result = settled[i];
+        const appointment = chunk[i];
+
+        if (result.status === 'rejected') {
+          failed += 1;
+          continue;
+        }
+
+        const { eventId } = result.value;
+        if (eventId && eventId !== appointment.googleCalendarEventId) {
+          await this.prisma.$executeRaw`
+            UPDATE "appointments"
+            SET "googleCalendarEventId" = ${eventId}
+            WHERE "id" = ${appointment.id}
+          `;
+        }
+        synced += 1;
       }
-      const { appointment, eventId } = result.value;
-      if (eventId && eventId !== appointment.googleCalendarEventId) {
-        await this.prisma.$executeRaw`
-          UPDATE "appointments"
-          SET "googleCalendarEventId" = ${eventId}
-          WHERE "id" = ${appointment.id}
-        `;
-      }
-      synced += 1;
+    }
+
+    if (failed > 0) {
+      console.warn(
+        `[CalendarIntegrations] Sync completed with failures — synced: ${synced}, failed: ${failed}`,
+      );
     }
 
     await this.prisma.$executeRaw`
@@ -311,7 +327,7 @@ export class CalendarIntegrationsService {
       WHERE "clinicId" = ${clinicId}
     `;
 
-    return { synced };
+    return { synced, failed };
   }
 
   private async findActiveIntegration(clinicId: string) {
@@ -534,6 +550,14 @@ export class CalendarIntegrationsService {
     const payload = (await response.json()) as GoogleEventResponse;
 
     if (!response.ok && payload.error?.code !== 404) {
+      const op = eventId ? 'update' : 'create';
+      const reason = payload.error?.errors?.[0]?.reason ?? 'none';
+      console.warn(
+        `[CalendarIntegrations] Google API error — op: ${op}, appointmentId: ${appointment.id}, ` +
+        `httpStatus: ${response.status}, errorCode: ${payload.error?.code ?? 'none'}, ` +
+        `errorStatus: ${payload.error?.status ?? 'none'}, reason: ${reason}, ` +
+        `message: ${payload.error?.message ?? 'none'}`,
+      );
       throw new BadRequestException('Erro ao sincronizar evento no Google Agenda.');
     }
 
@@ -590,6 +614,14 @@ export class CalendarIntegrationsService {
   private getEncryptionKey(): Buffer {
     return createHash('sha256').update(googleCalendarConfig.tokenSecret).digest();
   }
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
 }
 
 function formatDateInputValue(date: Date | string): string {
