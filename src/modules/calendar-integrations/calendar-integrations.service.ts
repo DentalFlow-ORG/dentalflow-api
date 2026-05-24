@@ -430,11 +430,10 @@ export class CalendarIntegrationsService {
         a."endTime",
         p."displayName" AS "profileName",
         c."timezone" AS "timezone",
-        pat."name" AS "patientName"
+        a."patientName"
       FROM "appointments" a
       INNER JOIN "profiles" p ON p."id" = a."profileId"
       INNER JOIN "clinics" c ON c."id" = a."clinicId"
-      LEFT JOIN "patients" pat ON pat."id" = a."patientId"
       WHERE
         a."clinicId" = ${clinicId}
         AND a."status" NOT IN ('CANCELED')
