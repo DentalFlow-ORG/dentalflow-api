@@ -268,8 +268,9 @@ model Clinic {
   fixedExpenses FixedExpense[]
   fiscalProfile ClinicFiscalProfile?
   serviceInvoices ServiceInvoice[]
-  googleCalendarIntegration GoogleCalendarIntegration?
-  googleCalendarOAuthStates GoogleCalendarOAuthState[]
+  googleCalendarIntegration          GoogleCalendarIntegration?
+  googleCalendarOAuthStates          GoogleCalendarOAuthState[]
+  userGoogleCalendarIntegrations     UserGoogleCalendarIntegration[] @relation("ClinicUserGoogleCalendars")
   clinicalRecords       ClinicalRecord[]
   clinicalRecordEvents  ClinicalRecordEvent[]
   clinicalTemplates     ClinicalTemplate[]
@@ -327,6 +328,7 @@ model User {
   fiscalInvoiceEvents FiscalInvoiceEvent[] @relation("FiscalInvoiceEventCreatedBy")
   googleCalendarConnections GoogleCalendarIntegration[] @relation("GoogleCalendarConnectedBy")
   googleCalendarOAuthStates GoogleCalendarOAuthState[]  @relation("GoogleCalendarOAuthStates")
+  userGoogleCalendar        UserGoogleCalendarIntegration? @relation("UserGoogleCalendar")
   createdClinicalRecords    ClinicalRecord[]            @relation("ClinicalRecordCreatedBy")
   updatedClinicalRecords    ClinicalRecord[]            @relation("ClinicalRecordUpdatedBy")
   clinicalRecordEvents      ClinicalRecordEvent[]       @relation("ClinicalRecordEventCreatedBy")
@@ -610,7 +612,8 @@ model Appointment {
   cancellationReason String?
   confirmedAt        DateTime?
   completedAt        DateTime?
-  googleCalendarEventId String?
+  googleCalendarEventId         String?
+  dentistGoogleCalendarEventId  String?
   estimatedAmountCents  Int?
   paidAmountCents       Int?
   paymentStatus         AppointmentPaymentStatus @default(PAYMENT_PENDING)
@@ -679,6 +682,29 @@ model GoogleCalendarOAuthState {
   @@index([clinicId])
   @@index([userId])
   @@map("google_calendar_oauth_states")
+}
+
+model UserGoogleCalendarIntegration {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  clinicId              String
+  googleCalendarId      String    @default("primary")
+  googleCalendarSummary String?
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String
+  tokenExpiresAt        DateTime
+  syncToken             String?
+  connectedAt           DateTime  @default(now())
+  lastSyncedAt          DateTime?
+  disconnectedAt        DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user   User   @relation("UserGoogleCalendar", fields: [userId], references: [id], onDelete: Cascade)
+  clinic Clinic @relation("ClinicUserGoogleCalendars", fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@map("user_google_calendar_integrations")
 }
 
 // ================================================================
