@@ -21,15 +21,23 @@ export class CalendarIntegrationsController {
   ) {}
 
   @Get('status')
-  @Roles('OWNER')
+  @Roles('OWNER', 'DENTIST')
   status(@CurrentUser() user: AuthUser) {
+    if (user.role === 'DENTIST') {
+      const clinicId = this.accessPolicy.assertClinicMember(user);
+      return this.integrationsService.getDentistStatus(user.id, clinicId);
+    }
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.integrationsService.getStatus(clinicId);
   }
 
   @Post('connect')
-  @Roles('OWNER')
+  @Roles('OWNER', 'DENTIST')
   connect(@CurrentUser() user: AuthUser) {
+    if (user.role === 'DENTIST') {
+      const clinicId = this.accessPolicy.assertClinicMember(user);
+      return this.integrationsService.createDentistConnectUrl(user.id, clinicId);
+    }
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.integrationsService.createConnectUrl(clinicId, user.id);
   }
@@ -71,15 +79,23 @@ export class CalendarIntegrationsController {
   }
 
   @Post('disconnect')
-  @Roles('OWNER')
+  @Roles('OWNER', 'DENTIST')
   disconnect(@CurrentUser() user: AuthUser) {
+    if (user.role === 'DENTIST') {
+      const clinicId = this.accessPolicy.assertClinicMember(user);
+      return this.integrationsService.disconnectDentist(user.id, clinicId);
+    }
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.integrationsService.disconnect(clinicId);
   }
 
   @Post('sync')
-  @Roles('OWNER')
+  @Roles('OWNER', 'DENTIST')
   sync(@CurrentUser() user: AuthUser) {
+    if (user.role === 'DENTIST') {
+      const clinicId = this.accessPolicy.assertClinicMember(user);
+      return this.integrationsService.syncDentist(user.id, clinicId);
+    }
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.integrationsService.sync(clinicId);
   }

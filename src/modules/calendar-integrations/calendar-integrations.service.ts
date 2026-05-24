@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,10 +39,24 @@ type IntegrationRow = {
   lastSyncedAt: Date | null;
 }
 
-type OAuthStateRow = {
+type UserIntegrationRow = {
+  id: string;
+  userId: string;
+  clinicId: string;
+  googleCalendarId: string;
+  googleCalendarSummary: string | null;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string;
+  tokenExpiresAt: Date;
+  connectedAt: Date;
+  lastSyncedAt: Date | null;
+}
+
+type OAuthStateWithRoleRow = {
   id: string;
   clinicId: string;
   userId: string;
+  userRole: string;
   expiresAt: Date;
 }
 
@@ -61,17 +76,24 @@ type CalendarInfoResponse = {
 type AppointmentSyncRow = {
   id: string;
   googleCalendarEventId: string | null;
+  dentistGoogleCalendarEventId: string | null;
   appointmentDate: Date | string;
   startTime: Date | string;
   endTime: Date | string;
   profileName: string;
   timezone: string;
   patientName: string | null;
+  serviceName: string | null;
 }
 
 type AppointmentGoogleEventRow = {
   id: string;
   googleCalendarEventId: string | null;
+}
+
+type AppointmentDentistGoogleEventRow = {
+  id: string;
+  dentistGoogleCalendarEventId: string | null;
 }
 
 type GoogleEventResponse = {
@@ -89,6 +111,8 @@ type DeleteEventResult = 'deleted' | 'alreadyMissing' | 'failed';
 @Injectable()
 export class CalendarIntegrationsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ── OWNER methods ────────────────────────────────────────────────────────────
 
   async getStatus(clinicId: string): Promise<GoogleCalendarStatus> {
     const integration = await this.findActiveIntegration(clinicId);
@@ -116,16 +140,7 @@ export class CalendarIntegrationsService {
       VALUES (${state}, ${clinicId}, ${userId}, ${expiresAt})
     `;
 
-    const url = new URL(GOOGLE_AUTH_URL);
-    url.searchParams.set('client_id', googleCalendarConfig.clientId);
-    url.searchParams.set('redirect_uri', googleCalendarConfig.redirectUri);
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', GOOGLE_CALENDAR_SCOPES.join(' '));
-    url.searchParams.set('access_type', 'offline');
-    url.searchParams.set('prompt', 'consent');
-    url.searchParams.set('state', state);
-
-    return { url: url.toString() };
+    return { url: this.buildOAuthUrl(state) };
   }
 
   async handleCallback(code: string | undefined, state: string | undefined) {
@@ -135,10 +150,11 @@ export class CalendarIntegrationsService {
       throw new BadRequestException('Retorno do Google Agenda incompleto.');
     }
 
-    const [storedState] = await this.prisma.$queryRaw<OAuthStateRow[]>`
-      SELECT "id", "clinicId", "userId", "expiresAt"
-      FROM "google_calendar_oauth_states"
-      WHERE "id" = ${state}
+    const [storedState] = await this.prisma.$queryRaw<OAuthStateWithRoleRow[]>`
+      SELECT s."id", s."clinicId", s."userId", s."expiresAt", u."role" AS "userRole"
+      FROM "google_calendar_oauth_states" s
+      INNER JOIN "users" u ON u."id" = s."userId"
+      WHERE s."id" = ${state}
       LIMIT 1
     `;
 
@@ -158,54 +174,104 @@ export class CalendarIntegrationsService {
     const accessTokenEncrypted = this.encrypt(token.access_token);
     const refreshTokenEncrypted = this.encrypt(token.refresh_token);
 
-    await this.prisma.$executeRaw`
-      INSERT INTO "google_calendar_integrations" (
-        "id",
-        "clinicId",
-        "connectedByUserId",
-        "googleCalendarId",
-        "googleCalendarSummary",
-        "accessTokenEncrypted",
-        "refreshTokenEncrypted",
-        "tokenExpiresAt",
-        "connectedAt",
-        "disconnectedAt",
-        "updatedAt"
-      )
-      VALUES (
-        ${randomUUID()},
-        ${storedState.clinicId},
-        ${storedState.userId},
-        ${calendarInfo.id ?? 'primary'},
-        ${calendarInfo.summary ?? null},
-        ${accessTokenEncrypted},
-        ${refreshTokenEncrypted},
-        ${expiresAt},
-        NOW(),
-        NULL,
-        NOW()
-      )
-      ON CONFLICT ("clinicId") DO UPDATE SET
-        "connectedByUserId" = EXCLUDED."connectedByUserId",
-        "googleCalendarId" = EXCLUDED."googleCalendarId",
-        "googleCalendarSummary" = EXCLUDED."googleCalendarSummary",
-        "accessTokenEncrypted" = EXCLUDED."accessTokenEncrypted",
-        "refreshTokenEncrypted" = EXCLUDED."refreshTokenEncrypted",
-        "tokenExpiresAt" = EXCLUDED."tokenExpiresAt",
-        "connectedAt" = NOW(),
-        "disconnectedAt" = NULL,
-        "updatedAt" = NOW()
-    `;
+    if (storedState.userRole === 'DENTIST') {
+      await this.prisma.$executeRaw`
+        INSERT INTO "user_google_calendar_integrations" (
+          "id",
+          "userId",
+          "clinicId",
+          "googleCalendarId",
+          "googleCalendarSummary",
+          "accessTokenEncrypted",
+          "refreshTokenEncrypted",
+          "tokenExpiresAt",
+          "connectedAt",
+          "disconnectedAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${randomUUID()},
+          ${storedState.userId},
+          ${storedState.clinicId},
+          ${calendarInfo.id ?? 'primary'},
+          ${calendarInfo.summary ?? null},
+          ${accessTokenEncrypted},
+          ${refreshTokenEncrypted},
+          ${expiresAt},
+          NOW(),
+          NULL,
+          NOW()
+        )
+        ON CONFLICT ("userId") DO UPDATE SET
+          "clinicId"              = EXCLUDED."clinicId",
+          "googleCalendarId"      = EXCLUDED."googleCalendarId",
+          "googleCalendarSummary" = EXCLUDED."googleCalendarSummary",
+          "accessTokenEncrypted"  = EXCLUDED."accessTokenEncrypted",
+          "refreshTokenEncrypted" = EXCLUDED."refreshTokenEncrypted",
+          "tokenExpiresAt"        = EXCLUDED."tokenExpiresAt",
+          "connectedAt"           = NOW(),
+          "disconnectedAt"        = NULL,
+          "updatedAt"             = NOW()
+      `;
 
-    await this.prisma.$executeRaw`
-      DELETE FROM "google_calendar_oauth_states" WHERE "id" = ${state}
-    `;
+      await this.prisma.$executeRaw`
+        DELETE FROM "google_calendar_oauth_states" WHERE "id" = ${state}
+      `;
 
-    // Initial sync is best-effort — a failure here must not undo a successful connection.
-    try {
-      await this.sync(storedState.clinicId);
-    } catch {
-      console.warn('[CalendarIntegrations] Initial sync after connect failed — connection is still active.');
+      try {
+        await this.syncDentist(storedState.userId, storedState.clinicId);
+      } catch {
+        console.warn('[CalendarIntegrations] Initial dentist sync after connect failed — connection is still active.');
+      }
+    } else {
+      await this.prisma.$executeRaw`
+        INSERT INTO "google_calendar_integrations" (
+          "id",
+          "clinicId",
+          "connectedByUserId",
+          "googleCalendarId",
+          "googleCalendarSummary",
+          "accessTokenEncrypted",
+          "refreshTokenEncrypted",
+          "tokenExpiresAt",
+          "connectedAt",
+          "disconnectedAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${randomUUID()},
+          ${storedState.clinicId},
+          ${storedState.userId},
+          ${calendarInfo.id ?? 'primary'},
+          ${calendarInfo.summary ?? null},
+          ${accessTokenEncrypted},
+          ${refreshTokenEncrypted},
+          ${expiresAt},
+          NOW(),
+          NULL,
+          NOW()
+        )
+        ON CONFLICT ("clinicId") DO UPDATE SET
+          "connectedByUserId"     = EXCLUDED."connectedByUserId",
+          "googleCalendarId"      = EXCLUDED."googleCalendarId",
+          "googleCalendarSummary" = EXCLUDED."googleCalendarSummary",
+          "accessTokenEncrypted"  = EXCLUDED."accessTokenEncrypted",
+          "refreshTokenEncrypted" = EXCLUDED."refreshTokenEncrypted",
+          "tokenExpiresAt"        = EXCLUDED."tokenExpiresAt",
+          "connectedAt"           = NOW(),
+          "disconnectedAt"        = NULL,
+          "updatedAt"             = NOW()
+      `;
+
+      await this.prisma.$executeRaw`
+        DELETE FROM "google_calendar_oauth_states" WHERE "id" = ${state}
+      `;
+
+      try {
+        await this.sync(storedState.clinicId);
+      } catch {
+        console.warn('[CalendarIntegrations] Initial sync after connect failed — connection is still active.');
+      }
     }
   }
 
@@ -234,8 +300,6 @@ export class CalendarIntegrationsService {
       `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
     );
 
-    // If any events could not be removed, keep the integration active so the user can retry.
-    // Token is not revoked and disconnectedAt is not set — the connection remains intact.
     if (cleanup.failed > 0) {
       throw new BadRequestException(
         'Não foi possível remover todos os eventos do Google Agenda. Tente desconectar novamente em alguns instantes.',
@@ -310,6 +374,7 @@ export class CalendarIntegrationsService {
           accessToken,
           integration.googleCalendarId,
           appointment,
+          appointment.googleCalendarEventId,
         );
         if (eventId && eventId !== appointment.googleCalendarEventId) {
           await this.prisma.$executeRaw`
@@ -339,6 +404,142 @@ export class CalendarIntegrationsService {
     return { synced, failed };
   }
 
+  // ── DENTIST methods ──────────────────────────────────────────────────────────
+
+  async getDentistStatus(userId: string, clinicId: string): Promise<GoogleCalendarStatus> {
+    const integration = await this.findActiveUserIntegration(userId, clinicId);
+
+    return {
+      connected: Boolean(integration),
+      calendarSummary: integration?.googleCalendarSummary ?? null,
+      connectedAt: integration?.connectedAt ?? null,
+      lastSyncedAt: integration?.lastSyncedAt ?? null,
+    };
+  }
+
+  async createDentistConnectUrl(userId: string, clinicId: string) {
+    this.assertConfig();
+    await this.prisma.$executeRaw`
+      DELETE FROM "google_calendar_oauth_states"
+      WHERE "userId" = ${userId} OR "expiresAt" < NOW()
+    `;
+
+    const state = randomUUID();
+    const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+
+    await this.prisma.$executeRaw`
+      INSERT INTO "google_calendar_oauth_states" ("id", "clinicId", "userId", "expiresAt")
+      VALUES (${state}, ${clinicId}, ${userId}, ${expiresAt})
+    `;
+
+    return { url: this.buildOAuthUrl(state) };
+  }
+
+  async syncDentist(userId: string, clinicId: string) {
+    this.assertConfig();
+
+    const integration = await this.findActiveUserIntegration(userId, clinicId);
+    if (!integration) {
+      throw new BadRequestException('Google Agenda não está conectado.');
+    }
+
+    const profile = await this.findDentistProfile(userId, clinicId);
+    const accessToken = await this.getValidUserAccessToken(integration);
+    const appointments = await this.findDentistAppointmentsToSync(profile.id, clinicId);
+
+    let synced = 0;
+    let failed = 0;
+
+    for (let i = 0; i < appointments.length; i++) {
+      if (i > 0) await sleep(GOOGLE_API_DELAY_MS);
+      const appointment = appointments[i];
+
+      try {
+        const eventId = await this.upsertGoogleEvent(
+          accessToken,
+          integration.googleCalendarId,
+          appointment,
+          appointment.dentistGoogleCalendarEventId,
+        );
+        if (eventId && eventId !== appointment.dentistGoogleCalendarEventId) {
+          await this.prisma.$executeRaw`
+            UPDATE "appointments"
+            SET "dentistGoogleCalendarEventId" = ${eventId}
+            WHERE "id" = ${appointment.id}
+          `;
+        }
+        synced += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+
+    if (failed > 0) {
+      console.warn(
+        `[CalendarIntegrations] Dentist sync completed with failures — synced: ${synced}, failed: ${failed}`,
+      );
+    }
+
+    await this.prisma.$executeRaw`
+      UPDATE "user_google_calendar_integrations"
+      SET "lastSyncedAt" = NOW(), "updatedAt" = NOW()
+      WHERE "userId" = ${userId}
+    `;
+
+    return { synced, failed };
+  }
+
+  async disconnectDentist(userId: string, clinicId: string) {
+    this.assertConfig();
+
+    const integration = await this.findActiveUserIntegration(userId, clinicId);
+    if (!integration) {
+      return {
+        connected: false,
+        calendarSummary: null,
+        connectedAt: null,
+        lastSyncedAt: null,
+      };
+    }
+
+    const profile = await this.findDentistProfile(userId, clinicId);
+    const accessToken = await this.getValidUserAccessToken(integration);
+    const cleanup = await this.deleteDentistSyncedGoogleEvents(
+      profile.id,
+      clinicId,
+      integration.googleCalendarId,
+      accessToken,
+    );
+
+    console.warn(
+      `[CalendarIntegrations] Dentist disconnect cleanup — deleted: ${cleanup.deleted}, ` +
+      `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
+    );
+
+    if (cleanup.failed > 0) {
+      throw new BadRequestException(
+        'Não foi possível remover todos os eventos do Google Agenda. Tente desconectar novamente em alguns instantes.',
+      );
+    }
+
+    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+
+    await this.prisma.$executeRaw`
+      UPDATE "user_google_calendar_integrations"
+      SET "disconnectedAt" = NOW(), "updatedAt" = NOW()
+      WHERE "userId" = ${userId}
+    `;
+
+    return {
+      connected: false,
+      calendarSummary: null,
+      connectedAt: null,
+      lastSyncedAt: null,
+    };
+  }
+
+  // ── Private: OWNER helpers ───────────────────────────────────────────────────
+
   private async findActiveIntegration(clinicId: string) {
     const [integration] = await this.prisma.$queryRaw<IntegrationRow[]>`
       SELECT
@@ -357,69 +558,6 @@ export class CalendarIntegrationsService {
     `;
 
     return integration ?? null;
-  }
-
-  private async exchangeCodeForToken(code: string) {
-    const body = new URLSearchParams({
-      code,
-      client_id: googleCalendarConfig.clientId,
-      client_secret: googleCalendarConfig.clientSecret,
-      redirect_uri: googleCalendarConfig.redirectUri,
-      grant_type: 'authorization_code',
-    });
-
-    return this.postTokenRequest(body);
-  }
-
-  private async refreshAccessToken(integration: IntegrationRow) {
-    const body = new URLSearchParams({
-      client_id: googleCalendarConfig.clientId,
-      client_secret: googleCalendarConfig.clientSecret,
-      refresh_token: this.decrypt(integration.refreshTokenEncrypted),
-      grant_type: 'refresh_token',
-    });
-
-    return this.postTokenRequest(body);
-  }
-
-  private async revokeGoogleToken(token: string) {
-    const body = new URLSearchParams({ token });
-    const response = await fetch(GOOGLE_REVOKE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException('Não foi possível revogar o acesso ao Google Agenda.');
-    }
-  }
-
-  private async postTokenRequest(body: URLSearchParams): Promise<TokenResponse> {
-    const response = await fetch(GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const token = (await response.json()) as TokenResponse;
-
-    if (!response.ok) {
-      throw new BadRequestException('Não foi possível autenticar no Google Agenda.');
-    }
-
-    return token;
-  }
-
-  private async fetchCalendarInfo(accessToken: string): Promise<CalendarInfoResponse> {
-    const response = await fetch(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList/primary`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException('Não foi possível acessar o calendário principal.');
-    }
-
-    return response.json() as Promise<CalendarInfoResponse>;
   }
 
   private async getValidAccessToken(integration: IntegrationRow) {
@@ -450,15 +588,18 @@ export class CalendarIntegrationsService {
       SELECT
         a."id",
         a."googleCalendarEventId",
+        a."dentistGoogleCalendarEventId",
         a."appointmentDate",
         a."startTime",
         a."endTime",
         p."displayName" AS "profileName",
         c."timezone" AS "timezone",
-        a."patientName"
+        a."patientName",
+        s."name" AS "serviceName"
       FROM "appointments" a
       INNER JOIN "profiles" p ON p."id" = a."profileId"
       INNER JOIN "clinics" c ON c."id" = a."clinicId"
+      LEFT JOIN "services" s ON s."id" = a."serviceId"
       WHERE
         a."clinicId" = ${clinicId}
         AND a."status" NOT IN ('CANCELED')
@@ -520,17 +661,229 @@ export class CalendarIntegrationsService {
     return { deleted, alreadyMissing, failed };
   }
 
+  // ── Private: DENTIST helpers ─────────────────────────────────────────────────
+
+  private async findActiveUserIntegration(userId: string, clinicId: string) {
+    const [integration] = await this.prisma.$queryRaw<UserIntegrationRow[]>`
+      SELECT
+        "id",
+        "userId",
+        "clinicId",
+        "googleCalendarId",
+        "googleCalendarSummary",
+        "accessTokenEncrypted",
+        "refreshTokenEncrypted",
+        "tokenExpiresAt",
+        "connectedAt",
+        "lastSyncedAt"
+      FROM "user_google_calendar_integrations"
+      WHERE "userId" = ${userId} AND "clinicId" = ${clinicId} AND "disconnectedAt" IS NULL
+      LIMIT 1
+    `;
+
+    return integration ?? null;
+  }
+
+  private async findDentistProfile(userId: string, clinicId: string) {
+    const [profile] = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "profiles"
+      WHERE "userId" = ${userId} AND "clinicId" = ${clinicId}
+      LIMIT 1
+    `;
+
+    if (!profile) {
+      throw new NotFoundException(
+        'Nenhum perfil profissional vinculado a esta conta. Configure seu perfil antes de usar o Google Agenda.',
+      );
+    }
+
+    return profile;
+  }
+
+  private async getValidUserAccessToken(integration: UserIntegrationRow) {
+    if (integration.tokenExpiresAt.getTime() > Date.now() + 60_000) {
+      return this.decrypt(integration.accessTokenEncrypted);
+    }
+
+    const token = await this.refreshAccessToken(integration);
+    if (!token.access_token) {
+      throw new BadRequestException('Não foi possível renovar o acesso ao Google Agenda.');
+    }
+
+    const expiresAt = new Date(Date.now() + (token.expires_in ?? 3600) * 1000);
+    await this.prisma.$executeRaw`
+      UPDATE "user_google_calendar_integrations"
+      SET
+        "accessTokenEncrypted" = ${this.encrypt(token.access_token)},
+        "tokenExpiresAt" = ${expiresAt},
+        "updatedAt" = NOW()
+      WHERE "userId" = ${integration.userId}
+    `;
+
+    return token.access_token;
+  }
+
+  private async findDentistAppointmentsToSync(profileId: string, clinicId: string) {
+    return this.prisma.$queryRaw<AppointmentSyncRow[]>`
+      SELECT
+        a."id",
+        a."googleCalendarEventId",
+        a."dentistGoogleCalendarEventId",
+        a."appointmentDate",
+        a."startTime",
+        a."endTime",
+        p."displayName" AS "profileName",
+        c."timezone" AS "timezone",
+        a."patientName",
+        s."name" AS "serviceName"
+      FROM "appointments" a
+      INNER JOIN "profiles" p ON p."id" = a."profileId"
+      INNER JOIN "clinics" c ON c."id" = a."clinicId"
+      LEFT JOIN "services" s ON s."id" = a."serviceId"
+      WHERE
+        a."clinicId" = ${clinicId}
+        AND a."profileId" = ${profileId}
+        AND a."status" NOT IN ('CANCELED')
+        AND a."appointmentDate" >= CURRENT_DATE
+      ORDER BY a."appointmentDate" ASC, a."startTime" ASC
+    `;
+  }
+
+  private async findProfileAppointmentsWithDentistEvents(profileId: string, clinicId: string) {
+    return this.prisma.$queryRaw<AppointmentDentistGoogleEventRow[]>`
+      SELECT "id", "dentistGoogleCalendarEventId"
+      FROM "appointments"
+      WHERE
+        "clinicId" = ${clinicId}
+        AND "profileId" = ${profileId}
+        AND "dentistGoogleCalendarEventId" IS NOT NULL
+    `;
+  }
+
+  private async deleteDentistSyncedGoogleEvents(
+    profileId: string,
+    clinicId: string,
+    calendarId: string,
+    accessToken: string,
+  ): Promise<{ deleted: number; alreadyMissing: number; failed: number }> {
+    const appointments = await this.findProfileAppointmentsWithDentistEvents(profileId, clinicId);
+
+    let deleted = 0;
+    let alreadyMissing = 0;
+    let failed = 0;
+
+    for (let i = 0; i < appointments.length; i++) {
+      if (i > 0) await sleep(GOOGLE_API_DELAY_MS);
+      const appt = appointments[i];
+      if (!appt.dentistGoogleCalendarEventId) continue;
+
+      const result = await this.deleteGoogleEvent(
+        accessToken,
+        calendarId,
+        appt.dentistGoogleCalendarEventId,
+      );
+
+      if (result === 'deleted') {
+        deleted += 1;
+        await this.prisma.$executeRaw`
+          UPDATE "appointments"
+          SET "dentistGoogleCalendarEventId" = NULL
+          WHERE "id" = ${appt.id} AND "clinicId" = ${clinicId}
+        `;
+      } else if (result === 'alreadyMissing') {
+        alreadyMissing += 1;
+        await this.prisma.$executeRaw`
+          UPDATE "appointments"
+          SET "dentistGoogleCalendarEventId" = NULL
+          WHERE "id" = ${appt.id} AND "clinicId" = ${clinicId}
+        `;
+      } else {
+        failed += 1;
+        // dentistGoogleCalendarEventId intentionally preserved so the event is not orphaned
+      }
+    }
+
+    return { deleted, alreadyMissing, failed };
+  }
+
+  // ── Private: shared Google API helpers ──────────────────────────────────────
+
+  private async exchangeCodeForToken(code: string) {
+    const body = new URLSearchParams({
+      code,
+      client_id: googleCalendarConfig.clientId,
+      client_secret: googleCalendarConfig.clientSecret,
+      redirect_uri: googleCalendarConfig.redirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    return this.postTokenRequest(body);
+  }
+
+  private async refreshAccessToken(integration: { refreshTokenEncrypted: string }) {
+    const body = new URLSearchParams({
+      client_id: googleCalendarConfig.clientId,
+      client_secret: googleCalendarConfig.clientSecret,
+      refresh_token: this.decrypt(integration.refreshTokenEncrypted),
+      grant_type: 'refresh_token',
+    });
+
+    return this.postTokenRequest(body);
+  }
+
+  private async revokeGoogleToken(token: string) {
+    const body = new URLSearchParams({ token });
+    const response = await fetch(GOOGLE_REVOKE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException('Não foi possível revogar o acesso ao Google Agenda.');
+    }
+  }
+
+  private async postTokenRequest(body: URLSearchParams): Promise<TokenResponse> {
+    const response = await fetch(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    const token = (await response.json()) as TokenResponse;
+
+    if (!response.ok) {
+      throw new BadRequestException('Não foi possível autenticar no Google Agenda.');
+    }
+
+    return token;
+  }
+
+  private async fetchCalendarInfo(accessToken: string): Promise<CalendarInfoResponse> {
+    const response = await fetch(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList/primary`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException('Não foi possível acessar o calendário principal.');
+    }
+
+    return response.json() as Promise<CalendarInfoResponse>;
+  }
+
   private async upsertGoogleEvent(
     accessToken: string,
     calendarId: string,
     appointment: AppointmentSyncRow,
+    existingEventId: string | null,
   ) {
-    if (appointment.googleCalendarEventId) {
+    if (existingEventId) {
       const updated = await this.sendGoogleEventRequest(
         accessToken,
         calendarId,
         appointment,
-        appointment.googleCalendarEventId,
+        existingEventId,
       );
       if (updated.id) return updated.id;
       if (updated.error?.code !== 404) {
@@ -557,9 +910,7 @@ export class CalendarIntegrationsService {
     const startTime = formatTimeInputValue(appointment.startTime);
     const endTime = formatTimeInputValue(appointment.endTime);
     const requestBody = JSON.stringify({
-      summary: appointment.patientName
-        ? `Consulta - ${appointment.patientName}`
-        : 'Consulta odontologica',
+      summary: buildEventTitle(appointment.serviceName, appointment.patientName),
       description: [
         'Evento sincronizado pelo DentalFlow.',
         `Profissional: ${appointment.profileName}`,
@@ -659,6 +1010,19 @@ export class CalendarIntegrationsService {
     return 'failed';
   }
 
+  private buildOAuthUrl(state: string): string {
+    const url = new URL(GOOGLE_AUTH_URL);
+    url.searchParams.set('client_id', googleCalendarConfig.clientId);
+    url.searchParams.set('redirect_uri', googleCalendarConfig.redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', GOOGLE_CALENDAR_SCOPES.join(' '));
+    url.searchParams.set('access_type', 'offline');
+    url.searchParams.set('prompt', 'consent');
+    url.searchParams.set('state', state);
+
+    return url.toString();
+  }
+
   private assertConfig() {
     if (
       !googleCalendarConfig.clientId ||
@@ -695,6 +1059,13 @@ export class CalendarIntegrationsService {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function buildEventTitle(serviceName: string | null, patientName: string | null): string {
+  if (serviceName && patientName) return `${serviceName} - ${patientName}`;
+  if (serviceName) return serviceName;
+  if (patientName) return `Consulta odontologica - ${patientName}`;
+  return 'Consulta odontologica';
+}
 
 function isRateLimitError(payload: GoogleEventResponse, httpStatus: number): boolean {
   if (httpStatus === 429) return true;
