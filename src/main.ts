@@ -66,12 +66,13 @@ async function bootstrap() {
   );
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin && appConfig.nodeEnv !== 'production') {
+      if (!origin) {
+        // No Origin header: server-to-server or health check request — allow.
         callback(null, true);
         return;
       }
 
-      if (origin && appConfig.frontendOrigins.includes(origin)) {
+      if (appConfig.frontendOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
