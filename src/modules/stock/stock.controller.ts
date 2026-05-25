@@ -26,6 +26,7 @@ import { ListStockProductsDto } from './dto/list-stock-products.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { ListStockMovementsDto } from './dto/list-stock-movements.dto';
 import { StockService } from './stock.service';
+import { StockPurchaseListService } from './stock-purchase-list.service';
 
 @Controller('stock')
 @TenantScoped()
@@ -35,6 +36,7 @@ import { StockService } from './stock.service';
 export class StockController {
   constructor(
     private readonly stockService: StockService,
+    private readonly stockPurchaseListService: StockPurchaseListService,
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
@@ -83,6 +85,15 @@ export class StockController {
     return this.stockService.deleteCategory(
       this.accessPolicy.assertOwnerAccess(user),
       categoryId,
+    );
+  }
+
+  // ── Purchase list ────────────────────────────────────────────────
+
+  @Get('purchase-list')
+  getPurchaseList(@CurrentUser() user: AuthUser) {
+    return this.stockPurchaseListService.getPurchaseList(
+      this.accessPolicy.assertOwnerOrAssistantAccess(user),
     );
   }
 
