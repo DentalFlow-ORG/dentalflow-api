@@ -29,9 +29,9 @@ export const launchCampaignConfig: LaunchCampaignConfig = {
     premium: { monthly: 27_990 },
   },
   compareAtPrices: {
-    starter: { monthly: 14_990 },
-    professional: { monthly: 24_990 },
-    premium: { monthly: 34_990 },
+    starter: { monthly: 12_990 },
+    professional: { monthly: 21_990 },
+    premium: { monthly: 29_990 },
   },
   coupons: {
     starter: {
