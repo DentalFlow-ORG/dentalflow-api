@@ -152,6 +152,12 @@ export class MetricsService {
         a.status === AppointmentStatus.CANCELED ||
         a.status === AppointmentStatus.NO_SHOW,
     ).length;
+    const todayCanceled = todayAppointments.filter(
+      (a) => a.status === AppointmentStatus.CANCELED,
+    ).length;
+    const todayNoShow = todayAppointments.filter(
+      (a) => a.status === AppointmentStatus.NO_SHOW,
+    ).length;
 
     const pendingPaymentsCount = pendingPaymentAppts.length;
     const pendingPaymentsAmountCents = pendingPaymentAppts.reduce(
@@ -321,6 +327,8 @@ export class MetricsService {
         appointmentsPending: todayPending,
         appointmentsCompleted: todayCompleted,
         appointmentsCanceledOrNoShow: todayCanceledOrNoShow,
+        appointmentsCanceled: todayCanceled,
+        appointmentsNoShow: todayNoShow,
         pendingPaymentsCount,
         pendingPaymentsAmountCents,
       },
