@@ -27,6 +27,8 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { ListStockMovementsDto } from './dto/list-stock-movements.dto';
 import { StockService } from './stock.service';
 import { StockPurchaseListService } from './stock-purchase-list.service';
+import { StockAbnormalConsumptionService } from './stock-abnormal-consumption.service';
+import { GetAbnormalConsumptionDto } from './dto/get-abnormal-consumption.dto';
 
 @Controller('stock')
 @TenantScoped()
@@ -37,6 +39,7 @@ export class StockController {
   constructor(
     private readonly stockService: StockService,
     private readonly stockPurchaseListService: StockPurchaseListService,
+    private readonly abnormalConsumptionService: StockAbnormalConsumptionService,
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
@@ -94,6 +97,19 @@ export class StockController {
   getPurchaseList(@CurrentUser() user: AuthUser) {
     return this.stockPurchaseListService.getPurchaseList(
       this.accessPolicy.assertOwnerOrAssistantAccess(user),
+    );
+  }
+
+  // ── Abnormal consumption ─────────────────────────────────────────
+
+  @Get('abnormal-consumption')
+  getAbnormalConsumption(
+    @CurrentUser() user: AuthUser,
+    @Query() query: GetAbnormalConsumptionDto,
+  ) {
+    return this.abnormalConsumptionService.getAbnormalConsumption(
+      this.accessPolicy.assertOwnerOrAssistantAccess(user),
+      query,
     );
   }
 
