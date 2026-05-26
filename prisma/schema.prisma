@@ -192,6 +192,7 @@ enum StockMovementType {
 enum AiAssistantAnalysisType {
   FINANCE
   INVENTORY
+  STOCK_COPILOT
 }
 
 enum AiAssistantAnalysisStatus {

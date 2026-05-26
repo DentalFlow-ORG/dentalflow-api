@@ -10,16 +10,19 @@ import { AiAssistantController } from './ai-assistant.controller';
 import { AiAssistantHealthController } from './ai-assistant-health.controller';
 import { AiAssistantService } from './ai-assistant.service';
 import { AiQuotaService } from './ai-quota.service';
+import { StockCopilotController } from './stock-copilot.controller';
+import { StockCopilotService } from './stock-copilot.service';
 
 @Module({
   imports: [PrismaModule, CommonModule, FinanceModule, StockModule],
-  controllers: [AiAssistantController, AiAssistantHealthController],
+  controllers: [AiAssistantController, AiAssistantHealthController, StockCopilotController],
   providers: [
     AiAssistantService,
     AiAssistantAnalysisRepository,
     AiQuotaService,
     FinanceContextBuilder,
     InventoryContextBuilder,
+    StockCopilotService,
   ],
 })
 export class AiAssistantModule {}
