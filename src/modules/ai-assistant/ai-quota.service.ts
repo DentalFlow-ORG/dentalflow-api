@@ -35,12 +35,12 @@ const AI_PLAN_LIMITS: Record<string, PlanLimits> = {
   professional: {
     allowed: true,
     perTypeMonthly: 1,
-    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30 },
+    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30, MONTHLY_FINANCE_DIAGNOSIS: 5 },
   },
   premium: {
     allowed: true,
     perTypeMonthly: 10,
-    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100 },
+    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100, MONTHLY_FINANCE_DIAGNOSIS: 20 },
   },
 };
 const DEFAULT_LIMITS: PlanLimits = { allowed: false, perTypeMonthly: 0 };
