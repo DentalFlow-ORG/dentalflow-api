@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AiAssistantAnalysisType" ADD VALUE 'ABNORMAL_CONSUMPTION_COPILOT';
