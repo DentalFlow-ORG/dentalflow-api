@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AiAssistantAnalysisType" ADD VALUE 'MONTHLY_FINANCE_DIAGNOSIS';
