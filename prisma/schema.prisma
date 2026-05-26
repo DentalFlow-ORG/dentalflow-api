@@ -193,6 +193,7 @@ enum AiAssistantAnalysisType {
   FINANCE
   INVENTORY
   STOCK_COPILOT
+  ABNORMAL_CONSUMPTION_COPILOT
 }
 
 enum AiAssistantAnalysisStatus {

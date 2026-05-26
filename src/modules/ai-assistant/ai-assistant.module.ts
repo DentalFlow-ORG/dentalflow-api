@@ -12,10 +12,17 @@ import { AiAssistantService } from './ai-assistant.service';
 import { AiQuotaService } from './ai-quota.service';
 import { StockCopilotController } from './stock-copilot.controller';
 import { StockCopilotService } from './stock-copilot.service';
+import { AbnormalConsumptionCopilotController } from './abnormal-consumption-copilot.controller';
+import { AbnormalConsumptionCopilotService } from './abnormal-consumption-copilot.service';
 
 @Module({
   imports: [PrismaModule, CommonModule, FinanceModule, StockModule],
-  controllers: [AiAssistantController, AiAssistantHealthController, StockCopilotController],
+  controllers: [
+    AiAssistantController,
+    AiAssistantHealthController,
+    StockCopilotController,
+    AbnormalConsumptionCopilotController,
+  ],
   providers: [
     AiAssistantService,
     AiAssistantAnalysisRepository,
@@ -23,6 +30,7 @@ import { StockCopilotService } from './stock-copilot.service';
     FinanceContextBuilder,
     InventoryContextBuilder,
     StockCopilotService,
+    AbnormalConsumptionCopilotService,
   ],
 })
 export class AiAssistantModule {}

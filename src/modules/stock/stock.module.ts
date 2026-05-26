@@ -7,6 +7,6 @@ import { StockAbnormalConsumptionService } from './stock-abnormal-consumption.se
 @Module({
   controllers: [StockController],
   providers: [StockService, StockPurchaseListService, StockAbnormalConsumptionService],
-  exports: [StockService, StockPurchaseListService],
+  exports: [StockService, StockPurchaseListService, StockAbnormalConsumptionService],
 })
 export class StockModule {}
