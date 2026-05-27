@@ -125,6 +125,33 @@ describe('profiles DTO validation', () => {
     });
   });
 
+  describe('UpdateServiceDto null-clearing (clearable optional fields)', () => {
+    it('accepts null for description (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { description: null });
+      expect(errors.some((e) => e.property === 'description')).toBe(false);
+    });
+
+    it('accepts null for priceFrom (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { priceFrom: null });
+      expect(errors.some((e) => e.property === 'priceFrom')).toBe(false);
+    });
+
+    it('accepts null for priceTo (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { priceTo: null });
+      expect(errors.some((e) => e.property === 'priceTo')).toBe(false);
+    });
+
+    it('accepts null for durationMinutes (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { durationMinutes: null });
+      expect(errors.some((e) => e.property === 'durationMinutes')).toBe(false);
+    });
+
+    it('accepts null for estimatedDirectCostCents (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { estimatedDirectCostCents: null });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(false);
+    });
+  });
+
   describe('CreateMemberDto specialtyIds per-element length', () => {
     it('rejects a specialty ID longer than MAX_ID_LENGTH', async () => {
       const errors = await validateDto(CreateMemberDto, {

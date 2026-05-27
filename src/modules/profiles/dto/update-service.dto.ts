@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   MAX_CENTS_AMOUNT,
@@ -26,27 +27,31 @@ export class UpdateServiceDto {
   name?: string;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(2000)
-  description?: string;
+  description?: string | null;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(MAX_MONEY_AMOUNT)
-  priceFrom?: number;
+  priceFrom?: number | null;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(MAX_MONEY_AMOUNT)
-  priceTo?: number;
+  priceTo?: number | null;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsInt()
   @Min(5)
   @Max(480)
-  durationMinutes?: number;
+  durationMinutes?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -62,8 +67,9 @@ export class UpdateServiceDto {
   displayOrder?: number;
 
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsInt()
   @Min(0)
   @Max(MAX_CENTS_AMOUNT)
-  estimatedDirectCostCents?: number;
+  estimatedDirectCostCents?: number | null;
 }
