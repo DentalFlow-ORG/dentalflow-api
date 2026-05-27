@@ -28,7 +28,9 @@ export class ProcedureMarginsService {
       select: {
         id: true,
         serviceId: true,
-        service: { select: { id: true, name: true } },
+        service: {
+          select: { id: true, name: true, estimatedDirectCostCents: true },
+        },
         status: true,
         estimatedAmountCents: true,
         paidAmountCents: true,
@@ -60,6 +62,7 @@ export class ProcedureMarginsService {
     type ServiceGroup = {
       serviceId: string;
       serviceName: string;
+      estimatedDirectCostCents: number | null;
       totalAppointments: number;
       completedAppointments: number;
       canceledOrNoShowCount: number;
@@ -75,6 +78,7 @@ export class ProcedureMarginsService {
         serviceMap.set(appt.serviceId, {
           serviceId: appt.serviceId,
           serviceName: appt.service.name,
+          estimatedDirectCostCents: appt.service.estimatedDirectCostCents,
           totalAppointments: 0,
           completedAppointments: 0,
           canceledOrNoShowCount: 0,
@@ -114,6 +118,21 @@ export class ProcedureMarginsService {
           group.completedAppointments > 0
             ? Math.round(group.grossRevenueCents / group.completedAppointments)
             : 0;
+
+        const costPerAppt = group.estimatedDirectCostCents;
+        const itemCostCents =
+          costPerAppt !== null
+            ? costPerAppt * group.completedAppointments
+            : null;
+        const itemProfitCents =
+          itemCostCents !== null
+            ? group.grossRevenueCents - itemCostCents
+            : null;
+        const itemMarginPercent =
+          itemProfitCents !== null && group.grossRevenueCents > 0
+            ? Number(((itemProfitCents / group.grossRevenueCents) * 100).toFixed(2))
+            : null;
+
         return {
           serviceId: group.serviceId,
           serviceName: group.serviceName,
@@ -121,9 +140,9 @@ export class ProcedureMarginsService {
           completedAppointments: group.completedAppointments,
           canceledOrNoShowCount: group.canceledOrNoShowCount,
           grossRevenueCents: group.grossRevenueCents,
-          estimatedDirectCostCents: null as null,
-          estimatedProfitCents: null as null,
-          marginPercent: null as null,
+          estimatedDirectCostCents: itemCostCents,
+          estimatedProfitCents: itemProfitCents,
+          marginPercent: itemMarginPercent,
           avgRevenueCents,
           status,
         };
@@ -133,13 +152,26 @@ export class ProcedureMarginsService {
         return diff !== 0 ? diff : b.grossRevenueCents - a.grossRevenueCents;
       });
 
+    const allHaveCost =
+      items.length > 0 && items.every((i) => i.estimatedDirectCostCents !== null);
+    const totalGrossRevenue = items.reduce((s, i) => s + i.grossRevenueCents, 0);
+    const totalCostCents = allHaveCost
+      ? items.reduce((s, i) => s + (i.estimatedDirectCostCents ?? 0), 0)
+      : null;
+    const totalProfitCents =
+      totalCostCents !== null ? totalGrossRevenue - totalCostCents : null;
+    const totalMarginPercent =
+      totalProfitCents !== null && totalGrossRevenue > 0
+        ? Number(((totalProfitCents / totalGrossRevenue) * 100).toFixed(2))
+        : null;
+
     const totals = {
       totalAppointments: items.reduce((s, i) => s + i.totalAppointments, 0),
       completedAppointments: items.reduce((s, i) => s + i.completedAppointments, 0),
-      grossRevenueCents: items.reduce((s, i) => s + i.grossRevenueCents, 0),
-      estimatedDirectCostCents: null as null,
-      estimatedProfitCents: null as null,
-      marginPercent: null as null,
+      grossRevenueCents: totalGrossRevenue,
+      estimatedDirectCostCents: totalCostCents,
+      estimatedProfitCents: totalProfitCents,
+      marginPercent: totalMarginPercent,
     };
 
     return {
@@ -149,9 +181,10 @@ export class ProcedureMarginsService {
       },
       items,
       totals,
-      costDataAvailable: false,
-      limitation:
-        'Custo direto não configurado. Adicione custos de materiais por procedimento para ver a margem real.',
+      costDataAvailable: allHaveCost,
+      limitation: allHaveCost
+        ? null
+        : 'Custo direto não configurado. Adicione custos de materiais por procedimento para ver a margem real.',
     };
   }
 

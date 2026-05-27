@@ -10,7 +10,10 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { MAX_MONEY_AMOUNT } from '../../../common/validators/input-validation.decorators';
+import {
+  MAX_CENTS_AMOUNT,
+  MAX_MONEY_AMOUNT,
+} from '../../../common/validators/input-validation.decorators';
 
 export class UpdateServiceDto {
   @IsOptional()
@@ -57,4 +60,10 @@ export class UpdateServiceDto {
   @IsInt()
   @Min(0)
   displayOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_CENTS_AMOUNT)
+  estimatedDirectCostCents?: number;
 }
