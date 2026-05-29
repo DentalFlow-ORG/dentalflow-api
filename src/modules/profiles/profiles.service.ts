@@ -196,6 +196,7 @@ export class ProfilesService {
         isPriceDisplayed: dto.isPriceDisplayed,
         isActive: dto.isActive,
         displayOrder: dto.displayOrder,
+        estimatedDirectCostCents: dto.estimatedDirectCostCents,
       },
     });
   }
@@ -225,6 +226,7 @@ export class ProfilesService {
         isPriceDisplayed: dto.isPriceDisplayed,
         isActive: dto.isActive,
         displayOrder: dto.displayOrder,
+        estimatedDirectCostCents: dto.estimatedDirectCostCents,
       },
     });
   }

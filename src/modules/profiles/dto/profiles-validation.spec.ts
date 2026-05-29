@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 
-import { MAX_ID_LENGTH, MAX_MONEY_AMOUNT } from '../../../common/validators/input-validation.decorators';
+import { MAX_CENTS_AMOUNT, MAX_ID_LENGTH, MAX_MONEY_AMOUNT } from '../../../common/validators/input-validation.decorators';
 import { CreateServiceDto } from './create-service.dto';
 import { UpdateServiceDto } from './update-service.dto';
 import { SetProfileSpecialtiesDto } from './set-profile-specialties.dto';
@@ -77,6 +77,78 @@ describe('profiles DTO validation', () => {
         specialtyIds: [],
       });
       expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('service estimatedDirectCostCents', () => {
+    it('accepts undefined (field is optional)', async () => {
+      const errors = await validateDto(CreateServiceDto, { name: 'Limpeza' });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(false);
+    });
+
+    it('accepts 0 (minimum boundary)', async () => {
+      const errors = await validateDto(CreateServiceDto, {
+        name: 'Limpeza',
+        estimatedDirectCostCents: 0,
+      });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(false);
+    });
+
+    it('accepts MAX_CENTS_AMOUNT (maximum boundary)', async () => {
+      const errors = await validateDto(CreateServiceDto, {
+        name: 'Limpeza',
+        estimatedDirectCostCents: MAX_CENTS_AMOUNT,
+      });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(false);
+    });
+
+    it('rejects a value above MAX_CENTS_AMOUNT', async () => {
+      const errors = await validateDto(CreateServiceDto, {
+        name: 'Limpeza',
+        estimatedDirectCostCents: MAX_CENTS_AMOUNT + 1,
+      });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(true);
+    });
+
+    it('rejects a negative value', async () => {
+      const errors = await validateDto(UpdateServiceDto, {
+        estimatedDirectCostCents: -1,
+      });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(true);
+    });
+
+    it('rejects a non-integer (decimal)', async () => {
+      const errors = await validateDto(UpdateServiceDto, {
+        estimatedDirectCostCents: 1500.5,
+      });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(true);
+    });
+  });
+
+  describe('UpdateServiceDto null-clearing (clearable optional fields)', () => {
+    it('accepts null for description (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { description: null });
+      expect(errors.some((e) => e.property === 'description')).toBe(false);
+    });
+
+    it('accepts null for priceFrom (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { priceFrom: null });
+      expect(errors.some((e) => e.property === 'priceFrom')).toBe(false);
+    });
+
+    it('accepts null for priceTo (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { priceTo: null });
+      expect(errors.some((e) => e.property === 'priceTo')).toBe(false);
+    });
+
+    it('accepts null for durationMinutes (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { durationMinutes: null });
+      expect(errors.some((e) => e.property === 'durationMinutes')).toBe(false);
+    });
+
+    it('accepts null for estimatedDirectCostCents (clears the field)', async () => {
+      const errors = await validateDto(UpdateServiceDto, { estimatedDirectCostCents: null });
+      expect(errors.some((e) => e.property === 'estimatedDirectCostCents')).toBe(false);
     });
   });
 
