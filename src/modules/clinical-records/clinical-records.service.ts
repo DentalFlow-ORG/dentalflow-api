@@ -661,6 +661,30 @@ export class ClinicalRecordsService {
   }
 
   // ----------------------------------------------------------------
+  // Dictation access validation
+  // ----------------------------------------------------------------
+
+  /**
+   * Verifies that a clinical record can receive dictation results.
+   * Reuses existing private access helpers so logic is never duplicated.
+   *
+   * Throws:
+   *   - NotFoundException   — record does not exist in this clinic
+   *   - ForbiddenException  — DENTIST does not own the record
+   *   - ForbiddenException  — record is not in DRAFT status
+   */
+  async validateRecordForDictation(
+    clinicId: string,
+    userId: string,
+    role: UserRole,
+    recordId: string,
+  ): Promise<void> {
+    const existing = await this.assertRecordInClinic(clinicId, recordId);
+    this.assertDentistRecordAccess(role, userId, existing.profile.userId);
+    this.assertRecordEditable(existing.status);
+  }
+
+  // ----------------------------------------------------------------
   // Private helpers
   // ----------------------------------------------------------------
 

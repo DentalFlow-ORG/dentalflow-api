@@ -25,6 +25,17 @@ async function bootstrap() {
     rawBody: true,
     bodyParser: false,
   });
+  // Route-specific 2 MB limit for audio base64 dictation requests.
+  // Registered BEFORE the global 100 kb parser so it parses the body first;
+  // once parsed (req.body set), the global parser skips re-processing.
+  // The regex matches /clinical-records/<id>/dictate regardless of API prefix.
+  app.use(
+    /\/clinical-records\/[^/]+\/dictate$/,
+    express.json({ limit: '2mb' }),
+  );
+
+  // Global JSON body limit — all other routes.
+  // rawBody verify is needed by the Stripe webhook controller.
   app.use(
     express.json({
       limit: '100kb',
