@@ -194,10 +194,43 @@ export class ClinicalRecordsService {
       );
     }
 
+    // ── Odontogram snapshot ─────────────────────────────────────────────────
+    // Capture the current patient-level odontogram as a point-in-time snapshot
+    // so historical records show the dental chart state at the time of the visit.
+    // Uses the same identifier convention as getOdontogram / upsertOdontogram.
+    // This is best-effort: if no odontogram exists or the fetch fails for any
+    // reason, completion proceeds and odontogramSnapshot remains null.
+    const identifier = existing.patientEmail ?? existing.patientName;
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    let snapshotData: Prisma.InputJsonValue | undefined;
+
+    try {
+      const odontogramRecord = await this.prisma.odontogramRecord.findFirst({
+        where: {
+          clinicId,
+          ...(isEmail
+            ? { patientEmail: identifier }
+            : { patientName: identifier, patientEmail: null }),
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: { data: true },
+      });
+      if (odontogramRecord?.data != null) {
+        snapshotData = odontogramRecord.data as Prisma.InputJsonValue;
+      }
+    } catch {
+      // Non-critical — proceed without snapshot rather than aborting completion
+    }
+
     const now = new Date();
     const record = await this.prisma.clinicalRecord.update({
       where: { id: recordId },
-      data: { status: 'COMPLETED', completedAt: now, updatedByUserId: userId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: now,
+        updatedByUserId: userId,
+        ...(snapshotData !== undefined ? { odontogramSnapshot: snapshotData } : {}),
+      },
       include: RECORD_INCLUDE,
     });
 
