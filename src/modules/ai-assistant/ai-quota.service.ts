@@ -22,13 +22,28 @@ export type AiQuotaInfo = {
   blockedReason: string | null;
 };
 
-/** Per-type-per-month limits keyed by Plan.slug */
-const AI_PLAN_LIMITS: Record<string, { allowed: boolean; perTypeMonthly: number }> = {
-  starter: { allowed: false, perTypeMonthly: 0 },
-  professional: { allowed: true, perTypeMonthly: 1 },
-  premium: { allowed: true, perTypeMonthly: 10 },
+type PlanLimits = {
+  allowed: boolean;
+  perTypeMonthly: number;
+  /** Per-type overrides that take precedence over perTypeMonthly for specific types. */
+  typeOverrides?: Record<string, number>;
 };
-const DEFAULT_LIMITS = { allowed: false, perTypeMonthly: 0 };
+
+/** Per-type-per-month limits keyed by Plan.slug */
+const AI_PLAN_LIMITS: Record<string, PlanLimits> = {
+  starter: { allowed: false, perTypeMonthly: 0 },
+  professional: {
+    allowed: true,
+    perTypeMonthly: 1,
+    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30, MONTHLY_FINANCE_DIAGNOSIS: 5 },
+  },
+  premium: {
+    allowed: true,
+    perTypeMonthly: 10,
+    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100, MONTHLY_FINANCE_DIAGNOSIS: 20 },
+  },
+};
+const DEFAULT_LIMITS: PlanLimits = { allowed: false, perTypeMonthly: 0 };
 
 @Injectable()
 export class AiQuotaService {
@@ -44,7 +59,8 @@ export class AiQuotaService {
     ]);
 
     const limits = planKey ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS) : DEFAULT_LIMITS;
-    const remaining = limits.allowed ? Math.max(0, limits.perTypeMonthly - used) : 0;
+    const monthlyLimit = limits.typeOverrides?.[type] ?? limits.perTypeMonthly;
+    const remaining = limits.allowed ? Math.max(0, monthlyLimit - used) : 0;
 
     let blockedReason: string | null = null;
     if (!limits.allowed) {
@@ -59,7 +75,7 @@ export class AiQuotaService {
       planKey,
       used,
       remaining,
-      limit: limits.perTypeMonthly,
+      limit: monthlyLimit,
       nextResetAt: nextResetAt.toISOString(),
       lastGeneratedAt: lastRecord?.generatedAt.toISOString() ?? null,
       blockedReason,
