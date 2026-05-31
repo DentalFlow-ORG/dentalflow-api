@@ -261,7 +261,7 @@ export class ClinicalRecordsController {
       user.role,
       id,
     );
-    return this.clinicalDictationService.dictate(dto);
+    return this.clinicalDictationService.dictate(clinicId, user.id, dto);
   }
 
   @Get(':id/print-data')

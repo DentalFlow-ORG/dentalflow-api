@@ -4,8 +4,11 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { AiAssistantAnalysisType } from '@prisma/client';
 import OpenAI, { toFile } from 'openai';
 
+import { AiAssistantAnalysisRepository } from '../ai-assistant/ai-assistant-analysis.repository';
+import { AiQuotaService } from '../ai-assistant/ai-quota.service';
 import type { DictateRecordDto } from './dto/dictate-record.dto';
 
 // ── Field catalogue ───────────────────────────────────────────────────────────
@@ -96,7 +99,10 @@ export class ClinicalDictationService {
   private readonly openai: OpenAI | null = null;
   private readonly classificationModel: string;
 
-  constructor() {
+  constructor(
+    private readonly quotaService: AiQuotaService,
+    private readonly analysisRepository: AiAssistantAnalysisRepository,
+  ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       this.logger.warn(
@@ -110,18 +116,42 @@ export class ClinicalDictationService {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  // NOTE: Per-month usage quota is not enforced here.
-  // Tracking dictation quota requires adding CLINICAL_DICTATION to the
-  // AiAssistantAnalysisType Prisma enum (migration needed — deferred).
-  // Current protection: @RequirePlanFeature(CLINICAL_DICTATION) + @Throttle(3/min).
-  async dictate(dto: DictateRecordDto): Promise<DictationResult> {
+  async dictate(clinicId: string, userId: string, dto: DictateRecordDto): Promise<DictationResult> {
+    // Order: kill-switch → quota → OpenAI → record usage
     this.assertEnabled();
-    const startedAt = Date.now();
+    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.CLINICAL_DICTATION);
 
+    const startedAt = Date.now();
     const transcript = await this.transcribeAudio(dto);
     const fields = await this.classifyTranscript(transcript);
 
     this.logSuccess(transcript.length, Object.keys(fields), Date.now() - startedAt);
+
+    // Record successful usage for monthly quota tracking.
+    // Best-effort: a DB write failure must never break the dictation response.
+    // Content contains only safe metadata — no transcript text or field values.
+    this.analysisRepository.saveSuccess({
+      clinicId,
+      userId,
+      type: AiAssistantAnalysisType.CLINICAL_DICTATION,
+      content: {
+        transcriptLength: transcript.length,
+        fieldsClassified: Object.keys(fields),
+      },
+      model: this.classificationModel,
+      generatedAt: new Date(),
+      periodStart: null,
+      periodEnd: null,
+    }).catch((err: unknown) => {
+      this.logger.error(
+        JSON.stringify({
+          event: 'clinical_dictation_quota_record_failed',
+          errorCode: 'PERSISTENCE_ERROR',
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    });
+
     return { transcript, fields };
   }
 

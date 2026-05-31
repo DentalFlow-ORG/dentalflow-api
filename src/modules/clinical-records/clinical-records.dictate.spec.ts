@@ -80,7 +80,7 @@ describe('ClinicalRecordsController — POST :id/dictate', () => {
       'OWNER',
       RECORD_ID,
     );
-    expect(mockClinicalDictationService.dictate).toHaveBeenCalledWith(VALID_DTO);
+    expect(mockClinicalDictationService.dictate).toHaveBeenCalledWith(CLINIC_ID, USER_ID, VALID_DTO);
     expect(result).toEqual(SAMPLE_RESULT);
   });
 
