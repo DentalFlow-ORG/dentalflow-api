@@ -13,17 +13,22 @@ import {
 import { trimValue } from '../../../common/utils/transform.helpers';
 
 export const ALLOWED_AUDIO_MIME_TYPES = [
+  // Explicit Opus codec variants — preferred by the frontend for small file size.
+  // Must appear here so DTO validation accepts the mimeType the browser reports.
+  'audio/webm;codecs=opus',
+  'audio/ogg;codecs=opus',
+  // Generic container fallbacks
   'audio/webm',
-  'audio/mp4',
-  'audio/mpeg',
-  'audio/wav',
   'audio/ogg',
+  'audio/mp4',
 ] as const;
 
-// 6.5 MB of base64 ≈ 4.875 MB raw audio ≈ ~680 s at 48 kbps (far above the
-// 90 s frontend cap).  Kept below the 8 MB route-parser limit so DTO validation
-// returns a clean 400 instead of body-parser throwing a 413.
-export const MAX_AUDIO_BASE64_LENGTH = 6_500_000;
+// 4 MB of base64 ≈ 3 MB raw audio ≈ ~125 s at 32 kbps (well above the 60 s
+// frontend cap even if the browser ignores the bitrate hint and records at
+// up to ~256 kbps: 60 s × 256 kbps / 8 = 1.92 MB raw → 2.56 M chars).
+// Kept below the 6 MB route-parser limit so DTO validation returns a clean
+// 400 before body-parser ever needs to throw a 413.
+export const MAX_AUDIO_BASE64_LENGTH = 4_000_000;
 export const MAX_DURATION_SECONDS = 120;
 
 export class DictateRecordDto {
