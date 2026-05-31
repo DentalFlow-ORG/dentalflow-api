@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -178,8 +179,18 @@ export class ClinicalDictationService {
    * The audio buffer is never logged or persisted.
    */
   private async transcribeAudio(dto: DictateRecordDto): Promise<string> {
-    const audioBuffer = Buffer.from(dto.audioBase64, 'base64');
-    const audioFile = await toFile(audioBuffer, 'recording', { type: dto.mimeType });
+    // Wrap buffer conversion and File creation so that a corrupt base64 string
+    // or an SDK edge case surfaces as a controlled 400 rather than an unhandled
+    // exception that NestJS would convert into a generic 500.
+    let audioFile: Awaited<ReturnType<typeof toFile>>;
+    try {
+      const audioBuffer = Buffer.from(dto.audioBase64, 'base64');
+      audioFile = await toFile(audioBuffer, 'recording', { type: dto.mimeType });
+    } catch {
+      throw new BadRequestException(
+        'O áudio não pôde ser processado. Verifique a qualidade da gravação e tente novamente.',
+      );
+    }
 
     try {
       const response = await this.openai!.audio.transcriptions.create({
@@ -218,7 +229,7 @@ export class ClinicalDictationService {
       return this.handleOpenAiError(err, 'classification');
     }
 
-    // parseFields throws InternalServerErrorException on bad JSON — let it propagate.
+    // parseFields throws ServiceUnavailableException on bad JSON — let it propagate.
     return this.parseFields(raw);
   }
 
@@ -239,7 +250,9 @@ export class ClinicalDictationService {
           createdAt: new Date().toISOString(),
         }),
       );
-      throw new InternalServerErrorException(
+      // GPT producing invalid JSON is a transient model reliability issue, not
+      // a permanent internal code bug — 503 encourages the user to try again.
+      throw new ServiceUnavailableException(
         'A resposta da IA veio em formato inválido. Tente novamente.',
       );
     }
@@ -268,18 +281,38 @@ export class ClinicalDictationService {
   }
 
   /** Classifies an OpenAI error and re-throws a controlled Nest exception. Never returns. */
-  private handleOpenAiError(err: unknown, phase: string): never {
-    const isRateLimit =
-      typeof err === 'object' &&
-      err !== null &&
-      'status' in err &&
-      (err as { status: number }).status === 429;
+  private handleOpenAiError(
+    err: unknown,
+    phase: 'transcription' | 'classification',
+  ): never {
+    const status =
+      typeof err === 'object' && err !== null && 'status' in err
+        ? (err as { status: number }).status
+        : undefined;
+
+    const isRateLimit = status === 429;
+    // A 400 from Whisper means the audio itself was unacceptable (too short,
+    // silent, wrong format, etc.).  For the classification phase a 400 would
+    // indicate a malformed API request — treat that as an internal error instead.
+    const isInvalidAudio = phase === 'transcription' && status === 400;
+    // 401 = bad/missing API key, 404 = model not found, 500/503 = OpenAI outage.
+    // All of these mean the service is (temporarily) unavailable — don't leak
+    // key/model details to the client.
+    const isOpenAiUnavailable =
+      status === 401 || status === 404 || status === 500 || status === 503;
 
     this.logger.error(
       JSON.stringify({
         event: 'clinical_dictation_error',
         phase,
-        errorCode: isRateLimit ? 'RATE_LIMIT' : 'OPENAI_ERROR',
+        errorCode: isRateLimit
+          ? 'RATE_LIMIT'
+          : isInvalidAudio
+            ? 'INVALID_AUDIO'
+            : isOpenAiUnavailable
+              ? 'OPENAI_UNAVAILABLE'
+              : 'OPENAI_ERROR',
+        httpStatus: status ?? null,
         createdAt: new Date().toISOString(),
       }),
     );
@@ -287,6 +320,18 @@ export class ClinicalDictationService {
     if (isRateLimit) {
       throw new ServiceUnavailableException(
         'O assistente está temporariamente sobrecarregado. Tente novamente em alguns instantes.',
+      );
+    }
+
+    if (isOpenAiUnavailable) {
+      throw new ServiceUnavailableException(
+        'O assistente está temporariamente indisponível. Tente novamente em alguns instantes.',
+      );
+    }
+
+    if (isInvalidAudio) {
+      throw new BadRequestException(
+        'O áudio não pôde ser processado. Verifique a qualidade da gravação e tente novamente.',
       );
     }
 

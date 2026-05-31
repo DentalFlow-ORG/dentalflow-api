@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -212,12 +213,15 @@ describe('ClinicalDictationService', () => {
   });
 
   // ── 7. Malformed GPT JSON ─────────────────────────────────────────────────
+  // GPT producing invalid JSON is a transient model reliability issue, not a
+  // permanent code bug — the service throws ServiceUnavailableException (503)
+  // so the frontend shows "temporariamente indisponível" and the user can retry.
 
-  it('throws InternalServerErrorException when GPT returns malformed JSON', async () => {
+  it('throws ServiceUnavailableException when GPT returns malformed JSON', async () => {
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, 'NOT VALID JSON {{{');
 
     await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      InternalServerErrorException,
+      ServiceUnavailableException,
     );
   });
 
@@ -452,5 +456,99 @@ describe('ClinicalDictationService', () => {
     await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).resolves.toMatchObject({
       transcript: SAMPLE_TRANSCRIPT,
     });
+  });
+
+  // ── 16. OpenAI HTTP error classification (transcription phase) ────────────
+  // These tests cover the improved handleOpenAiError mapping that prevents
+  // every non-429 OpenAI error from becoming a generic HTTP 500.
+
+  it('throws BadRequestException when Whisper returns HTTP 400 (invalid/short audio)', async () => {
+    const invalidAudioErr = Object.assign(new Error('invalid_request_error'), { status: 400 });
+    mockTranscriptionOnly(service, invalidAudioErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      BadRequestException,
+    );
+    // Classification must never be reached
+    expect(getClassificationMock(service)).not.toHaveBeenCalled();
+  });
+
+  it('throws ServiceUnavailableException when Whisper returns HTTP 401 (bad API key)', async () => {
+    const authErr = Object.assign(new Error('Incorrect API key provided'), { status: 401 });
+    mockTranscriptionOnly(service, authErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('throws ServiceUnavailableException when Whisper returns HTTP 500 (OpenAI server error)', async () => {
+    const serverErr = Object.assign(new Error('Internal server error'), { status: 500 });
+    mockTranscriptionOnly(service, serverErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('throws ServiceUnavailableException when Whisper returns HTTP 503 (OpenAI outage)', async () => {
+    const outageErr = Object.assign(new Error('Service unavailable'), { status: 503 });
+    mockTranscriptionOnly(service, outageErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+  });
+
+  // ── 17. OpenAI HTTP error classification (classification phase) ───────────
+
+  it('throws InternalServerErrorException when GPT returns HTTP 400 (malformed request)', async () => {
+    // A 400 from the classification API indicates a code-level request error, not
+    // invalid user audio — keep it as an internal error rather than BadRequest.
+    const badReqErr = Object.assign(new Error('Bad request'), { status: 400 });
+    mockClassificationError(service, badReqErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      InternalServerErrorException,
+    );
+  });
+
+  it('throws ServiceUnavailableException when GPT returns HTTP 503 (OpenAI outage)', async () => {
+    const outageErr = Object.assign(new Error('Service unavailable'), { status: 503 });
+    mockClassificationError(service, outageErr);
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+  });
+
+  // ── 18. Logging safety for new error paths ────────────────────────────────
+
+  it('does not log the transcript or audio data on a Whisper 400 error', async () => {
+    const invalidAudioErr = Object.assign(new Error('audio_too_short'), { status: 400 });
+    mockTranscriptionOnly(service, invalidAudioErr);
+
+    const logSpy = jest.spyOn(
+      (service as unknown as { logger: { error: jest.Mock } }).logger,
+      'error',
+    );
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const loggedPayload = JSON.parse(logSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+
+    // Logged payload must not contain transcript text or audio data
+    expect(loggedPayload).not.toHaveProperty('transcript');
+    expect(loggedPayload).not.toHaveProperty('audio');
+    expect(loggedPayload).not.toHaveProperty('audioBase64');
+
+    // Must log safe metadata only
+    expect(loggedPayload.event).toBe('clinical_dictation_error');
+    expect(loggedPayload.phase).toBe('transcription');
+    expect(loggedPayload.errorCode).toBe('INVALID_AUDIO');
+    expect(loggedPayload.httpStatus).toBe(400);
   });
 });
