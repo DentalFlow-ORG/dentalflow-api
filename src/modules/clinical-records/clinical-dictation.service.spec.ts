@@ -280,4 +280,71 @@ describe('ClinicalDictationService', () => {
     expect(result.fields.chiefComplaint).toHaveLength(2000);
     expect(result.fields.diagnosis).toHaveLength(2000);
   });
+
+  // ── 12. Global AI kill-switch ─────────────────────────────────────────────
+  // Setting OPENAI_AI_ASSISTANT_ENABLED=false must disable dictation without
+  // requiring the API key to be removed — matching every other AI service.
+
+  it('throws ServiceUnavailableException and never calls OpenAI when OPENAI_AI_ASSISTANT_ENABLED is "false"', async () => {
+    process.env.OPENAI_AI_ASSISTANT_ENABLED = 'false';
+    // Mock so we can verify OpenAI was not called
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    await expect(service.dictate(buildDto())).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+
+    expect(getTranscriptionMock(service)).not.toHaveBeenCalled();
+    expect(getClassificationMock(service)).not.toHaveBeenCalled();
+
+    delete process.env.OPENAI_AI_ASSISTANT_ENABLED;
+  });
+
+  // ── 13. Classification model follows OPENAI_MODEL env var ─────────────────
+
+  it('passes OPENAI_MODEL env var as the GPT model for classification', async () => {
+    process.env.OPENAI_MODEL = 'gpt-4o';
+    const svc = new ClinicalDictationService();
+    mockOpenAi(svc, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    await svc.dictate(buildDto());
+
+    expect(getClassificationMock(svc)).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-4o' }),
+    );
+
+    delete process.env.OPENAI_MODEL;
+  });
+
+  // ── 14. Logging safety — transcript and audio are never logged ────────────
+  // logSuccess must record only safe metadata: transcript length (not content),
+  // field names (not values), model, and timing.
+
+  it('logSuccess is called with transcript length — not transcript content or audio', async () => {
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: { chiefComplaint: 'Dor' } }),
+    );
+
+    const logSuccessSpy = jest.spyOn(
+      service as unknown as { logSuccess: (...args: unknown[]) => void },
+      'logSuccess',
+    );
+
+    await service.dictate(buildDto());
+
+    expect(logSuccessSpy).toHaveBeenCalledTimes(1);
+    const [transcriptLength, fieldNames, durationMs] = logSuccessSpy.mock.calls[0];
+
+    // Only the length is logged — not the transcript text itself
+    expect(transcriptLength).toBe(SAMPLE_TRANSCRIPT.length);
+    expect(transcriptLength).not.toBe(SAMPLE_TRANSCRIPT);
+
+    // Field names only — not their values
+    expect(fieldNames).toEqual(['chiefComplaint']);
+
+    // Timing is a number (no patient data)
+    expect(typeof durationMs).toBe('number');
+  });
 });

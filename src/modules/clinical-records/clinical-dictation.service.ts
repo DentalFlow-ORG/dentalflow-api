@@ -110,6 +110,10 @@ export class ClinicalDictationService {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
+  // NOTE: Per-month usage quota is not enforced here.
+  // Tracking dictation quota requires adding CLINICAL_DICTATION to the
+  // AiAssistantAnalysisType Prisma enum (migration needed — deferred).
+  // Current protection: @RequirePlanFeature(CLINICAL_DICTATION) + @Throttle(3/min).
   async dictate(dto: DictateRecordDto): Promise<DictationResult> {
     this.assertEnabled();
     const startedAt = Date.now();
@@ -124,6 +128,14 @@ export class ClinicalDictationService {
   // ── Private helpers ─────────────────────────────────────────────────────────
 
   private assertEnabled(): void {
+    // Respect the global AI kill-switch used by all other AI services.
+    // Setting OPENAI_AI_ASSISTANT_ENABLED=false disables dictation without
+    // requiring the API key to be removed from the environment.
+    if (process.env.OPENAI_AI_ASSISTANT_ENABLED === 'false') {
+      throw new ServiceUnavailableException(
+        'O assistente de ditado clínico está desabilitado no momento.',
+      );
+    }
     if (!this.openai) {
       throw new ServiceUnavailableException(
         'O assistente de ditado clínico está indisponível. Contate o suporte.',
