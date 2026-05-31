@@ -18,6 +18,28 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/app.config';
 import { validateEnv } from './config/validate-env';
 
+// ── Route helper ──────────────────────────────────────────────────────────────
+// Identifies the clinical dictation endpoint so it can be routed to the 6 MB
+// JSON parser instead of the global 100 kb parser.
+//
+// WHY NOT app.use(regex, fn)?
+// Express treats the portion matched by the regex as a URL prefix to strip.
+// When the regex matches a substring (i.e. /clinical-records/…/dictate starting
+// at position 4 after /api), Express's path-separator validation check fires:
+//   path[matched_length] is not '/' or undefined  → next() is called without
+//   invoking the middleware, silently skipping the 6 MB parser.
+// Using an explicit middleware wrapper completely bypasses this issue.
+//
+// Two patterns are tested so the helper works with and without the API prefix
+// (e.g. direct access, reverse-proxy, or a different API_PREFIX env value).
+function isClinicalDictationRoute(req: express.Request): boolean {
+  const path = req.path || (req.url ?? '').split('?')[0]
+  return (
+    /^\/api\/clinical-records\/[^/]+\/dictate$/.test(path) ||
+    /^\/clinical-records\/[^/]+\/dictate$/.test(path)
+  )
+}
+
 async function bootstrap() {
   validateEnv();
   // bodyParser:false — we register our own with higher limit + rawBody support for Stripe
@@ -74,32 +96,44 @@ async function bootstrap() {
     }),
   );
 
-  // Route-specific 6 MB limit for audio base64 dictation requests.
-  // Headroom breakdown:
-  //   DTO MaxLength  = 4 000 000 chars  ≈ 3.81 MB base64 payload + JSON envelope
-  //   Parser limit   = 6 MB  → ~57 % headroom above DTO max
-  // DTO validation therefore catches oversized audio with a clean 400
-  // before the parser ever needs to throw a 413.
-  // The regex matches /clinical-records/<id>/dictate regardless of API prefix.
-  app.use(
-    /\/clinical-records\/[^/]+\/dictate$/,
-    express.json({ limit: '6mb' }),
-  );
+  // ── Body parsers ─────────────────────────────────────────────────────────────
+  // Registered as explicit wrapper middleware rather than app.use(regex, fn)
+  // to avoid Express's silent middleware-skip bug (see isClinicalDictationRoute).
 
-  // Global JSON body limit — all other routes.
-  // rawBody verify is needed by the Stripe webhook controller.
-  app.use(
-    express.json({
+  // 1. Clinical dictation — 6 MB.
+  //    Headroom: DTO MaxLength 4 000 000 chars ≈ 3.81 MB; parser limit 6 MB
+  //    gives ~57 % headroom so DTO validation returns 400 before body-parser 413.
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!isClinicalDictationRoute(req)) {
+      return next();
+    }
+    // Dev-only routing confirmation — safe: logs method + path only, no body.
+    if (appConfig.nodeEnv !== 'production') {
+      console.log(`[ClinicalDictation] ${req.method} ${req.path} — using 6 MB JSON parser`);
+    }
+    return express.json({ limit: '6mb' })(req, res, next);
+  });
+
+  // 2. Global 100 kb limit — all non-dictation routes.
+  //    Explicitly skips dictation so body-parser does not attempt to re-parse
+  //    an already-consumed stream (belt-and-suspenders over req._body).
+  //    rawBody verify captures the raw buffer needed by the Stripe webhook.
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (isClinicalDictationRoute(req)) {
+      return next();
+    }
+    return express.json({
       limit: '100kb',
       verify: (
-        req: express.Request & { rawBody?: Buffer },
+        rawReq: express.Request & { rawBody?: Buffer },
         _res: express.Response,
         buf: Buffer,
       ) => {
-        if (Buffer.isBuffer(buf)) req.rawBody = buf;
+        if (Buffer.isBuffer(buf)) rawReq.rawBody = buf;
       },
-    }),
-  );
+    })(req, res, next);
+  });
+
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
   if (appConfig.nodeEnv === 'production') {
