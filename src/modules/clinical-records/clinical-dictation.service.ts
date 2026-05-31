@@ -12,6 +12,47 @@ import { AiAssistantAnalysisRepository } from '../ai-assistant/ai-assistant-anal
 import { AiQuotaService } from '../ai-assistant/ai-quota.service';
 import type { DictateRecordDto } from './dto/dictate-record.dto';
 
+// ── Audio MIME normalizer ─────────────────────────────────────────────────────
+// OpenAI Whisper requires the filename extension to determine the audio format.
+// Browsers commonly report MIME types with codec parameters, e.g.
+// 'audio/webm;codecs=opus', which are NOT accepted by OpenAI as a Content-Type
+// and produce a 400 when embedded in a filename.
+//
+// This helper strips codec parameters, maps the base MIME to a clean extension,
+// and returns a safe filename for the multipart upload.
+//
+// Whisper-supported extensions: flac m4a mp3 mp4 mpeg mpga oga ogg wav webm
+// Only the subset allowed by the DTO is mapped here.
+
+export type AudioNormalization = {
+  /** Base MIME type with no codec parameters, e.g. 'audio/webm'. */
+  mimeType: string;
+  /** Safe filename for the OpenAI upload, e.g. 'dictation.webm'. */
+  filename: string;
+};
+
+export function normalizeAudioMime(rawMime: string): AudioNormalization {
+  // Strip everything from the first ';' onward: 'audio/webm;codecs=opus' → 'audio/webm'
+  const base = rawMime.split(';')[0].trim().toLowerCase();
+
+  const EXT_MAP: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/ogg':  'ogg',
+    'audio/mp4':  'mp4',
+    'audio/mpeg': 'mp3',
+    'audio/wav':  'wav',
+  };
+
+  const ext = EXT_MAP[base];
+  if (!ext) {
+    throw new BadRequestException(
+      'Formato de áudio não reconhecido. Grave novamente e tente outra vez.',
+    );
+  }
+
+  return { mimeType: base, filename: `dictation.${ext}` };
+}
+
 // ── Field catalogue ───────────────────────────────────────────────────────────
 // Matches exactly the nullable text columns on ClinicalRecord.
 // All classification output is validated against this whitelist.
@@ -179,19 +220,34 @@ export class ClinicalDictationService {
    * The audio buffer is never logged or persisted.
    */
   private async transcribeAudio(dto: DictateRecordDto): Promise<string> {
-    // Wrap buffer conversion and File creation so that a corrupt base64 string
-    // or an SDK edge case surfaces as a controlled 400 rather than an unhandled
-    // exception that NestJS would convert into a generic 500.
+    // ── 1. Normalize MIME → clean type + safe filename ─────────────────────
+    // Strips codec params so 'audio/webm;codecs=opus' → { mimeType: 'audio/webm',
+    // filename: 'dictation.webm' }.  Without a proper extension Whisper returns 400.
+    const { mimeType: normalizedMime, filename } = normalizeAudioMime(dto.mimeType);
+
+    // ── 2. Normalize base64 ────────────────────────────────────────────────
+    // The frontend already strips the data-URL prefix, but be defensive:
+    // trim whitespace, collapse embedded newlines, and strip any accidental prefix.
+    const cleanBase64 = (
+      dto.audioBase64.includes(',')
+        ? (dto.audioBase64.split(',')[1] ?? dto.audioBase64)
+        : dto.audioBase64
+    ).replace(/\s+/g, '');
+
+    // ── 3. Build audio File ────────────────────────────────────────────────
     let audioFile: Awaited<ReturnType<typeof toFile>>;
+    let audioBytes = 0;
     try {
-      const audioBuffer = Buffer.from(dto.audioBase64, 'base64');
-      audioFile = await toFile(audioBuffer, 'recording', { type: dto.mimeType });
+      const audioBuffer = Buffer.from(cleanBase64, 'base64');
+      audioBytes = audioBuffer.length;
+      audioFile = await toFile(audioBuffer, filename, { type: normalizedMime });
     } catch {
       throw new BadRequestException(
         'O áudio não pôde ser processado. Verifique a qualidade da gravação e tente novamente.',
       );
     }
 
+    // ── 4. Transcribe ──────────────────────────────────────────────────────
     try {
       const response = await this.openai!.audio.transcriptions.create({
         file: audioFile,
@@ -200,7 +256,12 @@ export class ClinicalDictationService {
       });
       return response.text;
     } catch (err: unknown) {
-      return this.handleOpenAiError(err, 'transcription');
+      return this.handleOpenAiError(err, 'transcription', {
+        rawMime: dto.mimeType,
+        normalizedMime,
+        filename,
+        audioBytes,
+      });
     }
   }
 
@@ -280,10 +341,16 @@ export class ClinicalDictationService {
     return result;
   }
 
-  /** Classifies an OpenAI error and re-throws a controlled Nest exception. Never returns. */
+  /**
+   * Classifies an OpenAI error and re-throws a controlled Nest exception. Never returns.
+   *
+   * @param meta  Optional safe metadata (e.g. normalizedMime, filename, audioBytes) to
+   *              include in the error log.  Must NOT contain audio content or tokens.
+   */
   private handleOpenAiError(
     err: unknown,
     phase: 'transcription' | 'classification',
+    meta?: Record<string, unknown>,
   ): never {
     const status =
       typeof err === 'object' && err !== null && 'status' in err
@@ -313,6 +380,7 @@ export class ClinicalDictationService {
               ? 'OPENAI_UNAVAILABLE'
               : 'OPENAI_ERROR',
         httpStatus: status ?? null,
+        ...(meta ?? {}),
         createdAt: new Date().toISOString(),
       }),
     );

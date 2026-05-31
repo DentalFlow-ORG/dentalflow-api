@@ -12,6 +12,7 @@ import type OpenAI from 'openai';
 import {
   CLINICAL_FIELD_KEYS,
   ClinicalDictationService,
+  normalizeAudioMime,
 } from './clinical-dictation.service';
 import type { DictationResult } from './clinical-dictation.service';
 
@@ -550,5 +551,145 @@ describe('ClinicalDictationService', () => {
     expect(loggedPayload.phase).toBe('transcription');
     expect(loggedPayload.errorCode).toBe('INVALID_AUDIO');
     expect(loggedPayload.httpStatus).toBe(400);
+  });
+});
+
+// ── 17. normalizeAudioMime (pure function) ────────────────────────────────────
+// Tests for the helper that strips codec parameters and maps MIME types to safe
+// filenames for OpenAI Whisper.
+
+describe('normalizeAudioMime', () => {
+  // ── Codec param stripping ─────────────────────────────────────────────────
+
+  it('strips codec parameter from audio/webm;codecs=opus → audio/webm + dictation.webm', () => {
+    const result = normalizeAudioMime('audio/webm;codecs=opus');
+    expect(result.mimeType).toBe('audio/webm');
+    expect(result.filename).toBe('dictation.webm');
+  });
+
+  it('strips codec parameter from audio/ogg;codecs=opus → audio/ogg + dictation.ogg', () => {
+    const result = normalizeAudioMime('audio/ogg;codecs=opus');
+    expect(result.mimeType).toBe('audio/ogg');
+    expect(result.filename).toBe('dictation.ogg');
+  });
+
+  // ── Plain MIME types pass through correctly ───────────────────────────────
+
+  it('maps plain audio/webm to dictation.webm', () => {
+    const result = normalizeAudioMime('audio/webm');
+    expect(result.mimeType).toBe('audio/webm');
+    expect(result.filename).toBe('dictation.webm');
+  });
+
+  it('maps audio/ogg to dictation.ogg', () => {
+    const result = normalizeAudioMime('audio/ogg');
+    expect(result.mimeType).toBe('audio/ogg');
+    expect(result.filename).toBe('dictation.ogg');
+  });
+
+  it('maps audio/mp4 to dictation.mp4', () => {
+    const result = normalizeAudioMime('audio/mp4');
+    expect(result.mimeType).toBe('audio/mp4');
+    expect(result.filename).toBe('dictation.mp4');
+  });
+
+  it('maps audio/mpeg to dictation.mp3 (Whisper-compatible extension)', () => {
+    const result = normalizeAudioMime('audio/mpeg');
+    expect(result.mimeType).toBe('audio/mpeg');
+    expect(result.filename).toBe('dictation.mp3');
+  });
+
+  it('maps audio/wav to dictation.wav', () => {
+    const result = normalizeAudioMime('audio/wav');
+    expect(result.mimeType).toBe('audio/wav');
+    expect(result.filename).toBe('dictation.wav');
+  });
+
+  // ── Case insensitivity ────────────────────────────────────────────────────
+
+  it('handles upper-case MIME values', () => {
+    const result = normalizeAudioMime('Audio/Webm');
+    expect(result.mimeType).toBe('audio/webm');
+    expect(result.filename).toBe('dictation.webm');
+  });
+
+  // ── Unsupported format → BadRequestException ──────────────────────────────
+
+  it('throws BadRequestException for an unsupported MIME type', () => {
+    expect(() => normalizeAudioMime('video/mp4')).toThrow(BadRequestException);
+    expect(() => normalizeAudioMime('application/octet-stream')).toThrow(BadRequestException);
+  });
+});
+
+// ── 18. Audio normalization through the service ───────────────────────────────
+// End-to-end coverage: confirm that when the service receives a MIME type with
+// codec parameters, it sends a File with a clean extension to Whisper.
+
+describe('audio normalization in transcription flow', () => {
+  let service: ClinicalDictationService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.OPENAI_API_KEY = 'sk-test';
+    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('passes a file with name "dictation.webm" when MIME is audio/webm;codecs=opus', async () => {
+    mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
+    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'audio/webm;codecs=opus' };
+
+    await service.dictate(CLINIC_ID, USER_ID, dto);
+
+    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as { file: File };
+    expect(callArgs.file.name).toBe('dictation.webm');
+    expect(callArgs.file.type).toBe('audio/webm');
+  });
+
+  it('passes a file with name "dictation.ogg" when MIME is audio/ogg;codecs=opus', async () => {
+    mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
+    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'audio/ogg;codecs=opus' };
+
+    await service.dictate(CLINIC_ID, USER_ID, dto);
+
+    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as { file: File };
+    expect(callArgs.file.name).toBe('dictation.ogg');
+    expect(callArgs.file.type).toBe('audio/ogg');
+  });
+
+  it('normalizes base64 that contains embedded whitespace/newlines', async () => {
+    mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
+    // Insert whitespace characters that must be stripped before Buffer.from
+    const base64WithWhitespace = 'UklGRiQAAA BXQVZFZm10\nIBAAAAA\rBAAEA';
+    const dto = { audioBase64: base64WithWhitespace, mimeType: 'audio/webm' };
+
+    // Must succeed (no TypeError from Buffer.from with whitespace)
+    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).resolves.toMatchObject({
+      transcript: 'hello',
+    });
+  });
+
+  it('strips an accidental data-URL prefix from audioBase64', async () => {
+    mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
+    const dataUrlBase64 = 'data:audio/webm;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';
+    const dto = { audioBase64: dataUrlBase64, mimeType: 'audio/webm' };
+
+    // Must succeed without throwing a base64 parse error
+    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).resolves.toMatchObject({
+      transcript: 'hello',
+    });
+  });
+
+  it('throws BadRequestException before calling OpenAI for an unsupported MIME type', async () => {
+    mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
+    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'video/mp4' };
+
+    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).rejects.toThrow(BadRequestException);
+
+    // OpenAI must not have been called at all
+    expect(getTranscriptionMock(service)).not.toHaveBeenCalled();
   });
 });
