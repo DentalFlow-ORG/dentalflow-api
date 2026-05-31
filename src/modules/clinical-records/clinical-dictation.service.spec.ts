@@ -10,6 +10,7 @@ import { AiAssistantAnalysisType } from '@prisma/client';
 import type OpenAI from 'openai';
 
 import {
+  CLASSIFICATION_SYSTEM_PROMPT,
   CLINICAL_FIELD_KEYS,
   ClinicalDictationService,
   normalizeAudioMime,
@@ -691,5 +692,118 @@ describe('audio normalization in transcription flow', () => {
 
     // OpenAI must not have been called at all
     expect(getTranscriptionMock(service)).not.toHaveBeenCalled();
+  });
+});
+
+// ── 19. Strict JSON mode (response_format) ────────────────────────────────────
+// The classification call must always request json_object output mode so GPT
+// is forced to return parseable JSON without prose commentary.
+
+describe('strict JSON mode for classification', () => {
+  let service: ClinicalDictationService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.OPENAI_API_KEY = 'sk-test';
+    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('calls chat.completions.create with response_format: json_object', async () => {
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(getClassificationMock(service)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response_format: { type: 'json_object' },
+      }),
+    );
+  });
+
+  it('calls chat.completions.create with a low temperature for deterministic output', async () => {
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(getClassificationMock(service)).toHaveBeenCalledWith(
+      expect.objectContaining({ temperature: expect.any(Number) }),
+    );
+    const { temperature } = getClassificationMock(service).mock.calls[0][0] as { temperature: number };
+    expect(temperature).toBeLessThanOrEqual(0.2);
+  });
+
+  it('sends the transcript as the user message to the chat API', async () => {
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    const { messages } = getClassificationMock(service).mock.calls[0][0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userMessage = messages.find((m) => m.role === 'user');
+    expect(userMessage?.content).toBe(SAMPLE_TRANSCRIPT);
+  });
+});
+
+// ── 20. Classification system prompt properties ───────────────────────────────
+// These tests verify the behavioral properties of the exported
+// CLASSIFICATION_SYSTEM_PROMPT without snapshot-testing the full text.
+// Purpose: catch accidental removals of critical instructions during edits.
+
+describe('CLASSIFICATION_SYSTEM_PROMPT behavioral properties', () => {
+  // ── Anti-hallucination rules ─────────────────────────────────────────────────
+
+  it('instructs the model never to invent information not in the transcript', () => {
+    // Must contain an explicit no-hallucination directive in Portuguese
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toMatch(/[Nn]unca invente/);
+  });
+
+  it('instructs the model to omit fields without clear transcript support', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toMatch(/[Oo]mita/);
+  });
+
+  // ── Portuguese clinical documentation style ──────────────────────────────────
+
+  it('instructs the model to write in professional clinical Portuguese', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toMatch(/portugu[êe]s/i);
+  });
+
+  it('mentions FDI tooth numbering so tooth references are preserved', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toMatch(/FDI/);
+  });
+
+  // ── Allowed field catalogue ──────────────────────────────────────────────────
+
+  it('lists every whitelisted clinical field key in the prompt', () => {
+    for (const key of CLINICAL_FIELD_KEYS) {
+      expect(CLASSIFICATION_SYSTEM_PROMPT).toContain(key);
+    }
+  });
+
+  // ── JSON output format ───────────────────────────────────────────────────────
+
+  it('instructs the model to return only valid JSON', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toMatch(/JSON/);
+  });
+
+  it('uses the {"fields": {...}} envelope shape in the format instruction', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toContain('"fields"');
+  });
+
+  // ── Log safety: prompt must be a static template with no embedded runtime data ─
+  // Field examples ("Ex: Cárie no dente 36") are intentional placeholder text, not
+  // real patient data. But the prompt must never contain the actual test transcripts
+  // or any content that looks like it was injected at runtime.
+
+  it('does not contain the sample transcript used in tests (static template only)', () => {
+    // SAMPLE_TRANSCRIPT = 'Paciente relata dor no dente 36 há três dias, sensibilidade ao frio.'
+    // The prompt must not accidentally embed any specific transcript content.
+    expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Paciente relata dor no dente 36');
+    expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Sensibilidade ao frio');
+    expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('sensibilidade ao frio');
   });
 });

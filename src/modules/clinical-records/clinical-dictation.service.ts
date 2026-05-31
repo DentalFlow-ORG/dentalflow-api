@@ -88,49 +88,52 @@ const CLASSIFICATION_MAX_TOKENS = 1200;
 const MAX_FIELD_LENGTH = 2000;
 
 // ── Classification prompt ─────────────────────────────────────────────────────
-// Conservative: only fills fields when the transcript clearly states content.
-// Never invents information; uncertain content is omitted or placed in privateNotes.
+// Conservative: only fills fields when the transcript clearly supports it.
+// Never invents information; uncertain or absent content is omitted.
+// Exported so spec tests can verify key behavioral properties without snapshotting
+// the full text.
 
-const CLASSIFICATION_SYSTEM_PROMPT = `\
+export const CLASSIFICATION_SYSTEM_PROMPT = `\
 Você é um assistente de documentação clínica odontológica.
-Receberá a transcrição de uma consulta em português e deve organizar o conteúdo \
-nos campos corretos do prontuário.
+Receberá a transcrição de uma consulta odontológica em português e deve \
+classificar o conteúdo nos campos corretos do prontuário digital.
 
-REGRAS ABSOLUTAS:
-- Use SOMENTE o que estiver explicitamente na transcrição. Nunca invente, extrapole ou presuma.
-- Se o conteúdo não couber claramente em nenhum campo, NÃO inclua.
-- Diagnósticos: inclua apenas se afirmados explicitamente pelo profissional.
-- Informações ambíguas: omita do resultado ou coloque em privateNotes somente se o \
-profissional as tratou como observação interna.
-- Preserve o idioma original (português).
-- Retorne APENAS JSON válido no formato indicado abaixo. Nenhum texto fora do JSON.
-- Todos os campos são opcionais. Omita campos sem conteúdo claro na transcrição.
+REGRAS ABSOLUTAS — VIOLÁ-LAS INVALIDA A RESPOSTA:
+1. Use EXCLUSIVAMENTE o que estiver declarado na transcrição.
+   Nunca invente, extrapole, deduza nem complete informações não mencionadas.
+2. Diagnósticos: registre apenas afirmações explícitas do profissional de saúde.
+3. Conteúdo ambíguo ou incerto: omita ou registre em privateNotes somente quando \
+o profissional o tratar explicitamente como observação interna.
+4. Preserve a terminologia clínica, a numeração FDI dos dentes \
+(ex: dente 36, dentes 11 e 21) e nomes de medicamentos como pronunciados.
+5. Escreva em português clínico profissional. Evite repetições entre campos.
+6. Retorne SOMENTE JSON válido no formato indicado. Nenhum texto fora do JSON.
+7. Omita qualquer campo sem conteúdo explícito e claro na transcrição.
 
-CAMPOS DISPONÍVEIS:
-- chiefComplaint: queixa principal relatada pelo paciente, motivo da consulta.
-- anamnesis: histórico médico e odontológico, alergias, medicamentos em uso, \
-condições sistêmicas, hábitos relevantes.
-- clinicalEvolution: achados clínicos, evolução do caso, observações durante o atendimento.
-- diagnosis: diagnóstico clínico ou hipótese diagnóstica, dentes e regiões envolvidos, \
-achados de exame clínico ou radiografia.
-- proceduresPerformed: procedimentos executados na consulta atual, materiais utilizados, \
-técnica anestésica, dentes tratados.
-- treatmentPlan: sequência de tratamento proposta, próximas etapas, prioridades, \
-encaminhamentos necessários.
-- prescription: medicamentos prescritos com nome, dosagem, frequência e duração.
-- recommendations: orientações pós-consulta, higiene oral, restrições alimentares, \
-sinais de alerta, data de retorno.
-- privateNotes: observações internas do profissional, somente quando explicitamente \
-indicadas como tal.
+CAMPOS DISPONÍVEIS E CRITÉRIOS DE PREENCHIMENTO:
+- chiefComplaint: queixa principal relatada pelo paciente ou motivo da consulta. \
+  Ex: "Dor espontânea no dente 36 há dois dias."
+- anamnesis: histórico médico e odontológico, alergias, medicamentos em uso \
+  (nome, dose, frequência), condições sistêmicas, hábitos relevantes.
+- clinicalEvolution: observações clínicas do atendimento — exame intraoral, \
+  condição periodontal, resposta pulpar, achados radiográficos. \
+  Não inclua o diagnóstico neste campo.
+- diagnosis: diagnóstico confirmado ou hipótese diagnóstica, com dentes e \
+  achados que o sustentam. Ex: "Cárie profunda no dente 36."
+- proceduresPerformed: procedimentos realizados nesta consulta — anestesia, \
+  materiais, instrumentos, numeração dos dentes tratados e etapas executadas.
+- treatmentPlan: sequência de tratamento proposta, próximas sessões, \
+  prioridades e encaminhamentos para especialistas.
+- prescription: medicamentos prescritos com nome, dosagem, frequência e duração. \
+  Ex: "Amoxicilina 500mg, 1 cápsula a cada 8h por 7 dias."
+- recommendations: orientações pós-consulta, higiene oral, restrições \
+  alimentares, sinais de alerta e prazo de retorno.
+- privateNotes: observações internas do profissional, somente quando \
+  mencionadas explicitamente como tal.
 
 FORMATO DE RESPOSTA OBRIGATÓRIO:
-{
-  "fields": {
-    "chiefComplaint": "texto",
-    "anamnesis": "texto"
-  }
-}
-Inclua apenas os campos com conteúdo claro. Omita os demais.`;
+{"fields": {"campo": "texto clínico"}}
+Inclua apenas os campos com conteúdo claro e explícito na transcrição.`;
 
 // ── Service ───────────────────────────────────────────────────────────────────
 

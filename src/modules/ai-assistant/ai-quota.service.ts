@@ -52,11 +52,13 @@ export class AiQuotaService {
   async getQuota(clinicId: string, type: AiAssistantAnalysisType): Promise<AiQuotaInfo> {
     const { start, nextResetAt } = this.monthBounds();
 
-    const [planKey, used, lastRecord] = await Promise.all([
-      this.getPlanKey(clinicId),
-      this.countMonthlyUsed(clinicId, type, start, nextResetAt),
-      this.getLastSuccess(clinicId, type),
-    ]);
+    // Sequential awaits to ensure each query uses its own dedicated pg connection.
+    // Running these concurrently with Promise.all can cause pg to dispatch multiple
+    // queries to the same client before one resolves, triggering the pg@8 deprecation
+    // warning "Calling client.query() when the client is already executing a query".
+    const planKey   = await this.getPlanKey(clinicId);
+    const used      = await this.countMonthlyUsed(clinicId, type, start, nextResetAt);
+    const lastRecord = await this.getLastSuccess(clinicId, type);
 
     const limits = planKey ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS) : DEFAULT_LIMITS;
     const monthlyLimit = limits.typeOverrides?.[type] ?? limits.perTypeMonthly;
