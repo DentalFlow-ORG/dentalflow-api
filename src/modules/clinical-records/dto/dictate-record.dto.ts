@@ -20,9 +20,10 @@ export const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/ogg',
 ] as const;
 
-// 2 MB of base64 ≈ 1.5 MB raw audio ≈ ~90 s at 128 kbps.
-// Also enforced by a route-specific body limit in main.ts (Block 8B-3).
-export const MAX_AUDIO_BASE64_LENGTH = 2_000_000;
+// 6.5 MB of base64 ≈ 4.875 MB raw audio ≈ ~680 s at 48 kbps (far above the
+// 90 s frontend cap).  Kept below the 8 MB route-parser limit so DTO validation
+// returns a clean 400 instead of body-parser throwing a 413.
+export const MAX_AUDIO_BASE64_LENGTH = 6_500_000;
 export const MAX_DURATION_SECONDS = 120;
 
 export class DictateRecordDto {

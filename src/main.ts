@@ -74,13 +74,17 @@ async function bootstrap() {
     }),
   );
 
-  // Route-specific 4 MB limit for audio base64 dictation requests.
-  // 4 MB gives comfortable headroom above the DTO's MaxLength(2_000_000 chars)
-  // plus JSON envelope overhead, while still rejecting absurdly large payloads.
+  // Route-specific 8 MB limit for audio base64 dictation requests.
+  // Headroom breakdown:
+  //   DTO MaxLength  = 6 500 000 chars  ≈ 6.2 MB base64 payload
+  //   JSON envelope  ≈ 70 bytes
+  //   Parser limit   = 8 MB  → ~22 % headroom above DTO max
+  // DTO validation therefore catches oversized audio with a clean 400
+  // before the parser ever needs to throw a 413.
   // The regex matches /clinical-records/<id>/dictate regardless of API prefix.
   app.use(
     /\/clinical-records\/[^/]+\/dictate$/,
-    express.json({ limit: '4mb' }),
+    express.json({ limit: '8mb' }),
   );
 
   // Global JSON body limit — all other routes.
