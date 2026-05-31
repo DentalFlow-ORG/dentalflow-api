@@ -14,8 +14,10 @@ import {
   CLINICAL_FIELD_KEYS,
   ClinicalDictationService,
   normalizeAudioMime,
+  VALID_FDI_TOOTH_NUMBERS,
+  VALID_ODONTOGRAM_CONDITIONS,
 } from './clinical-dictation.service';
-import type { DictationResult } from './clinical-dictation.service';
+import type { DictationResult, OdontogramSuggestionResult } from './clinical-dictation.service';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -436,6 +438,7 @@ describe('ClinicalDictationService', () => {
         content: {
           transcriptLength: SAMPLE_TRANSCRIPT.length,
           fieldsClassified: ['chiefComplaint'],
+          odontogramSuggestionsCount: 0,
         },
         model:       expect.any(String),
         generatedAt: expect.any(Date),
@@ -805,5 +808,289 @@ describe('CLASSIFICATION_SYSTEM_PROMPT behavioral properties', () => {
     expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Paciente relata dor no dente 36');
     expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Sensibilidade ao frio');
     expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('sensibilidade ao frio');
+  });
+
+  it('includes odontogramSuggestions format in the prompt', () => {
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toContain('odontogramSuggestions');
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toContain('toothNumber');
+    expect(CLASSIFICATION_SYSTEM_PROMPT).toContain('confidence');
+  });
+});
+
+// ── 21. Odontogram suggestions extraction ────────────────────────────────────
+// Tests for the new backend extraction of tooth-condition suggestions from GPT.
+
+describe('odontogram suggestions extraction', () => {
+  let service: ClinicalDictationService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.OPENAI_API_KEY = 'sk-test';
+    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  // ── Returns suggestions when GPT provides valid entries ───────────────────
+
+  it('returns odontogram suggestions from GPT response alongside clinical fields', async () => {
+    const classificationJson = JSON.stringify({
+      fields: { chiefComplaint: 'Dor no dente 36' },
+      odontogramSuggestions: [
+        { toothNumber: '36', condition: 'caries', notes: 'Cárie relatada no ditado.', confidence: 'high', sourceText: 'dente 36 com cárie' },
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result: DictationResult = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(1);
+    const s = result.odontogramSuggestions[0] as OdontogramSuggestionResult;
+    expect(s.toothNumber).toBe('36');
+    expect(s.condition).toBe('caries');
+    expect(s.notes).toBe('Cárie relatada no ditado.');
+    expect(s.confidence).toBe('high');
+    expect(s.sourceText).toBe('dente 36 com cárie');
+  });
+
+  it('returns an empty odontogramSuggestions array when none are in the GPT response', async () => {
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toEqual([]);
+  });
+
+  it('returns an empty array when odontogramSuggestions key is absent', async () => {
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: { chiefComplaint: 'Dor' } }),
+    );
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toEqual([]);
+  });
+
+  // ── Validation: invalid entries are silently dropped ─────────────────────
+
+  it('strips suggestions with an invalid tooth number (not in FDI set)', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { toothNumber: '99', condition: 'caries' }, // 99 is not a valid FDI number
+        { toothNumber: '36', condition: 'caries' }, // valid
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(1);
+    expect(result.odontogramSuggestions[0].toothNumber).toBe('36');
+  });
+
+  it('strips suggestions with an unknown condition value', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { toothNumber: '36', condition: 'unknown_condition' }, // invalid
+        { toothNumber: '11', condition: 'crown' },             // valid
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(1);
+    expect(result.odontogramSuggestions[0].toothNumber).toBe('11');
+    expect(result.odontogramSuggestions[0].condition).toBe('crown');
+  });
+
+  it('strips suggestions missing toothNumber or condition', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { condition: 'caries' },          // missing toothNumber
+        { toothNumber: '36' },             // missing condition
+        { toothNumber: '11', condition: 'healthy' }, // valid
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(1);
+    expect(result.odontogramSuggestions[0].toothNumber).toBe('11');
+  });
+
+  it('accepts all 13 valid odontogram conditions', async () => {
+    const validConditions = [...VALID_ODONTOGRAM_CONDITIONS];
+    // Use 13 valid FDI permanent tooth numbers (11-18 = 8, 21-25 = 5) to pair with each condition.
+    const teethForTest = ['11','12','13','14','15','16','17','18','21','22','23','24','25'];
+    const suggestions = validConditions.map((condition, i) => ({
+      toothNumber: teethForTest[i],
+      condition,
+    }));
+
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {}, odontogramSuggestions: suggestions }),
+    );
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(validConditions.length);
+  });
+
+  it('accepts valid FDI permanent and deciduous tooth numbers', async () => {
+    const samples = ['11', '36', '48', '51', '75', '85']; // permanent + deciduous
+    const suggestions = samples.map((toothNumber) => ({ toothNumber, condition: 'caries' }));
+
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {}, odontogramSuggestions: suggestions }),
+    );
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions).toHaveLength(samples.length);
+    const returnedTeeth = result.odontogramSuggestions.map((s) => s.toothNumber);
+    for (const t of samples) expect(returnedTeeth).toContain(t);
+  });
+
+  it('normalizes condition to lowercase before validating', async () => {
+    // GPT might return uppercase or mixed-case — normalize before validation
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [{ toothNumber: '36', condition: 'CARIES' }],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    // 'CARIES' lowercased → 'caries' which is valid
+    expect(result.odontogramSuggestions).toHaveLength(1);
+    expect(result.odontogramSuggestions[0].condition).toBe('caries');
+  });
+
+  it('capitalizes the first letter of notes from odontogram suggestions', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { toothNumber: '36', condition: 'caries', notes: 'cárie profunda observada' },
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.odontogramSuggestions[0].notes).toBe('Cárie profunda observada');
+  });
+
+  it('truncates notes and sourceText to their respective length limits', async () => {
+    const longNotes = 'N'.repeat(600);       // exceeds MAX_NOTES_LENGTH (500)
+    const longSource = 'S'.repeat(250);      // exceeds MAX_SOURCE_TEXT_LENGTH (200)
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { toothNumber: '36', condition: 'caries', notes: longNotes, sourceText: longSource },
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect((result.odontogramSuggestions[0].notes ?? '').length).toBeLessThanOrEqual(500);
+    expect((result.odontogramSuggestions[0].sourceText ?? '').length).toBeLessThanOrEqual(200);
+  });
+
+  // ── Field capitalization ──────────────────────────────────────────────────
+
+  it('capitalizes the first letter of each clinical field value', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {
+        chiefComplaint: 'dor no dente 36',         // lowercase start
+        clinicalEvolution: 'sensibilidade ao frio', // lowercase start
+      },
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    expect(result.fields.chiefComplaint).toBe('Dor no dente 36');
+    expect(result.fields.clinicalEvolution).toBe('Sensibilidade ao frio');
+  });
+
+  it('does not alter field values that already start with uppercase', async () => {
+    const classificationJson = JSON.stringify({
+      fields: { diagnosis: 'ATM com dor à palpação.' },
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+
+    // 'ATM' must remain uppercase; capitalizeFirst only touches the first char
+    expect(result.fields.diagnosis).toBe('ATM com dor à palpação.');
+  });
+
+  // ── Safe metadata in saveSuccess ──────────────────────────────────────────
+
+  it('includes odontogramSuggestionsCount in saveSuccess metadata', async () => {
+    const classificationJson = JSON.stringify({
+      fields: {},
+      odontogramSuggestions: [
+        { toothNumber: '36', condition: 'caries' },
+        { toothNumber: '11', condition: 'crown' },
+      ],
+    });
+    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
+
+    await service.dictate(CLINIC_ID, USER_ID, buildDto());
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const savedContent = mockRepository.saveSuccess.mock.calls[0][0].content as Record<string, unknown>;
+    expect(savedContent.odontogramSuggestionsCount).toBe(2);
+    // Patient data must still not be present
+    expect(Object.keys(savedContent)).not.toContain('transcript');
+    expect(Object.keys(savedContent)).not.toContain('odontogramSuggestions');
+  });
+});
+
+// ── 22. VALID_FDI_TOOTH_NUMBERS and VALID_ODONTOGRAM_CONDITIONS constants ─────
+
+describe('validation constant exports', () => {
+  it('VALID_FDI_TOOTH_NUMBERS contains expected permanent teeth', () => {
+    expect(VALID_FDI_TOOTH_NUMBERS.has('11')).toBe(true);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('36')).toBe(true);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('48')).toBe(true);
+  });
+
+  it('VALID_FDI_TOOTH_NUMBERS contains expected deciduous teeth', () => {
+    expect(VALID_FDI_TOOTH_NUMBERS.has('51')).toBe(true);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('75')).toBe(true);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('85')).toBe(true);
+  });
+
+  it('VALID_FDI_TOOTH_NUMBERS rejects numbers outside the FDI set', () => {
+    expect(VALID_FDI_TOOTH_NUMBERS.has('99')).toBe(false);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('10')).toBe(false);
+    expect(VALID_FDI_TOOTH_NUMBERS.has('50')).toBe(false);
+  });
+
+  it('VALID_ODONTOGRAM_CONDITIONS contains all 13 expected condition values', () => {
+    const expected = [
+      'healthy', 'caries', 'restored', 'absent', 'extraction',
+      'fracture', 'mobility', 'crown', 'endodontic', 'implant',
+      'prosthetic', 'sealant', 'watch',
+    ];
+    for (const c of expected) {
+      expect(VALID_ODONTOGRAM_CONDITIONS.has(c)).toBe(true);
+    }
   });
 });

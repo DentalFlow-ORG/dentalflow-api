@@ -35,6 +35,7 @@ const mockClinicalDictationService = {
 const SAMPLE_RESULT: DictationResult = {
   transcript: 'Paciente relata dor no dente 36.',
   fields: { chiefComplaint: 'Dor no dente 36', clinicalEvolution: 'Sensibilidade ao frio.' },
+  odontogramSuggestions: [],
 };
 
 const VALID_DTO = {
