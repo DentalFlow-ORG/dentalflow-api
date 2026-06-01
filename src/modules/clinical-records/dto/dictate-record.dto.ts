@@ -23,13 +23,11 @@ export const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/mp4',
 ] as const;
 
-// 4 MB of base64 ≈ 3 MB raw audio ≈ ~125 s at 32 kbps (well above the 60 s
-// frontend cap even if the browser ignores the bitrate hint and records at
-// up to ~256 kbps: 60 s × 256 kbps / 8 = 1.92 MB raw → 2.56 M chars).
-// Kept below the 6 MB route-parser limit so DTO validation returns a clean
-// 400 before body-parser ever needs to throw a 413.
+// 4 MB of base64 ≈ 3 MB raw audio ≈ ~133 kbps for 180 s — well above the
+// 32 kbps target and the 180 s frontend cap. Kept below the 6 MB route-parser
+// limit so DTO validation returns a clean 400 before body-parser throws 413.
 export const MAX_AUDIO_BASE64_LENGTH = 4_000_000;
-export const MAX_DURATION_SECONDS = 120;
+export const MAX_DURATION_SECONDS = 180;
 
 export class DictateRecordDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))
