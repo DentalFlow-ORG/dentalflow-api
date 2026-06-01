@@ -10,6 +10,10 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilCurrentIsoMonth,
+  getBrazilMonthRange,
+} from '../../common/utils/brazil-timezone';
 
 export type AiQuotaInfo = {
   allowed: boolean;
@@ -111,13 +115,11 @@ export class AiQuotaService {
   }
 
   private monthBounds(): { start: Date; nextResetAt: Date } {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    return {
-      start: new Date(Date.UTC(year, month, 1)),
-      nextResetAt: new Date(Date.UTC(year, month + 1, 1)),
-    };
+    // generatedAt is a UTC timestamp — use Brazil month boundaries so quota
+    // counting doesn't advance to the next month at 00:00 UTC while Brazil
+    // is still in the previous calendar month.
+    const { start, end } = getBrazilMonthRange(brazilCurrentIsoMonth());
+    return { start, nextResetAt: end };
   }
 
   private async countMonthlyUsed(
