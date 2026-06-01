@@ -288,6 +288,7 @@ model Clinic {
   notificationPreference NotificationPreference?
   notificationQuotas    NotificationQuota[]
   notificationMessages  NotificationMessage[]
+  patientAvatars        PatientAvatar[]
 
   @@map("clinics")
 }
@@ -1555,4 +1556,27 @@ model WebsiteLead {
 
   @@index([phone, createdAt])
   @@map("website_leads")
+}
+
+// ================================================================
+// DOMAIN — PATIENT AVATARS
+// ================================================================
+
+// Stores patient profile photos keyed by clinic + patient identifier.
+// Patients are not User records — they are identified by email (preferred)
+// or name in the appointments table. avatarUrl stores a compressed base64
+// data URL (JPEG, ≤512×512 px) so no external object storage is required.
+model PatientAvatar {
+  id         String   @id @default(cuid())
+  clinicId   String
+  identifier String   // patient email (preferred) or name when no email
+  avatarUrl  String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, identifier])
+  @@index([clinicId])
+  @@map("patient_avatars")
 }

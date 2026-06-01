@@ -16,6 +16,7 @@ interface PatientRow {
   completedAppointments: bigint;
   canceledAppointments: bigint;
   lastVisit: Date | null;
+  avatarUrl: string | null;
 }
 
 export type AttentionReason =
@@ -54,19 +55,23 @@ export class PatientsService {
     const rows = await this.prisma.$queryRaw<PatientRow[]>(
       Prisma.sql`
         SELECT
-          COALESCE("patientEmail", "patientName") AS identifier,
-          "patientName",
-          "patientEmail",
-          MAX("patientPhone") AS "patientPhone",
+          COALESCE(a."patientEmail", a."patientName") AS identifier,
+          a."patientName",
+          a."patientEmail",
+          MAX(a."patientPhone") AS "patientPhone",
           COUNT(*)::bigint AS "totalAppointments",
-          COUNT(CASE WHEN status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
-          COUNT(CASE WHEN status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
-          MAX("appointmentDate") AS "lastVisit"
-        FROM appointments
-        WHERE "clinicId" = ${clinicId}
+          COUNT(CASE WHEN a.status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
+          COUNT(CASE WHEN a.status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
+          MAX(a."appointmentDate") AS "lastVisit",
+          MAX(pa."avatarUrl") AS "avatarUrl"
+        FROM appointments a
+        LEFT JOIN patient_avatars pa
+          ON pa."clinicId" = a."clinicId"
+          AND pa.identifier = COALESCE(a."patientEmail", a."patientName")
+        WHERE a."clinicId" = ${clinicId}
         ${searchFilter}
-        GROUP BY COALESCE("patientEmail", "patientName"), "patientName", "patientEmail"
-        ORDER BY MAX("appointmentDate") DESC NULLS LAST
+        GROUP BY COALESCE(a."patientEmail", a."patientName"), a."patientName", a."patientEmail"
+        ORDER BY MAX(a."appointmentDate") DESC NULLS LAST
       `,
     );
 
@@ -81,9 +86,30 @@ export class PatientsService {
       lastVisit: row.lastVisit
         ? row.lastVisit.toISOString().slice(0, 10)
         : null,
+      avatarUrl: row.avatarUrl ?? null,
     }));
 
     return { data, total: data.length };
+  }
+
+  async getPatientAvatar(clinicId: string, identifier: string) {
+    const row = await this.prisma.patientAvatar.findUnique({
+      where: { clinicId_identifier: { clinicId, identifier } },
+      select: { avatarUrl: true },
+    });
+    return { avatarUrl: row?.avatarUrl ?? null };
+  }
+
+  async upsertPatientAvatar(
+    clinicId: string,
+    identifier: string,
+    avatarBase64: string | null | undefined,
+  ) {
+    await this.prisma.patientAvatar.upsert({
+      where: { clinicId_identifier: { clinicId, identifier } },
+      create: { clinicId, identifier, avatarUrl: avatarBase64 ?? null },
+      update: { avatarUrl: avatarBase64 ?? null },
+    });
   }
 
   async getPatientHistory(clinicId: string, identifier: string) {

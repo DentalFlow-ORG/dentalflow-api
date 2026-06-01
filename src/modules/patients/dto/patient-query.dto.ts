@@ -22,3 +22,11 @@ export class PatientHistoryQueryDto {
   @MaxLength(254)
   identifier!: string;
 }
+
+export class PatientAvatarQueryDto {
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(320)
+  identifier!: string;
+}
