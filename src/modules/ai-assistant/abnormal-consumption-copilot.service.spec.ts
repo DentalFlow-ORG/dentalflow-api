@@ -320,7 +320,7 @@ describe('AbnormalConsumptionCopilotService', () => {
     });
 
     expect(result.source).toBe('CACHE');
-    expect(result.anomalySnapshot.totalAnomalies).toBe(0);
+    expect(result.anomalySnapshot?.totalAnomalies).toBe(0);
     expect(mockQuotaService.getQuota).not.toHaveBeenCalled();
   });
 
@@ -418,5 +418,101 @@ describe('AbnormalConsumptionCopilotService', () => {
       CLINIC_ID,
       expect.objectContaining({ recentDays: 7, baselineDays: 30 }),
     );
+  });
+});
+
+// ── getLatestAnalysis ─────────────────────────────────────────────────────────
+//
+// Returns the last persisted DB record regardless of current anomaly-list state.
+// This is the endpoint used on page mount so analyses survive zero-anomaly cycles.
+
+describe('AbnormalConsumptionCopilotService.getLatestAnalysis', () => {
+  let service: AbnormalConsumptionCopilotService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepository.findLatest.mockResolvedValue(null);
+    process.env.OPENAI_API_KEY = 'sk-test';
+    service = buildService();
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('returns null when no record exists', async () => {
+    mockQuota('professional', true, 10, 10);
+
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).toBeNull();
+    expect(mockRepository.findLatest).toHaveBeenCalledWith(
+      CLINIC_ID,
+      AiAssistantAnalysisType.ABNORMAL_CONSUMPTION_COPILOT,
+    );
+  });
+
+  it('returns persisted record even when there are currently no anomalies', async () => {
+    // Key bug scenario: anomalies resolved today, but a previous analysis
+    // was generated when they existed.  getCopilotSummary returns deterministic
+    // empty content; getLatestAnalysis bypasses that check entirely.
+    mockQuota('professional', true, 10, 10);
+    const storedContent = {
+      summary: 'Resumo gerado.',
+      highlights: ['Produto X consumo alto.'],
+      recommendedActions: ['Verifique o produto X.'],
+    };
+    const generatedAt = new Date('2026-06-01T14:00:00Z');
+    mockRepository.findLatest.mockResolvedValue({
+      content: storedContent,
+      generatedAt,
+      status: 'SUCCESS' as const,
+    });
+
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).not.toBeNull();
+    expect(result!.summary).toBe(storedContent.summary);
+    expect(result!.generatedAt).toBe(generatedAt.toISOString());
+    expect(result!.source).toBe('CACHE');
+    expect(result!.cached).toBe(true);
+    // The anomaly service is never called — no live data fetch
+    expect(mockAbnormalConsumptionService.getAbnormalConsumption).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException when plan does not allow copilot', async () => {
+    mockQuota('starter', false, 0, 0);
+
+    await expect(service.getLatestAnalysis(CLINIC_ID)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('uses clinic isolation — only fetches records for the given clinicId', async () => {
+    mockQuota('professional', true, 10, 10);
+
+    await service.getLatestAnalysis(OTHER_CLINIC_ID);
+
+    expect(mockRepository.findLatest).toHaveBeenCalledWith(
+      OTHER_CLINIC_ID,
+      AiAssistantAnalysisType.ABNORMAL_CONSUMPTION_COPILOT,
+    );
+    expect(mockRepository.findLatest).not.toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.anything(),
+    );
+  });
+
+  it('does not include anomalySnapshot in the response', async () => {
+    mockQuota('professional', true, 10, 10);
+    mockRepository.findLatest.mockResolvedValue({
+      content: { summary: 'ok', highlights: [], recommendedActions: [] },
+      generatedAt: new Date(),
+      status: 'SUCCESS' as const,
+    });
+
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).not.toHaveProperty('anomalySnapshot');
   });
 });

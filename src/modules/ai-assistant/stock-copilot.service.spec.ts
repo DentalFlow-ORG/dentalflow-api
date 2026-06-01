@@ -244,7 +244,7 @@ describe('StockCopilotService', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('(5) yesterday cache: not treated as today cache, returns null (no AI auto-call)', async () => {
+  it('(5) any-date cache: returns cached result even when generated on a previous day', async () => {
     mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
     mockQuota('professional', true, 10, 10);
     mockRepository.findLatest.mockResolvedValue(yesterdayRecord(mockValidAiResponse()));
@@ -252,32 +252,10 @@ describe('StockCopilotService', () => {
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
 
-    expect(result).toBeNull();
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('(5b) Brazil boundary: cache from 23:00 Brazil (02:00 UTC next UTC day) is a hit', async () => {
-    // At 02:00 UTC June 1 the UTC day is "June 1" but Brazil is still "May 31".
-    // A record generated at 23:00 Brazil (= 02:00 UTC June 1) must be a cache hit.
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-06-01T02:30:00Z')); // 23:30 Brazil May 31
-
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
-    mockQuota('professional', true, 0, 10); // quota exhausted, must rely on cache
-
-    const cacheGeneratedAt = new Date('2026-06-01T02:00:00Z'); // 23:00 Brazil May 31
-    mockRepository.findLatest.mockResolvedValue({
-      content: mockValidAiResponse(),
-      generatedAt: cacheGeneratedAt,
-      status: AiAssistantAnalysisStatus.SUCCESS,
-    });
-
-    const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
-
     expect(result).not.toBeNull();
     expect(result!.source).toBe('CACHE');
-
-    jest.useRealTimers();
+    expect(result!.cached).toBe(true);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   // ── 6. forceRefresh calls AI again ──────────────────────────────────────
@@ -431,5 +409,98 @@ describe('StockCopilotService', () => {
       OTHER_CLINIC_ID,
       AiAssistantAnalysisType.STOCK_COPILOT,
     );
+  });
+});
+
+// ── getLatestAnalysis ─────────────────────────────────────────────────────────
+//
+// Returns the last persisted DB record regardless of current purchase-list state.
+// This is the endpoint used on page mount so analyses survive empty-list cycles.
+
+describe('StockCopilotService.getLatestAnalysis', () => {
+  let service: StockCopilotService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepository.findLatest.mockResolvedValue(null);
+    process.env.OPENAI_API_KEY = 'sk-test';
+    service = buildService();
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('returns null when no record exists', async () => {
+    mockQuota('professional', true, 10, 10);
+    mockRepository.findLatest.mockResolvedValue(null);
+
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).toBeNull();
+    expect(mockRepository.findLatest).toHaveBeenCalledWith(
+      CLINIC_ID,
+      AiAssistantAnalysisType.STOCK_COPILOT,
+    );
+  });
+
+  it('returns persisted record even when purchase list is currently empty', async () => {
+    // Simulates the key bug: purchase list is empty today, but a previous
+    // analysis was generated yesterday.  getCopilotSummary would short-circuit
+    // and return null; getLatestAnalysis bypasses that check.
+    mockQuota('professional', true, 10, 10);
+    const storedContent = mockValidAiResponse();
+    const generatedAt = new Date('2026-06-01T14:00:00Z');
+    mockRepository.findLatest.mockResolvedValue({
+      content: storedContent,
+      generatedAt,
+      status: 'SUCCESS' as const,
+    });
+
+    // Note: getPurchaseList is NOT called — the purchase list check is bypassed
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).not.toBeNull();
+    expect(result!.summary).toBe(storedContent.summary);
+    expect(result!.generatedAt).toBe(generatedAt.toISOString());
+    expect(result!.source).toBe('CACHE');
+    expect(result!.cached).toBe(true);
+    expect(mockPurchaseListService.getPurchaseList).not.toHaveBeenCalled();
+  });
+
+  it('throws ForbiddenException when plan does not allow copilot', async () => {
+    mockQuota('starter', false, 0, 0);
+
+    await expect(service.getLatestAnalysis(CLINIC_ID)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('uses clinic isolation — only fetches records for the given clinicId', async () => {
+    mockQuota('professional', true, 10, 10);
+
+    await service.getLatestAnalysis(OTHER_CLINIC_ID);
+
+    expect(mockRepository.findLatest).toHaveBeenCalledWith(
+      OTHER_CLINIC_ID,
+      AiAssistantAnalysisType.STOCK_COPILOT,
+    );
+    expect(mockRepository.findLatest).not.toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.anything(),
+    );
+  });
+
+  it('does not include purchaseListSnapshot in the response', async () => {
+    mockQuota('professional', true, 10, 10);
+    mockRepository.findLatest.mockResolvedValue({
+      content: mockValidAiResponse(),
+      generatedAt: new Date(),
+      status: 'SUCCESS' as const,
+    });
+
+    const result = await service.getLatestAnalysis(CLINIC_ID);
+
+    expect(result).not.toHaveProperty('purchaseListSnapshot');
   });
 });

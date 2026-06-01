@@ -18,7 +18,6 @@ import { StockAbnormalConsumptionService } from '../stock/stock-abnormal-consump
 import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repository';
 import { AiQuotaService } from './ai-quota.service';
 import { AbnormalConsumptionCopilotDto } from './dto/abnormal-consumption-copilot.dto';
-import { getBrazilDayRange } from '../../common/utils/brazil-timezone';
 
 // ── Response types ─────────────────────────────────────────────────────────────
 
@@ -29,7 +28,8 @@ export type AbnormalConsumptionCopilotResult = {
   generatedAt: string;
   cached: boolean;
   source: 'AI' | 'CACHE';
-  anomalySnapshot: AnomalySnapshot;
+  /** Omitted when the result comes from the /latest (DB-only) endpoint. */
+  anomalySnapshot?: AnomalySnapshot;
 };
 
 type AnomalySnapshot = {
@@ -201,7 +201,7 @@ export class AbnormalConsumptionCopilotService {
 
     // 4. Cache path — only when not forcing refresh
     if (!forceRefresh) {
-      const cached = await this.findTodayCache(clinicId);
+      const cached = await this.findLatestCache(clinicId);
       if (cached) {
         const content = cached.content as CopilotContent;
         return {
@@ -242,16 +242,35 @@ export class AbnormalConsumptionCopilotService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private async findTodayCache(clinicId: string) {
-    const record = await this.analysisRepository.findLatest(
-      clinicId,
-      ANALYSIS_TYPE,
-    );
+  /**
+   * Returns the most recently persisted ABNORMAL_CONSUMPTION_COPILOT analysis
+   * for a clinic, regardless of the current anomaly-list state.  Used by the
+   * GET /latest endpoint so analyses remain visible when anomalies clear.
+   */
+  async getLatestAnalysis(
+    clinicId: string,
+  ): Promise<AbnormalConsumptionCopilotResult | null> {
+    const quota = await this.quotaService.getQuota(clinicId, ANALYSIS_TYPE);
+    if (!quota.allowed) {
+      throw new ForbiddenException(
+        'O Copiloto de consumo está disponível nos planos Professional e Premium.',
+      );
+    }
+
+    const record = await this.findLatestCache(clinicId);
     if (!record) return null;
-    // generatedAt is a UTC timestamp — check against Brazil day start so a cache
-    // generated at 23:00 Brazil is not evicted at 00:01 UTC next day.
-    const { start: brazilDayStart } = getBrazilDayRange();
-    return record.generatedAt >= brazilDayStart ? record : null;
+
+    const content = record.content as CopilotContent;
+    return {
+      ...content,
+      generatedAt: record.generatedAt.toISOString(),
+      cached: true,
+      source: 'CACHE',
+    };
+  }
+
+  private async findLatestCache(clinicId: string) {
+    return this.analysisRepository.findLatest(clinicId, ANALYSIS_TYPE);
   }
 
   private buildContext(

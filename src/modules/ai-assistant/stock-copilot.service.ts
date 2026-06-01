@@ -17,7 +17,6 @@ import type {
 import { StockPurchaseListService } from '../stock/stock-purchase-list.service';
 import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repository';
 import { AiQuotaService } from './ai-quota.service';
-import { getBrazilDayRange } from '../../common/utils/brazil-timezone';
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -28,7 +27,8 @@ export type CopilotSummaryResult = {
   generatedAt: string;
   cached: boolean;
   source: 'AI' | 'CACHE';
-  purchaseListSnapshot: PurchaseListSnapshot;
+  /** Omitted when the result comes from the /latest (DB-only) endpoint. */
+  purchaseListSnapshot?: PurchaseListSnapshot;
 };
 
 type PurchaseListSnapshot = {
@@ -145,7 +145,7 @@ export class StockCopilotService {
 
     // 4. Cache path — only if not forcing refresh
     if (!forceRefresh) {
-      const cached = await this.findTodayCache(clinicId);
+      const cached = await this.findLatestCache(clinicId);
       if (cached) {
         const content = cached.content as CopilotContent;
         return {
@@ -186,16 +186,39 @@ export class StockCopilotService {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  private async findTodayCache(clinicId: string) {
-    const record = await this.analysisRepository.findLatest(
+  /**
+   * Returns the most recently persisted STOCK_COPILOT analysis for a clinic,
+   * regardless of the current purchase-list state.  Used by the GET /latest
+   * endpoint so analyses remain visible even when the purchase list is empty.
+   */
+  async getLatestAnalysis(clinicId: string): Promise<CopilotSummaryResult | null> {
+    const quota = await this.quotaService.getQuota(
       clinicId,
       AiAssistantAnalysisType.STOCK_COPILOT,
     );
+    if (!quota.allowed) {
+      throw new ForbiddenException(
+        'O Copiloto de estoque está disponível nos planos Professional e Premium.',
+      );
+    }
+
+    const record = await this.findLatestCache(clinicId);
     if (!record) return null;
-    // generatedAt is a UTC timestamp — check against Brazil day start so a cache
-    // generated at 23:00 Brazil is not evicted at 00:01 UTC next day.
-    const { start: brazilDayStart } = getBrazilDayRange();
-    return record.generatedAt >= brazilDayStart ? record : null;
+
+    const content = record.content as CopilotContent;
+    return {
+      ...content,
+      generatedAt: record.generatedAt.toISOString(),
+      cached: true,
+      source: 'CACHE',
+    };
+  }
+
+  private async findLatestCache(clinicId: string) {
+    return this.analysisRepository.findLatest(
+      clinicId,
+      AiAssistantAnalysisType.STOCK_COPILOT,
+    );
   }
 
   private buildContext(
