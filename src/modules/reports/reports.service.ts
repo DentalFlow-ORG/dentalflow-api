@@ -3,6 +3,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validateReportDateRange } from '../../common/utils/date-range.utils';
 import {
+  brazilTodayIso,
+  parseBrazilDateOnlyToUtcRange,
+} from '../../common/utils/brazil-timezone';
+import {
   AppointmentsReportQueryDto,
   FinanceReportQueryDto,
   InventoryReportQueryDto,
@@ -75,16 +79,24 @@ function decimalToStr(val: Prisma.Decimal | null | undefined): string {
   return Number(val).toFixed(3).replace('.', ',');
 }
 
-function parseDate(str: string | undefined): Date | undefined {
+// For DATE-ONLY fields stored as UTC midnight (transactionDate, appointmentDate, competenceDate).
+function parseDateOnly(str: string | undefined): Date | undefined {
   if (!str) return undefined;
   const [y, m, d] = str.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 }
 
-function endOfDay(str: string | undefined): Date | undefined {
+// Exclusive end for DATE-ONLY fields: next UTC midnight.
+function parseDateOnlyEnd(str: string | undefined): Date | undefined {
   if (!str) return undefined;
   const [y, m, d] = str.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+  return new Date(Date.UTC(y, m - 1, d + 1));
+}
+
+// Kept for backward compatibility within this file only.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function parseDate(str: string | undefined): Date | undefined {
+  return parseDateOnly(str);
 }
 
 // ── Finance report ───────────────────────────────────────────────────────────
@@ -121,8 +133,8 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             transactionDate: {
-              ...(query.startDate ? { gte: parseDate(query.startDate) } : {}),
-              ...(query.endDate ? { lte: endOfDay(query.endDate) } : {}),
+              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
         : {}),
@@ -176,8 +188,8 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             appointmentDate: {
-              ...(query.startDate ? { gte: parseDate(query.startDate) } : {}),
-              ...(query.endDate ? { lte: endOfDay(query.endDate) } : {}),
+              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
         : {}),
@@ -281,11 +293,12 @@ export class ReportsService {
       expiresAt: Date | null;
     }): string => {
       if (!p.isActive) return 'INACTIVE';
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
+      // expiresAt is stored as UTC midnight of the calendar date. Use UTC midnight
+      // of the Brazil today so an item expiring "today Brazil" is not flagged as
+      // EXPIRED at 00:01-02:59 UTC when Brazil is still the previous day.
+      const today = new Date(`${brazilTodayIso()}T00:00:00.000Z`);
       if (p.expiresAt) {
         const exp = new Date(p.expiresAt);
-        exp.setUTCHours(0, 0, 0, 0);
         if (exp < today) return 'EXPIRED';
         const days = Math.ceil((exp.getTime() - today.getTime()) / 86_400_000);
         if (days <= EXPIRY_WARNING_DAYS) return 'EXPIRING';
@@ -357,9 +370,15 @@ export class ReportsService {
       ...(query.source ? { source: query.source } : {}),
       ...(query.startDate || query.endDate
         ? {
+            // createdAt is a UTC timestamp — use Brazil midnight so "from June 1"
+            // correctly starts at June 1 00:00 Brazil (03:00 UTC).
             createdAt: {
-              ...(query.startDate ? { gte: parseDate(query.startDate) } : {}),
-              ...(query.endDate ? { lte: endOfDay(query.endDate) } : {}),
+              ...(query.startDate
+                ? { gte: parseBrazilDateOnlyToUtcRange(query.startDate).start }
+                : {}),
+              ...(query.endDate
+                ? { lt: parseBrazilDateOnlyToUtcRange(query.endDate).end }
+                : {}),
             },
           }
         : {}),
@@ -426,8 +445,8 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             competenceDate: {
-              ...(query.startDate ? { gte: parseDate(query.startDate) } : {}),
-              ...(query.endDate ? { lte: endOfDay(query.endDate) } : {}),
+              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
         : {}),

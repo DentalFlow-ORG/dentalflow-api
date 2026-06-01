@@ -1,10 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
+import { brazilTodayIso } from './brazil-timezone';
 
 const MAX_REPORT_MONTHS = 12;
 const MAX_FOLLOW_UP_MONTHS = 24;
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return brazilTodayIso();
 }
 
 function parseIsoDate(str: string): Date | null {
@@ -70,8 +71,8 @@ export function validateFollowUpDate(
     );
   }
 
-  const maxDate = new Date();
-  maxDate.setUTCMonth(maxDate.getUTCMonth() + MAX_FOLLOW_UP_MONTHS);
+  const [ty, tm, td] = todayIso().split('-').map(Number);
+  const maxDate = new Date(Date.UTC(ty, tm - 1 + MAX_FOLLOW_UP_MONTHS, td));
   const maxIso = maxDate.toISOString().slice(0, 10);
 
   if (dateStr > maxIso) {

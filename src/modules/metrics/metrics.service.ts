@@ -6,6 +6,11 @@ import {
   FinancialTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilCurrentIsoMonth,
+  brazilTodayIso,
+  formatBrazilDateOnly,
+} from '../../common/utils/brazil-timezone';
 
 type ActionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -15,15 +20,22 @@ export class MetricsService {
 
   async getProductivitySummary(clinicId: string) {
     const now = new Date();
-    const todayStr = this.isoDate(now);
+    // Use Brazil calendar date so day/month boundaries don't shift during 00:00-03:00 UTC.
+    const todayStr = brazilTodayIso(now);
     const [y, m, d] = todayStr.split('-').map(Number);
 
+    // appointmentDate and transactionDate are stored as UTC midnight, so use UTC midnight
+    // boundaries derived from the correct Brazil calendar date.
     const todayStart = new Date(Date.UTC(y, m - 1, d));
-    const todayEnd = new Date(Date.UTC(y, m - 1, d + 1));
-    const monthStart = new Date(Date.UTC(y, m - 1, 1));
-    const monthEnd = new Date(Date.UTC(y, m, 1));
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const todayEnd   = new Date(Date.UTC(y, m - 1, d + 1));
+
+    const brazilMonth = brazilCurrentIsoMonth(now);
+    const [by, bm] = brazilMonth.split('-').map(Number);
+    const monthStart = new Date(Date.UTC(by, bm - 1, 1));
+    const monthEnd   = new Date(Date.UTC(by, bm,     1));
+
+    const sevenDaysAgo   = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo   = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
     const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const [
@@ -381,6 +393,6 @@ export class MetricsService {
   }
 
   private isoDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    return formatBrazilDateOnly(date);
   }
 }

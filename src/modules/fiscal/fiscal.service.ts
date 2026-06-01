@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { fiscalConfig } from '../../config/fiscal.config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { brazilCurrentIsoMonth } from '../../common/utils/brazil-timezone';
 import {
   CancelInvoiceDto,
   CreateServiceInvoiceDto,
@@ -95,9 +96,10 @@ export class FiscalService {
   }
 
   async getSummary(clinicId: string) {
-    const startOfMonth = new Date();
-    startOfMonth.setUTCDate(1);
-    startOfMonth.setUTCHours(0, 0, 0, 0);
+    // competenceDate is stored as UTC midnight — derive first-of-month from the
+    // Brazil calendar so the window doesn't shift during 00:00-03:00 UTC.
+    const [bmy, bmm] = brazilCurrentIsoMonth().split('-').map(Number);
+    const startOfMonth = new Date(Date.UTC(bmy, bmm - 1, 1));
 
     const statusRows = await this.prisma.serviceInvoice.groupBy({
       by: ['status'],

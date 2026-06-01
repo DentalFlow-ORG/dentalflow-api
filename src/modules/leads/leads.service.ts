@@ -8,6 +8,10 @@ import { LeadActivityAction, LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { validateFollowUpDate } from '../../common/utils/date-range.utils';
+import {
+  brazilCurrentIsoMonth,
+  getBrazilMonthRange,
+} from '../../common/utils/brazil-timezone';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { CreateLeadActivityDto } from './dto/create-lead-activity.dto';
 import { ListLeadsDto } from './dto/list-leads.dto';
@@ -437,9 +441,9 @@ export class LeadsService {
     const limit = subscription?.plan?.maxLeadsPerMonth;
     if (limit == null) return;
 
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    // createdAt is a UTC timestamp — use Brazil month start so the quota
+    // boundary doesn't shift during 00:00-03:00 UTC.
+    const { start: startOfMonth } = getBrazilMonthRange(brazilCurrentIsoMonth());
 
     const count = await this.prisma.lead.count({
       where: {

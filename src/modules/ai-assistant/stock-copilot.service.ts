@@ -17,6 +17,7 @@ import type {
 import { StockPurchaseListService } from '../stock/stock-purchase-list.service';
 import { AiAssistantAnalysisRepository } from './ai-assistant-analysis.repository';
 import { AiQuotaService } from './ai-quota.service';
+import { getBrazilDayRange } from '../../common/utils/brazil-timezone';
 
 // ── Response types ────────────────────────────────────────────────────────────
 
@@ -191,9 +192,10 @@ export class StockCopilotService {
       AiAssistantAnalysisType.STOCK_COPILOT,
     );
     if (!record) return null;
-    const todayUtc = new Date();
-    todayUtc.setUTCHours(0, 0, 0, 0);
-    return record.generatedAt >= todayUtc ? record : null;
+    // generatedAt is a UTC timestamp — check against Brazil day start so a cache
+    // generated at 23:00 Brazil is not evicted at 00:01 UTC next day.
+    const { start: brazilDayStart } = getBrazilDayRange();
+    return record.generatedAt >= brazilDayStart ? record : null;
   }
 
   private buildContext(

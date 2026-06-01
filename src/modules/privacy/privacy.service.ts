@@ -15,6 +15,7 @@ import { ListCookieConsentsDto } from './dto/list-cookie-consents.dto';
 import { ListPrivacyRequestsDto } from './dto/list-privacy-requests.dto';
 import { UpdatePrivacyRequestStatusDto } from './dto/update-privacy-request-status.dto';
 import { LogCookieConsentDto } from './dto/log-cookie-consent.dto';
+import { parseBrazilDateOnlyToUtcRange } from '../../common/utils/brazil-timezone';
 
 function generateRequestCode(): string {
   return `PR-${randomBytes(4).toString('hex').toUpperCase()}`;
@@ -252,8 +253,12 @@ export class PrivacyService {
       ...(dto.userId && { userId: dto.userId }),
       ...((dto.dateFrom || dto.dateTo) && {
         createdAt: {
-          ...(dto.dateFrom && { gte: new Date(dto.dateFrom) }),
-          ...(dto.dateTo && { lte: new Date(dto.dateTo) }),
+          ...(dto.dateFrom && {
+            gte: parseBrazilDateOnlyToUtcRange(dto.dateFrom).start,
+          }),
+          ...(dto.dateTo && {
+            lt: parseBrazilDateOnlyToUtcRange(dto.dateTo).end,
+          }),
         },
       }),
     };

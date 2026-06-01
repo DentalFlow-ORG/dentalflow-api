@@ -6,6 +6,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
 interface PatientRow {
   identifier: string;
@@ -133,14 +134,13 @@ export class PatientsService {
   }
 
   async getPatientsAttention(clinicId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const ninetyDaysAgo = new Date(today);
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    // appointmentDate is stored as UTC midnight. Use UTC midnight of the Brazil
+    // calendar date so day boundaries don't shift during 00:00-03:00 UTC.
+    const todayStr = brazilTodayIso();
+    const [ty, tm, td] = todayStr.split('-').map(Number);
+    const today       = new Date(Date.UTC(ty, tm - 1, td));
+    const thirtyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 30));
+    const ninetyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 90));
 
     // Load all appointments with profile info (ordered ascending for processing)
     const appointments = await this.prisma.appointment.findMany({

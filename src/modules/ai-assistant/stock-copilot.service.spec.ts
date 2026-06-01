@@ -125,9 +125,9 @@ function todayRecord(content: object) {
 }
 
 function yesterdayRecord(content: object) {
-  const yesterday = new Date();
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  yesterday.setUTCHours(0, 0, 0, 0);
+  // Use a fixed past timestamp that is guaranteed to be before any Brazil day start.
+  // 2026-05-25T00:00:00Z is well before the Brazil midnight of 2026-05-26 (03:00 UTC).
+  const yesterday = new Date('2026-05-25T00:00:00Z');
   return {
     content,
     generatedAt: yesterday,
@@ -254,6 +254,30 @@ describe('StockCopilotService', () => {
 
     expect(result).toBeNull();
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('(5b) Brazil boundary: cache from 23:00 Brazil (02:00 UTC next UTC day) is a hit', async () => {
+    // At 02:00 UTC June 1 the UTC day is "June 1" but Brazil is still "May 31".
+    // A record generated at 23:00 Brazil (= 02:00 UTC June 1) must be a cache hit.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-01T02:30:00Z')); // 23:30 Brazil May 31
+
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockQuota('professional', true, 0, 10); // quota exhausted, must rely on cache
+
+    const cacheGeneratedAt = new Date('2026-06-01T02:00:00Z'); // 23:00 Brazil May 31
+    mockRepository.findLatest.mockResolvedValue({
+      content: mockValidAiResponse(),
+      generatedAt: cacheGeneratedAt,
+      status: AiAssistantAnalysisStatus.SUCCESS,
+    });
+
+    const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
+
+    expect(result).not.toBeNull();
+    expect(result!.source).toBe('CACHE');
+
+    jest.useRealTimers();
   });
 
   // ── 6. forceRefresh calls AI again ──────────────────────────────────────

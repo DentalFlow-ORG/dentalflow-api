@@ -59,12 +59,29 @@ describe('resolvePeriod', () => {
     expect(period.to.toISOString().slice(0, 10)).toBe('2026-04-15');
   });
 
-  it('defaults to current month when no params provided', () => {
+  it('defaults to current Brazil month when no params provided', () => {
     const period = svc.resolvePeriod({});
     const now = new Date();
-    const expectedMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    expect(period.from.toISOString().slice(0, 7)).toBe(expectedMonth);
+    // Use Brazil timezone to determine expected month (same helper the service uses)
+    const brazilMonth = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(now);
+    const expectedYear  = brazilMonth.find((p) => p.type === 'year')!.value;
+    const expectedMonth = brazilMonth.find((p) => p.type === 'month')!.value;
+    const expectedYearMonth = `${expectedYear}-${expectedMonth}`;
+    expect(period.from.toISOString().slice(0, 7)).toBe(expectedYearMonth);
     expect(period.from.getUTCDate()).toBe(1);
+  });
+
+  it('default period does not shift to UTC next month during 00:00-03:00 UTC', () => {
+    // Simulate 02:00 UTC June 1 — Brazil is still May 31, so default must be May
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-01T02:00:00Z'));
+    const period = svc.resolvePeriod({});
+    expect(period.from.toISOString().slice(0, 7)).toBe('2026-05');
+    jest.useRealTimers();
   });
 });
 

@@ -12,6 +12,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilCurrentIsoMonth,
+} from '../../common/utils/brazil-timezone';
 import { AppointmentPaymentDto } from './dto/appointment-payment.dto';
 import { CreateFinancialCategoryDto } from './dto/create-financial-category.dto';
 import { CreateFinancialTransactionDto } from './dto/create-financial-transaction.dto';
@@ -89,7 +92,7 @@ export class FinanceService {
         clinicId,
         transactionDate: {
           gte: period.from,
-          lte: period.to,
+          lt: period.to,
         },
         status: {
           not: FinancialTransactionStatus.CANCELED,
@@ -608,13 +611,16 @@ export class FinanceService {
   }
 
   private resolvePeriod(query: FinancePeriodQueryDto) {
-    const now = new Date();
+    // transactionDate is stored as UTC midnight, so use UTC midnight boundaries.
+    // The default month must be derived from the Brazil calendar, not UTC, so the
+    // window doesn't shift during 00:00-03:00 UTC.
+    const [bmy, bmm] = brazilCurrentIsoMonth().split('-').map(Number);
     const from = query.from
       ? this.parseDate(query.from, 'Data inicial')
-      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      : new Date(Date.UTC(bmy, bmm - 1, 1));
     const to = query.to
       ? this.parseDate(query.to, 'Data final')
-      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+      : new Date(Date.UTC(bmy, bmm, 1));
 
     if (from > to) {
       throw new BadRequestException('Data inicial nao pode ser maior que a final.');
