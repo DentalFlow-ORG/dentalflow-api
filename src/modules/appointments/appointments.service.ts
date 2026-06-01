@@ -27,6 +27,7 @@ import { CreateAvailabilityExceptionDto } from './dto/create-availability-except
 import { UpdateAvailabilityExceptionDto } from './dto/update-availability-exception.dto';
 import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
 import { CalendarIntegrationsService } from '../calendar-integrations/calendar-integrations.service';
+import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
 const APPOINTMENT_INCLUDE = {
   profile: { select: { id: true, displayName: true, userId: true } },
@@ -515,7 +516,13 @@ export class AppointmentsService {
           ? FinancialTransactionStatus.PAID
           : FinancialTransactionStatus.PENDING;
 
-        const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+        // If the caller did not supply a date, default to Brazil today (UTC midnight)
+        // so the FinancialTransaction.transactionDate lands on the correct Brazil
+        // calendar day even during 00:00–03:00 UTC when the UTC date has already
+        // advanced past Brazil midnight.
+        const paymentDate = dto.paymentDate
+          ? new Date(`${dto.paymentDate}T00:00:00.000Z`)
+          : new Date(`${brazilTodayIso()}T00:00:00.000Z`);
         const transactionDate = this.dateOnly(paymentDate);
         const paidAt = isPaid ? paymentDate : null;
 

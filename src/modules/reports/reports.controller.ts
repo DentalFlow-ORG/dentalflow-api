@@ -23,6 +23,7 @@ import {
   InvoicesReportQueryDto,
   LeadsReportQueryDto,
 } from './dto/report-query.dto';
+import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
 function sendCsv(res: Response, csv: string, filename: string): void {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -32,8 +33,7 @@ function sendCsv(res: Response, csv: string, filename: string): void {
 }
 
 function safeFilename(base: string): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return `${base}_${date}.csv`;
+  return `${base}_${brazilTodayIso()}.csv`;
 }
 
 @Controller('reports')

@@ -191,3 +191,41 @@ describe('getBrazilMonthRange', () => {
     expect(() => getBrazilMonthRange('not-a-month')).toThrow();
   });
 });
+
+// ── Payment-date default (regression for appointments.service.ts) ─────────────
+//
+// When a user confirms payment without supplying a date, the backend defaults to
+// Brazil today as UTC midnight — not new Date() (current UTC timestamp).
+// The test below documents the invariant: Brazil calendar date must not shift.
+
+describe('paymentDate default — Brazil today as UTC midnight', () => {
+  it('at UTC 02:00 (= Brazil May 31 23:00), brazilTodayIso returns May 31, not June 1', () => {
+    const now = new Date('2026-06-01T02:00:00Z');
+    expect(brazilTodayIso(now)).toBe('2026-05-31');
+  });
+
+  it('constructing UTC midnight from Brazil today gives the correct UTC date components', () => {
+    // This is what appointments.service.ts now does when no paymentDate is given:
+    //   new Date(`${brazilTodayIso()}T00:00:00.000Z`)
+    const now = new Date('2026-06-01T02:00:00Z'); // 23:00 Brazil May 31
+    const brazilToday = brazilTodayIso(now); // '2026-05-31'
+    const utcMidnight = new Date(`${brazilToday}T00:00:00.000Z`);
+
+    expect(utcMidnight.getUTCFullYear()).toBe(2026);
+    expect(utcMidnight.getUTCMonth()).toBe(4); // 0-indexed May
+    expect(utcMidnight.getUTCDate()).toBe(31);
+  });
+
+  it('dateOnly() on Brazil-today UTC midnight preserves May 31 (not June 1)', () => {
+    // The service calls this.dateOnly(paymentDate) to derive transactionDate.
+    // dateOnly extracts UTC year/month/day — must be May 31, not June 1.
+    const now = new Date('2026-06-01T02:00:00Z');
+    const brazilToday = brazilTodayIso(now); // '2026-05-31'
+    const paymentDate = new Date(`${brazilToday}T00:00:00.000Z`);
+    // Simulate dateOnly():
+    const transactionDate = new Date(
+      Date.UTC(paymentDate.getUTCFullYear(), paymentDate.getUTCMonth(), paymentDate.getUTCDate()),
+    );
+    expect(transactionDate.toISOString()).toBe('2026-05-31T00:00:00.000Z');
+  });
+});
