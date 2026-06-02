@@ -29,6 +29,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
+    if (response.headersSent) {
+      this.logger.error({
+        statusCode: 500,
+        method: request.method,
+        path: request.url,
+        errorName:
+          exception instanceof Error ? exception.name : typeof exception,
+        errorMessage: 'Exception after headers already sent — response not written',
+      });
+      return;
+    }
+
     const body = this.buildResponseBody(exception, request);
 
     this.logException(exception, request, body.statusCode);

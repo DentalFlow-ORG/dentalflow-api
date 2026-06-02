@@ -78,14 +78,13 @@ export class InventoryContextBuilder {
   ) {}
 
   async build(clinicId: string): Promise<InventoryAiContext> {
-    const [summary, rawProducts] = await Promise.all([
-      this.stockService.getSummary(clinicId),
-      this.prisma.stockProduct.findMany({
-        where: { clinicId, isActive: true },
-        include: { category: { select: { name: true } } },
-        orderBy: { currentQuantity: 'asc' },
-      }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const summary = await this.stockService.getSummary(clinicId);
+    const rawProducts = await this.prisma.stockProduct.findMany({
+      where: { clinicId, isActive: true },
+      include: { category: { select: { name: true } } },
+      orderBy: { currentQuantity: 'asc' },
+    });
 
     const limitations: string[] = [];
     if (summary.totalActive === 0) {

@@ -229,11 +229,10 @@ export class AiAssistantService {
   // ─── Persistence: load saved analyses ────────────────────────────────────
 
   async getLatestFinance(userId: string, clinicId: string): Promise<AiLatestResult> {
-    const [record, dataReadiness, quota] = await Promise.all([
-      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE),
-      this.getFinanceDataReadiness(clinicId),
-      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE);
+    const dataReadiness = await this.getFinanceDataReadiness(clinicId);
+    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE);
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
@@ -276,11 +275,10 @@ export class AiAssistantService {
   }
 
   async getLatestInventory(userId: string, clinicId: string): Promise<AiLatestResult> {
-    const [record, dataReadiness, quota] = await Promise.all([
-      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY),
-      this.getInventoryDataReadiness(clinicId),
-      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const dataReadiness = await this.getInventoryDataReadiness(clinicId);
+    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };

@@ -109,20 +109,19 @@ export class StockService {
   // ── Summary ─────────────────────────────────────────────────────
 
   async getSummary(clinicId: string) {
-    const [activeProducts, inactive, totalCategories] = await Promise.all([
-      this.prisma.stockProduct.findMany({
-        where: { clinicId, isActive: true },
-        select: {
-          isActive: true,
-          currentQuantity: true,
-          minQuantity: true,
-          expiresAt: true,
-          purchasePrice: true,
-        },
-      }),
-      this.prisma.stockProduct.count({ where: { clinicId, isActive: false } }),
-      this.prisma.stockCategory.count({ where: { clinicId } }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const activeProducts = await this.prisma.stockProduct.findMany({
+      where: { clinicId, isActive: true },
+      select: {
+        isActive: true,
+        currentQuantity: true,
+        minQuantity: true,
+        expiresAt: true,
+        purchasePrice: true,
+      },
+    });
+    const inactive = await this.prisma.stockProduct.count({ where: { clinicId, isActive: false } });
+    const totalCategories = await this.prisma.stockCategory.count({ where: { clinicId } });
 
     let lowStock = 0;
     let emptyStock = 0;

@@ -84,6 +84,47 @@ describe('GlobalExceptionFilter', () => {
     expect(statusFn).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 
+  // ── headersSent guard — no second write attempt ──────────────────────────
+
+  it('does not call status() or json() when response headers are already sent', () => {
+    const jsonFn = jest.fn();
+    const statusFn = jest.fn().mockReturnValue({ json: jsonFn });
+    const request = { url: '/api/test', method: 'GET' } as unknown as Request;
+    const response = { status: statusFn, headersSent: true } as unknown as Response;
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => response,
+      }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new Error('after response sent'), host);
+
+    expect(statusFn).not.toHaveBeenCalled();
+    expect(jsonFn).not.toHaveBeenCalled();
+  });
+
+  it('logs the error name when headers are already sent', () => {
+    const logSpy = jest.spyOn(
+      (filter as unknown as { logger: { error: jest.Mock } }).logger,
+      'error',
+    );
+    const request = { url: '/api/test', method: 'GET' } as unknown as Request;
+    const response = { status: jest.fn(), headersSent: true } as unknown as Response;
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => response,
+      }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new Error('sent too early'), host);
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ errorName: 'Error', path: '/api/test' }),
+    );
+  });
+
   // ── 413 is NOT logged (client error) ────────────────────────────────────
 
   it('does not log PayloadTooLargeError because 413 < 500', () => {

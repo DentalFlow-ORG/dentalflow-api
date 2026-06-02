@@ -147,15 +147,14 @@ export class ExpenseClassifierService {
   ): Promise<ClassificationResult> {
     const forceAi = dto.forceAi ?? false;
 
-    const [transaction, expenseCategories] = await Promise.all([
-      this.prisma.financialTransaction.findFirst({
-        where: { id: transactionId, clinicId },
-      }),
-      this.prisma.financialCategory.findMany({
-        where: { clinicId, type: FinancialTransactionType.EXPENSE },
-        orderBy: { name: 'asc' },
-      }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const transaction = await this.prisma.financialTransaction.findFirst({
+      where: { id: transactionId, clinicId },
+    });
+    const expenseCategories = await this.prisma.financialCategory.findMany({
+      where: { clinicId, type: FinancialTransactionType.EXPENSE },
+      orderBy: { name: 'asc' },
+    });
 
     if (!transaction) {
       throw new NotFoundException('Lançamento não encontrado.');
@@ -233,14 +232,13 @@ export class ExpenseClassifierService {
     transactionId: string,
     dto: ApplySuggestedCategoryDto,
   ) {
-    const [transaction, category] = await Promise.all([
-      this.prisma.financialTransaction.findFirst({
-        where: { id: transactionId, clinicId },
-      }),
-      this.prisma.financialCategory.findFirst({
-        where: { id: dto.categoryId, clinicId },
-      }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const transaction = await this.prisma.financialTransaction.findFirst({
+      where: { id: transactionId, clinicId },
+    });
+    const category = await this.prisma.financialCategory.findFirst({
+      where: { id: dto.categoryId, clinicId },
+    });
 
     if (!transaction) {
       throw new NotFoundException('Lançamento não encontrado.');
@@ -279,15 +277,14 @@ export class ExpenseClassifierService {
       throw new BadRequestException('Máximo de 20 lançamentos por lote.');
     }
 
-    const [transactions, expenseCategories] = await Promise.all([
-      this.prisma.financialTransaction.findMany({
-        where: { id: { in: dto.transactionIds }, clinicId },
-      }),
-      this.prisma.financialCategory.findMany({
-        where: { clinicId, type: FinancialTransactionType.EXPENSE },
-        orderBy: { name: 'asc' },
-      }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const transactions = await this.prisma.financialTransaction.findMany({
+      where: { id: { in: dto.transactionIds }, clinicId },
+    });
+    const expenseCategories = await this.prisma.financialCategory.findMany({
+      where: { clinicId, type: FinancialTransactionType.EXPENSE },
+      orderBy: { name: 'asc' },
+    });
 
     const quota = await this.quotaService.getQuota(
       clinicId,

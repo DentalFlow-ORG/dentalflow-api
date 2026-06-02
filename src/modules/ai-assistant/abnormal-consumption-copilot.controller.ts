@@ -38,24 +38,23 @@ export class AbnormalConsumptionCopilotController {
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   async getLatestCopilotSummary(
     @CurrentUser() user: AuthUser,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
   ) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
     const result = await this.copilotService.getLatestAnalysis(clinicId);
 
     if (result === null) {
-      res.status(HttpStatus.NO_CONTENT).end();
-      return;
+      return res.status(HttpStatus.NO_CONTENT).send();
     }
 
-    return result;
+    return res.status(HttpStatus.OK).json(result);
   }
 
   @Post('copilot-summary')
   async getCopilotSummary(
     @CurrentUser() user: AuthUser,
     @Body() dto: AbnormalConsumptionCopilotDto,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
   ) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
     const result = await this.copilotService.getCopilotSummary(
@@ -65,10 +64,9 @@ export class AbnormalConsumptionCopilotController {
     );
 
     if (result === null) {
-      res.status(HttpStatus.NO_CONTENT).end();
-      return;
+      return res.status(HttpStatus.NO_CONTENT).send();
     }
 
-    return result;
+    return res.status(HttpStatus.OK).json(result);
   }
 }
