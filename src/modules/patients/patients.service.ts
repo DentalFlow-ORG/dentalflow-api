@@ -101,6 +101,32 @@ export class PatientsService {
     return { avatarUrl: row?.avatarUrl ?? null };
   }
 
+  async batchGetPatientAvatars(
+    clinicId: string,
+    rawIdentifiers: string[],
+  ): Promise<{ avatars: Record<string, string | null> }> {
+    // Trim, filter blanks, and deduplicate before hitting the database.
+    const identifiers = [
+      ...new Set(
+        rawIdentifiers.map((id) => id.trim()).filter((id) => id.length > 0),
+      ),
+    ];
+
+    if (identifiers.length === 0) return { avatars: {} };
+
+    const rows = await this.prisma.patientAvatar.findMany({
+      where: { clinicId, identifier: { in: identifiers } },
+      select: { identifier: true, avatarUrl: true },
+    });
+
+    // Build result: every requested identifier gets an entry (null if absent).
+    const avatars: Record<string, string | null> = {};
+    for (const id of identifiers) avatars[id] = null;
+    for (const row of rows) avatars[row.identifier] = row.avatarUrl ?? null;
+
+    return { avatars };
+  }
+
   async upsertPatientAvatar(
     clinicId: string,
     identifier: string,
