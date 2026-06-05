@@ -11,8 +11,11 @@
  *     - Consentimentos de notificação WhatsApp
  *     - 5 notas fiscais (DRAFT, READY_TO_ISSUE, SIMULATED, ISSUED, CANCELED)
  *
- * Pré-requisito:
- *   pedro@pedro.com deve existir no banco e ter um clinicId vinculado.
+ * Comportamento:
+ *   Se pedro@pedro.com não existir, o script cria o usuário e a clínica
+ *   com a senha padrão definida por SEED_USER_PASSWORD (default: Pedro@123).
+ *   Para restaurar o login use a senha configurada na env ou redefina via
+ *   script de atualização de senha separado.
  *
  * Como rodar:
  *   DATABASE_URL=<url> npx ts-node prisma/dev-seed-pedro.ts

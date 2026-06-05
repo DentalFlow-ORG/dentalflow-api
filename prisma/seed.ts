@@ -38,7 +38,6 @@ interface PlanSeed {
   stripePriceIdYearly: string | null;
   maxUsersPerClinic: number;
   maxProfiles: number | null;
-  maxLeadsPerMonth: number | null;
   maxServicesPerProfile: number | null;
   hasAppointments: boolean;
   hasAnalytics: boolean;
@@ -54,8 +53,6 @@ interface PlanSeed {
 const LEGACY_PLAN_SLUGS = ['basic', 'pro', 'enterprise'];
 
 // PLAN LIMITS — ACTIVE
-// maxLeadsPerMonth: enforced by LeadsService.assertQuotaNotExceeded().
-//   null = unlimited (Premium).
 // maxProfiles / maxServicesPerProfile: not yet enforced — kept null.
 // Re-run `pnpm prisma db seed` to apply changes to a fresh environment.
 // For existing production databases, apply via the operational SQL in docs.
@@ -71,7 +68,6 @@ const PLANS: PlanSeed[] = [
     stripePriceIdYearly: 'price_1TTQtnEpOLGVHpKlFKmFyH4V',
     maxUsersPerClinic: 8,
     maxProfiles: null,
-    maxLeadsPerMonth: 30,
     maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
@@ -91,7 +87,6 @@ const PLANS: PlanSeed[] = [
     stripePriceIdYearly: 'price_1TTQu4EpOLGVHpKlwwzZWUOh',
     maxUsersPerClinic: 16,
     maxProfiles: null,
-    maxLeadsPerMonth: 150,
     maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
@@ -111,7 +106,6 @@ const PLANS: PlanSeed[] = [
     stripePriceIdYearly: 'price_1TTQuJEpOLGVHpKlCDg8dROV',
     maxUsersPerClinic: 24,
     maxProfiles: null,
-    maxLeadsPerMonth: null,
     maxServicesPerProfile: null,
     hasAppointments: true,
     hasAnalytics: true,
@@ -156,7 +150,6 @@ async function seed(prisma: PrismaClient): Promise<void> {
         stripePriceIdYearly: plan.stripePriceIdYearly,
         maxUsersPerClinic: plan.maxUsersPerClinic,
         maxProfiles: plan.maxProfiles,
-        maxLeadsPerMonth: plan.maxLeadsPerMonth,
         maxServicesPerProfile: plan.maxServicesPerProfile,
         hasAppointments: plan.hasAppointments,
         hasAnalytics: plan.hasAnalytics,
