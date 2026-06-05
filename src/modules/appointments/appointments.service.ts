@@ -158,9 +158,6 @@ export class AppointmentsService {
           )
         : null;
 
-      if (dto.leadId) {
-        await this.assertLeadInClinic(clinicId, dto.leadId, tx);
-      }
       if (dto.patientUserId) {
         await this.assertPatientUser(dto.patientUserId, tx);
       }
@@ -199,7 +196,6 @@ export class AppointmentsService {
           clinicId,
           profileId: profile.id,
           serviceId: service?.id,
-          leadId: dto.leadId,
           patientUserId: dto.patientUserId,
           patientName: dto.patientName,
           patientEmail: dto.patientEmail,
@@ -950,18 +946,6 @@ export class AppointmentsService {
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
     return service;
-  }
-
-  private async assertLeadInClinic(
-    clinicId: string,
-    leadId: string,
-    db: AppointmentDbClient = this.prisma,
-  ) {
-    const lead = await db.lead.findFirst({
-      where: { id: leadId, clinicId },
-      select: { id: true },
-    });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
   }
 
   private async assertPatientUser(

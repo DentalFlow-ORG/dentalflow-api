@@ -21,7 +21,6 @@ import {
   FinanceReportQueryDto,
   InventoryReportQueryDto,
   InvoicesReportQueryDto,
-  LeadsReportQueryDto,
 } from './dto/report-query.dto';
 import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
@@ -120,33 +119,6 @@ export class ReportsController {
     });
 
     sendCsv(res, csv, safeFilename('relatorio_estoque'));
-  }
-
-  @Get('leads/export')
-  @Roles('OWNER', 'ASSISTANT')
-  async exportLeads(
-    @CurrentUser() user: AuthUser,
-    @Query() query: LeadsReportQueryDto,
-    @Res() res: Response,
-  ) {
-    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
-    const csv = await this.reports.exportLeads(clinicId, query);
-
-    void this.auditLog.log({
-      actorUserId: user.id,
-      clinicId,
-      action: AuditAction.REPORT_EXPORTED,
-      entityType: 'Report',
-      metadata: {
-        report: 'leads',
-        status: query.status,
-        source: query.source,
-        startDate: query.startDate,
-        endDate: query.endDate,
-      },
-    });
-
-    sendCsv(res, csv, safeFilename('relatorio_leads'));
   }
 
   @Get('invoices/export')

@@ -255,7 +255,6 @@ export class AdminFinanceService {
       priceMonthly: plan.priceMonthly,
       priceYearly: plan.priceYearly,
       maxProfiles: plan.maxProfiles,
-      maxLeadsPerMonth: plan.maxLeadsPerMonth,
       maxServicesPerProfile: plan.maxServicesPerProfile,
       hasAppointments: plan.hasAppointments,
       hasAnalytics: plan.hasAnalytics,

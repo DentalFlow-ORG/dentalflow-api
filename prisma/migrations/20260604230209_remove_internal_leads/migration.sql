@@ -1,0 +1,46 @@
+-- Remove internal Leads CRM feature
+-- WebsiteLead (public lead capture) is preserved in a separate table.
+
+-- 1. Drop leadId FK index and column from appointments
+DROP INDEX IF EXISTS "appointments_lead_id_idx";
+ALTER TABLE "appointments" DROP COLUMN IF EXISTS "lead_id";
+
+-- 2. Drop lead_activities table (cascade handles FK)
+DROP TABLE IF EXISTS "lead_activities";
+
+-- 3. Drop leads table
+DROP TABLE IF EXISTS "leads";
+
+-- 4. Drop lead-specific enums
+DROP TYPE IF EXISTS "LeadStatus";
+DROP TYPE IF EXISTS "LeadSource";
+DROP TYPE IF EXISTS "LeadActivityAction";
+
+-- 5. Remove LEAD_* values from AuditAction enum
+-- PostgreSQL requires recreating the enum to remove values.
+-- The new enum retains all non-lead audit actions.
+ALTER TYPE "AuditAction" RENAME TO "AuditAction_old";
+CREATE TYPE "AuditAction" AS ENUM (
+  'USER_CREATED', 'USER_UPDATED', 'USER_DELETED', 'USER_PASSWORD_RESET',
+  'PROFILE_CREATED', 'PROFILE_UPDATED', 'PROFILE_DELETED',
+  'SERVICE_CREATED', 'SERVICE_UPDATED', 'SERVICE_DELETED',
+  'APPOINTMENT_CREATED', 'APPOINTMENT_UPDATED', 'APPOINTMENT_CANCELED',
+  'APPOINTMENT_STATUS_CHANGED', 'APPOINTMENT_PAYMENT_UPDATED',
+  'AVAILABILITY_CREATED', 'AVAILABILITY_UPDATED', 'AVAILABILITY_DELETED',
+  'EXCEPTION_CREATED', 'EXCEPTION_UPDATED', 'EXCEPTION_DELETED',
+  'STOCK_ITEM_CREATED', 'STOCK_ITEM_UPDATED', 'STOCK_ITEM_DELETED',
+  'STOCK_MOVEMENT_CREATED',
+  'FINANCIAL_TRANSACTION_CREATED', 'FINANCIAL_TRANSACTION_UPDATED', 'FINANCIAL_TRANSACTION_DELETED',
+  'FINANCIAL_CATEGORY_CREATED', 'FINANCIAL_CATEGORY_UPDATED', 'FINANCIAL_CATEGORY_DELETED',
+  'CLINIC_UPDATED', 'CLINIC_PLAN_CHANGED',
+  'SUBSCRIPTION_CREATED', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_CANCELED',
+  'NOTIFICATION_CONSENT_GIVEN', 'NOTIFICATION_CONSENT_REVOKED',
+  'REPORT_EXPORTED',
+  'INVOICE_CREATED', 'INVOICE_UPDATED', 'INVOICE_DELETED',
+  'FISCAL_PROFILE_UPDATED'
+);
+ALTER TABLE "audit_logs" ALTER COLUMN "action" TYPE "AuditAction" USING "action"::text::"AuditAction";
+DROP TYPE "AuditAction_old";
+
+-- 6. Drop maxLeadsPerMonth column from plans
+ALTER TABLE "plans" DROP COLUMN IF EXISTS "max_leads_per_month";

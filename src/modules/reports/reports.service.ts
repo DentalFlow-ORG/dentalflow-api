@@ -11,7 +11,6 @@ import {
   FinanceReportQueryDto,
   InventoryReportQueryDto,
   InvoicesReportQueryDto,
-  LeadsReportQueryDto,
 } from './dto/report-query.dto';
 
 const EXPORT_LIMIT = 5000;
@@ -334,92 +333,6 @@ export class ReportsService {
       formatDateBR(p.expiresAt),
       STATUS_PT[p._status] ?? p._status,
       p.supplier ?? '',
-    ]);
-
-    return buildCsv(headers, data);
-  }
-
-  // ── Leads report ─────────────────────────────────────────────────────────
-
-  async exportLeads(clinicId: string, query: LeadsReportQueryDto): Promise<string> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
-    const SOURCE_LABELS: Record<string, string> = {
-      PROFILE_PAGE: 'Página de perfil',
-      MANUAL: 'Manual',
-      IMPORT: 'Importação',
-      REFERRAL: 'Indicação',
-      WEBSITE: 'Site',
-      WHATSAPP: 'WhatsApp',
-      INSTAGRAM: 'Instagram',
-      GOOGLE: 'Google',
-      OTHER: 'Outro',
-    };
-
-    const STATUS_LABELS: Record<string, string> = {
-      NEW: 'Novo',
-      CONTACTED: 'Em contato',
-      SCHEDULED: 'Agendado',
-      CONVERTED: 'Convertido',
-      LOST: 'Perdido',
-      ARCHIVED: 'Arquivado',
-    };
-
-    const where: Prisma.LeadWhereInput = {
-      clinicId,
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.source ? { source: query.source } : {}),
-      ...(query.startDate || query.endDate
-        ? {
-            // createdAt is a UTC timestamp — use Brazil midnight so "from June 1"
-            // correctly starts at June 1 00:00 Brazil (03:00 UTC).
-            createdAt: {
-              ...(query.startDate
-                ? { gte: parseBrazilDateOnlyToUtcRange(query.startDate).start }
-                : {}),
-              ...(query.endDate
-                ? { lt: parseBrazilDateOnlyToUtcRange(query.endDate).end }
-                : {}),
-            },
-          }
-        : {}),
-    };
-
-    const rows = await this.prisma.lead.findMany({
-      where,
-      select: {
-        name: true,
-        phone: true,
-        email: true,
-        source: true,
-        status: true,
-        nextFollowUpAt: true,
-        createdAt: true,
-        assignedTo: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: EXPORT_LIMIT,
-    });
-
-    const headers = [
-      'Nome',
-      'Telefone',
-      'E-mail',
-      'Origem',
-      'Status',
-      'Responsável',
-      'Próximo follow-up',
-      'Criado em',
-    ];
-
-    const data = rows.map((l) => [
-      l.name,
-      l.phone ?? '',
-      l.email ?? '',
-      SOURCE_LABELS[l.source] ?? l.source,
-      STATUS_LABELS[l.status] ?? l.status,
-      l.assignedTo ? `${l.assignedTo.firstName} ${l.assignedTo.lastName}` : '',
-      formatDateBR(l.nextFollowUpAt),
-      formatDateTimeBR(l.createdAt),
     ]);
 
     return buildCsv(headers, data);
