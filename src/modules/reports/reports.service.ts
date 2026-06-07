@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { validateReportDateRange } from '../../common/utils/date-range.utils';
 import {
   brazilTodayIso,
-  parseBrazilDateOnlyToUtcRange,
 } from '../../common/utils/brazil-timezone';
 import {
   AppointmentsReportQueryDto,
@@ -12,8 +11,13 @@ import {
   InventoryReportQueryDto,
   InvoicesReportQueryDto,
 } from './dto/report-query.dto';
+import type {
+  ReportPreviewFilter,
+  ReportPreviewPeriod,
+  ReportPreviewResponse,
+} from './dto/report-preview-response.dto';
 
-const EXPORT_LIMIT = 5000;
+export const EXPORT_LIMIT = 5000;
 
 // ── CSV helpers ──────────────────────────────────────────────────────────────
 
@@ -43,20 +47,6 @@ function formatDateBR(date: Date | string | null | undefined): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-}
-
-function formatDateTimeBR(date: Date | string | null | undefined): string {
-  if (!date) return '';
-  const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function formatTime(date: Date | string | null | undefined): string {
@@ -92,10 +82,30 @@ function parseDateOnlyEnd(str: string | undefined): Date | undefined {
   return new Date(Date.UTC(y, m - 1, d + 1));
 }
 
-// Kept for backward compatibility within this file only.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function parseDate(str: string | undefined): Date | undefined {
-  return parseDateOnly(str);
+// ── Preview helpers ──────────────────────────────────────────────────────────
+
+function isoToBR(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function buildPeriodLabel(startDate?: string, endDate?: string): string {
+  if (startDate && endDate) return `${isoToBR(startDate)} até ${isoToBR(endDate)}`;
+  if (startDate) return `A partir de ${isoToBR(startDate)}`;
+  if (endDate) return `Até ${isoToBR(endDate)}`;
+  return 'Sem filtro de período';
+}
+
+function buildPeriod(
+  startDate?: string,
+  endDate?: string,
+): ReportPreviewPeriod | null {
+  if (!startDate && !endDate) return null;
+  return {
+    startDate: startDate ?? null,
+    endDate: endDate ?? null,
+    label: buildPeriodLabel(startDate, endDate),
+  };
 }
 
 // ── Finance report ───────────────────────────────────────────────────────────
@@ -121,26 +131,44 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   OTHER: 'Outro',
 };
 
+// ── Inventory status computation (reused by export and preview) ──────────────
+
+const EXPIRY_WARNING_DAYS = 30;
+
+export interface InventoryStatusInput {
+  isActive: boolean;
+  currentQuantity: Prisma.Decimal;
+  minQuantity: Prisma.Decimal;
+  expiresAt: Date | null;
+}
+
+export function computeInventoryStatus(p: InventoryStatusInput): string {
+  if (!p.isActive) return 'INACTIVE';
+  const today = new Date(`${brazilTodayIso()}T00:00:00.000Z`);
+  if (p.expiresAt) {
+    const exp = new Date(p.expiresAt);
+    if (exp < today) return 'EXPIRED';
+    const days = Math.ceil((exp.getTime() - today.getTime()) / 86_400_000);
+    if (days <= EXPIRY_WARNING_DAYS) return 'EXPIRING';
+  }
+  const cur = Number(p.currentQuantity);
+  if (cur === 0) return 'EMPTY';
+  const min = Number(p.minQuantity);
+  if (min > 0 && cur <= min) return 'LOW';
+  return 'ACTIVE';
+}
+
+// ── Service ──────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── Finance export ─────────────────────────────────────────────────────────
+
   async exportFinance(clinicId: string, query: FinanceReportQueryDto): Promise<string> {
     validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
-    const where: Prisma.FinancialTransactionWhereInput = {
-      clinicId,
-      ...(query.startDate || query.endDate
-        ? {
-            transactionDate: {
-              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
-              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
-            },
-          }
-        : {}),
-      ...(query.type ? { type: query.type } : {}),
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
-    };
+    const where = this.buildFinanceWhere(clinicId, query);
 
     const rows = await this.prisma.financialTransaction.findMany({
       where,
@@ -178,23 +206,72 @@ export class ReportsService {
     return buildCsv(headers, data);
   }
 
-  // ── Appointments report ──────────────────────────────────────────────────
+  // ── Finance preview ────────────────────────────────────────────────────────
 
-  async exportAppointments(clinicId: string, query: AppointmentsReportQueryDto): Promise<string> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
-    const where: Prisma.AppointmentWhereInput = {
+  async previewFinance(
+    clinicId: string,
+    query: FinanceReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+    const where = this.buildFinanceWhere(clinicId, query);
+
+    const [recordCount, clinic] = await Promise.all([
+      this.prisma.financialTransaction.count({ where }),
+      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+    ]);
+
+    const filters: ReportPreviewFilter[] = [];
+    if (query.type) {
+      filters.push({ label: 'Tipo', value: FINANCE_TYPE_LABELS[query.type] ?? query.type });
+    }
+    if (query.status) {
+      filters.push({ label: 'Status', value: FINANCE_STATUS_LABELS[query.status] ?? query.status });
+    }
+    if (query.categoryId) {
+      filters.push({ label: 'Categoria', value: query.categoryId });
+    }
+
+    return {
+      reportType: 'finance',
+      reportTitle: 'Relatório financeiro',
+      clinic: { name: clinic.name, document: null },
+      generatedAt: new Date().toISOString(),
+      filters,
+      period: buildPeriod(query.startDate, query.endDate),
+      recordCount,
+      maxRecords: EXPORT_LIMIT,
+      isTruncated: recordCount > EXPORT_LIMIT,
+      exportFormat: 'CSV',
+      empty: recordCount === 0,
+      previewNote: null,
+    };
+  }
+
+  private buildFinanceWhere(
+    clinicId: string,
+    query: FinanceReportQueryDto,
+  ): Prisma.FinancialTransactionWhereInput {
+    return {
       clinicId,
       ...(query.startDate || query.endDate
         ? {
-            appointmentDate: {
+            transactionDate: {
               ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
               ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
         : {}),
+      ...(query.type ? { type: query.type } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...(query.profileId ? { profileId: query.profileId } : {}),
+      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
     };
+  }
+
+  // ── Appointments export ──────────────────────────────────────────────────
+
+  async exportAppointments(clinicId: string, query: AppointmentsReportQueryDto): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
+    const where = this.buildAppointmentsWhere(clinicId, query);
 
     const rows = await this.prisma.appointment.findMany({
       where,
@@ -259,11 +336,74 @@ export class ReportsService {
     return buildCsv(headers, data);
   }
 
-  // ── Inventory report ─────────────────────────────────────────────────────
+  // ── Appointments preview ──────────────────────────────────────────────────
+
+  async previewAppointments(
+    clinicId: string,
+    query: AppointmentsReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
+    const where = this.buildAppointmentsWhere(clinicId, query);
+
+    const APPT_STATUS_LABELS: Record<string, string> = {
+      PENDING: 'Pendente',
+      CONFIRMED: 'Confirmado',
+      COMPLETED: 'Concluído',
+      CANCELED: 'Cancelado',
+      NO_SHOW: 'Não compareceu',
+    };
+
+    const [recordCount, clinic] = await Promise.all([
+      this.prisma.appointment.count({ where }),
+      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+    ]);
+
+    const filters: ReportPreviewFilter[] = [];
+    if (query.status) {
+      filters.push({ label: 'Status', value: APPT_STATUS_LABELS[query.status] ?? query.status });
+    }
+    if (query.profileId) {
+      filters.push({ label: 'Profissional (ID)', value: query.profileId });
+    }
+
+    return {
+      reportType: 'appointments',
+      reportTitle: 'Relatório de agendamentos',
+      clinic: { name: clinic.name, document: null },
+      generatedAt: new Date().toISOString(),
+      filters,
+      period: buildPeriod(query.startDate, query.endDate),
+      recordCount,
+      maxRecords: EXPORT_LIMIT,
+      isTruncated: recordCount > EXPORT_LIMIT,
+      exportFormat: 'CSV',
+      empty: recordCount === 0,
+      previewNote: null,
+    };
+  }
+
+  private buildAppointmentsWhere(
+    clinicId: string,
+    query: AppointmentsReportQueryDto,
+  ): Prisma.AppointmentWhereInput {
+    return {
+      clinicId,
+      ...(query.startDate || query.endDate
+        ? {
+            appointmentDate: {
+              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
+            },
+          }
+        : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.profileId ? { profileId: query.profileId } : {}),
+    };
+  }
+
+  // ── Inventory export ─────────────────────────────────────────────────────
 
   async exportInventory(clinicId: string, query: InventoryReportQueryDto): Promise<string> {
-    const EXPIRY_WARNING_DAYS = 30;
-
     const where: Prisma.StockProductWhereInput = {
       clinicId,
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
@@ -285,32 +425,8 @@ export class ReportsService {
       INACTIVE: 'Inativo',
     };
 
-    const computeStatus = (p: {
-      isActive: boolean;
-      currentQuantity: Prisma.Decimal;
-      minQuantity: Prisma.Decimal;
-      expiresAt: Date | null;
-    }): string => {
-      if (!p.isActive) return 'INACTIVE';
-      // expiresAt is stored as UTC midnight of the calendar date. Use UTC midnight
-      // of the Brazil today so an item expiring "today Brazil" is not flagged as
-      // EXPIRED at 00:01-02:59 UTC when Brazil is still the previous day.
-      const today = new Date(`${brazilTodayIso()}T00:00:00.000Z`);
-      if (p.expiresAt) {
-        const exp = new Date(p.expiresAt);
-        if (exp < today) return 'EXPIRED';
-        const days = Math.ceil((exp.getTime() - today.getTime()) / 86_400_000);
-        if (days <= EXPIRY_WARNING_DAYS) return 'EXPIRING';
-      }
-      const cur = Number(p.currentQuantity);
-      if (cur === 0) return 'EMPTY';
-      const min = Number(p.minQuantity);
-      if (min > 0 && cur <= min) return 'LOW';
-      return 'ACTIVE';
-    };
-
     const filtered = products
-      .map((p) => ({ ...p, _status: computeStatus(p) }))
+      .map((p) => ({ ...p, _status: computeInventoryStatus(p) }))
       .filter((p) => (query.status ? p._status === query.status : true));
 
     const headers = [
@@ -338,7 +454,73 @@ export class ReportsService {
     return buildCsv(headers, data);
   }
 
-  // ── Invoices report ──────────────────────────────────────────────────────
+  // ── Inventory preview ─────────────────────────────────────────────────────
+
+  async previewInventory(
+    clinicId: string,
+    query: InventoryReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    const STATUS_PT: Record<string, string> = {
+      ACTIVE: 'Normal',
+      LOW: 'Estoque baixo',
+      EMPTY: 'Zerado',
+      EXPIRING: 'Vencimento próximo',
+      EXPIRED: 'Vencido',
+      INACTIVE: 'Inativo',
+    };
+
+    const where: Prisma.StockProductWhereInput = {
+      clinicId,
+      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+    };
+
+    // Fetch all matching products without the export cap so we can compute
+    // the exact post-filter count (status is computed in-memory from product fields).
+    const [products, clinic] = await Promise.all([
+      this.prisma.stockProduct.findMany({
+        where,
+        select: {
+          isActive: true,
+          currentQuantity: true,
+          minQuantity: true,
+          expiresAt: true,
+        },
+      }),
+      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+    ]);
+
+    const filtered = products.filter((p) => {
+      const status = computeInventoryStatus(p);
+      return query.status ? status === query.status : true;
+    });
+
+    const recordCount = filtered.length;
+
+    const filters: ReportPreviewFilter[] = [];
+    if (query.categoryId) {
+      filters.push({ label: 'Categoria (ID)', value: query.categoryId });
+    }
+    if (query.status) {
+      filters.push({ label: 'Status', value: STATUS_PT[query.status] ?? query.status });
+    }
+
+    return {
+      reportType: 'inventory',
+      reportTitle: 'Relatório de estoque',
+      clinic: { name: clinic.name, document: null },
+      generatedAt: new Date().toISOString(),
+      filters,
+      period: null,
+      recordCount,
+      maxRecords: EXPORT_LIMIT,
+      isTruncated: recordCount > EXPORT_LIMIT,
+      exportFormat: 'CSV',
+      empty: recordCount === 0,
+      previewNote: null,
+    };
+  }
+
+  // ── Invoices export ──────────────────────────────────────────────────────
 
   async exportInvoices(clinicId: string, query: InvoicesReportQueryDto): Promise<string> {
     validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
@@ -352,18 +534,7 @@ export class ReportsService {
       CANCELED: 'Cancelado',
     };
 
-    const where: Prisma.ServiceInvoiceWhereInput = {
-      clinicId,
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.startDate || query.endDate
-        ? {
-            competenceDate: {
-              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
-              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
-            },
-          }
-        : {}),
-    };
+    const where = this.buildInvoicesWhere(clinicId, query);
 
     const rows = await this.prisma.serviceInvoice.findMany({
       where,
@@ -412,4 +583,71 @@ export class ReportsService {
 
     return buildCsv(headers, data);
   }
+
+  // ── Invoices preview ──────────────────────────────────────────────────────
+
+  async previewInvoices(
+    clinicId: string,
+    query: InvoicesReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+    const where = this.buildInvoicesWhere(clinicId, query);
+
+    const INVOICE_STATUS_LABELS: Record<string, string> = {
+      DRAFT: 'Rascunho',
+      READY_TO_ISSUE: 'Pronto para emitir',
+      SIMULATED: 'Simulado',
+      PROCESSING: 'Processando',
+      ISSUED: 'Emitido',
+      FAILED: 'Falhou',
+      CANCELED: 'Cancelado',
+    };
+
+    const [recordCount, clinic] = await Promise.all([
+      this.prisma.serviceInvoice.count({ where }),
+      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+    ]);
+
+    const filters: ReportPreviewFilter[] = [];
+    if (query.status) {
+      filters.push({
+        label: 'Status',
+        value: INVOICE_STATUS_LABELS[query.status] ?? query.status,
+      });
+    }
+
+    return {
+      reportType: 'invoices',
+      reportTitle: 'Relatório de notas fiscais',
+      clinic: { name: clinic.name, document: null },
+      generatedAt: new Date().toISOString(),
+      filters,
+      period: buildPeriod(query.startDate, query.endDate),
+      recordCount,
+      maxRecords: EXPORT_LIMIT,
+      isTruncated: recordCount > EXPORT_LIMIT,
+      exportFormat: 'CSV',
+      empty: recordCount === 0,
+      previewNote: null,
+    };
+  }
+
+  private buildInvoicesWhere(
+    clinicId: string,
+    query: InvoicesReportQueryDto,
+  ): Prisma.ServiceInvoiceWhereInput {
+    return {
+      clinicId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.startDate || query.endDate
+        ? {
+            competenceDate: {
+              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
+            },
+          }
+        : {}),
+    };
+  }
 }
+
