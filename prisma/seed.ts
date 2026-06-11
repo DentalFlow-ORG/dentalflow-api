@@ -54,7 +54,7 @@ const LEGACY_PLAN_SLUGS = ['basic', 'pro', 'enterprise'];
 
 // PLAN LIMITS — ACTIVE
 // maxProfiles / maxServicesPerProfile: not yet enforced — kept null.
-// Re-run `pnpm prisma db seed` to apply changes to a fresh environment.
+// Re-run `bunx prisma db seed` to apply changes to a fresh environment.
 // For existing production databases, apply via the operational SQL in docs.
 const PLANS: PlanSeed[] = [
   {

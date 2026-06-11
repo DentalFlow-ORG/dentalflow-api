@@ -11,9 +11,9 @@
  *   Por padrão usa pedro@pedro.com. Sobrescreva com a variável USER_EMAIL.
  *
  * Como rodar:
- *   DATABASE_URL=<sua-url> npx ts-node prisma/dev-seed-fiscal.ts
+ *   DATABASE_URL=<sua-url> bunx ts-node prisma/dev-seed-fiscal.ts
  *   ou
- *   DATABASE_URL=<sua-url> USER_EMAIL=outro@email.com npx ts-node prisma/dev-seed-fiscal.ts
+ *   DATABASE_URL=<sua-url> USER_EMAIL=outro@email.com bunx ts-node prisma/dev-seed-fiscal.ts
  *
  * Quando remover:
  *   Quando o módulo fiscal estiver totalmente validado em staging e não houver

@@ -2,6 +2,52 @@
 
 Use NestJS + Prisma + PostgreSQL + Stripe.
 
+## Package Manager
+
+This project uses **Bun**. Use `bun` for all package management and script execution.
+
+```
+bun install               # install dependencies
+bun run <script>          # run a package.json script
+bun add <pkg>             # add a dependency
+bun remove <pkg>          # remove a dependency
+bunx prisma generate      # run Prisma CLI commands
+bunx prisma migrate deploy
+bunx ts-node <script>     # run one-off TypeScript scripts
+```
+
+Do not use `pnpm`, `npm`, or `yarn`. If a command fails with Bun, fix the script — do not fall back to another package manager.
+
+## Validation Sequence
+
+Run in this order after any TypeScript or logic change:
+
+```
+bun run typecheck
+bun run test
+bun run build
+```
+
+## Deployment Commands
+
+Build:
+
+```
+bun install && bunx prisma generate && bun run build
+```
+
+Start (production):
+
+```
+bun run start:prod
+```
+
+Migrations (when deploying schema changes):
+
+```
+bunx prisma migrate deploy
+```
+
 Sempre:
 1. analisar código
 2. evitar duplicação

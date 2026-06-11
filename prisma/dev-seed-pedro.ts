@@ -18,7 +18,7 @@
  *   script de atualização de senha separado.
  *
  * Como rodar:
- *   DATABASE_URL=<url> npx ts-node prisma/dev-seed-pedro.ts
+ *   DATABASE_URL=<url> bunx ts-node prisma/dev-seed-pedro.ts
  *
  * Idempotência:
  *   Se a clínica já tiver dados marcados com DF_PEDRO_DEV_SEED ou mais de 10
