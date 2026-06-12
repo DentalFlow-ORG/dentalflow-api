@@ -629,9 +629,18 @@ export class FiscalService {
     }
 
     if (dto.patientId) {
-      const patient = await this.prisma.user.findUnique({
-        where: { id: dto.patientId },
-        select: { id: true, clinicId: true, role: true },
+      // Patients are global PATIENT-role users (clinicId === null), mirroring
+      // AppointmentsService.assertPatientUser. Scoping the lookup by role (and
+      // active/not-deleted) prevents linking an arbitrary user — e.g. another
+      // clinic's owner or a platform admin — as the invoice's patient.
+      const patient = await this.prisma.user.findFirst({
+        where: {
+          id: dto.patientId,
+          role: UserRole.PATIENT,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
       });
       if (!patient) {
         throw new BadRequestException('Paciente vinculado inválido.');
