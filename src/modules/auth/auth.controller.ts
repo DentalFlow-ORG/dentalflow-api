@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -11,13 +12,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Request, Response } from 'express';
+import { CookieOptions, Request, Response } from 'express';
 import { appConfig } from '../../config/app.config';
 import { authConfig } from '../../config/auth.config';
 import { AnyAuthenticated } from '../../common/decorators/any-authenticated.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/types/auth-user.type';
+import { isTrustedOrigin } from '../../common/utils/origin-allowlist';
 import { AuthService, TokenMetadata } from './auth.service';
 import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -146,6 +148,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    this.assertTrustedOrigin(req);
     const rawToken = this.extractRefreshCookie(req);
     if (!rawToken) {
       throw new UnauthorizedException('Sessão inválida');
@@ -185,6 +188,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.assertTrustedOrigin(req);
     const rawToken = this.extractRefreshCookie(req);
     this.clearRefreshCookie(res);
     if (!rawToken) {
@@ -208,22 +212,48 @@ export class AuthController {
     return match ? decodeURIComponent(match[1]) : null;
   }
 
+  /**
+   * Rejects cookie-authenticated requests whose Origin is not allow-listed.
+   *
+   * The refresh cookie uses SameSite=None in production (the SPA and API are
+   * cross-site), so SameSite no longer blocks cross-site CSRF on the
+   * refresh/logout routes. Validating the Origin against the configured
+   * frontend allowlist restores that protection. Requests without an Origin
+   * header (non-browser callers) are allowed — they cannot be driven by a
+   * browser CSRF and still need a valid cookie/JWT to do anything.
+   */
+  private assertTrustedOrigin(req: Request): void {
+    const origin =
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    if (!isTrustedOrigin(origin, appConfig.frontendOrigins)) {
+      throw new ForbiddenException('Origem não permitida.');
+    }
+  }
+
+  private refreshCookieOptions(): CookieOptions {
+    const isProduction = appConfig.nodeEnv === 'production';
+    return {
+      httpOnly: true,
+      secure: isProduction,
+      // The SPA (Vercel) and API (Render) are cross-site in production, so the
+      // refresh cookie must use SameSite=None to be sent on cross-site fetches;
+      // None requires Secure, which prod (HTTPS) satisfies. Local dev runs both
+      // on localhost (same-site) over HTTP, where Lax works without Secure.
+      // CSRF on the cookie-authenticated routes is enforced by
+      // assertTrustedOrigin() instead of relying on SameSite.
+      sameSite: isProduction ? 'none' : 'lax',
+      path: `/${appConfig.apiPrefix}/auth`,
+    };
+  }
+
   private setRefreshCookie(res: Response, token: string): void {
     res.cookie(REFRESH_COOKIE, token, {
-      httpOnly: true,
-      secure: appConfig.nodeEnv === 'production',
-      sameSite: 'lax',
-      path: `/${appConfig.apiPrefix}/auth`,
+      ...this.refreshCookieOptions(),
       maxAge: parseDurationMs(authConfig.jwtRefreshExpiresIn),
     });
   }
 
   private clearRefreshCookie(res: Response): void {
-    res.clearCookie(REFRESH_COOKIE, {
-      httpOnly: true,
-      secure: appConfig.nodeEnv === 'production',
-      sameSite: 'lax',
-      path: `/${appConfig.apiPrefix}/auth`,
-    });
+    res.clearCookie(REFRESH_COOKIE, this.refreshCookieOptions());
   }
 }
