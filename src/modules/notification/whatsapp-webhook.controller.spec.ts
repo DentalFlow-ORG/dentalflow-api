@@ -139,6 +139,95 @@ describe('WhatsAppWebhookController', () => {
     expect(receiptLog).not.toContain('wamid.status-example');
   });
 
+  it('logs sanitized failure metadata and still returns ok', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    await request(app.getHttpServer())
+      .post('/webhooks/whatsapp')
+      .send({
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  statuses: [
+                    {
+                      id: 'wamid.failed-status-example',
+                      status: 'failed',
+                      recipient_id: '5511999999999',
+                      errors: [
+                        {
+                          code: 131030,
+                          title: 'Recipient phone number not in allowed list',
+                          message:
+                            'Recipient +55 11 99999-9999 is not in the allowed list',
+                          error_data: {
+                            details:
+                              'Add +5511999999999 to the allowed list before sending',
+                          },
+                          href: 'https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes?token=secret',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      })
+      .expect(200)
+      .expect({ status: 'ok' });
+
+    const failureLog = warnSpy.mock.calls
+      .map(([message]) => String(message))
+      .find((message) => message.startsWith('WhatsApp webhook failed status:'));
+
+    expect(failureLog).toEqual(expect.stringContaining('code=131030'));
+    expect(failureLog).toEqual(
+      expect.stringContaining(
+        'title="Recipient phone number not in allowed list"',
+      ),
+    );
+    expect(failureLog).toEqual(expect.stringContaining('[redacted]'));
+    expect(failureLog).toEqual(
+      expect.stringContaining(
+        'href="https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes"',
+      ),
+    );
+    expect(failureLog).not.toContain('5511999999999');
+    expect(failureLog).not.toContain('wamid.failed-status-example');
+    expect(failureLog).not.toContain('token=secret');
+  });
+
+  it('logs when a failed status has no error metadata', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+    await request(app.getHttpServer())
+      .post('/webhooks/whatsapp')
+      .send({
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            changes: [
+              {
+                field: 'messages',
+                value: { statuses: [{ status: 'failed' }] },
+              },
+            ],
+          },
+        ],
+      })
+      .expect(200)
+      .expect({ status: 'ok' });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'WhatsApp webhook failed status: no error metadata',
+    );
+  });
+
   it('accepts a realistic incoming WhatsApp message payload', () => {
     return request(app.getHttpServer())
       .post('/webhooks/whatsapp')
