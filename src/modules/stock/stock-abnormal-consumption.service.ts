@@ -84,28 +84,28 @@ export class StockAbnormalConsumptionService {
       now.getTime() - recentDays * 24 * 3600 * 1000,
     );
 
-    const [movements, products] = await Promise.all([
-      this.prisma.stockMovement.findMany({
-        where: { clinicId, createdAt: { gte: windowStart } },
-        select: {
-          productId: true,
-          type: true,
-          quantity: true,
-          createdAt: true,
-        },
-      }),
-      this.prisma.stockProduct.findMany({
-        where: { clinicId, isActive: true },
-        select: {
-          id: true,
-          name: true,
-          currentQuantity: true,
-          minQuantity: true,
-          unit: true,
-          category: { select: { name: true } },
-        },
-      }),
-    ]);
+    // Sequential to avoid concurrent queries on the same pg connection
+    // (would trigger the pg@8 "client already executing" deprecation warning).
+    const movements = await this.prisma.stockMovement.findMany({
+      where: { clinicId, createdAt: { gte: windowStart } },
+      select: {
+        productId: true,
+        type: true,
+        quantity: true,
+        createdAt: true,
+      },
+    });
+    const products = await this.prisma.stockProduct.findMany({
+      where: { clinicId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        currentQuantity: true,
+        minQuantity: true,
+        unit: true,
+        category: { select: { name: true } },
+      },
+    });
 
     const byProduct = new Map<string, MovementBucket[]>();
     for (const m of movements) {

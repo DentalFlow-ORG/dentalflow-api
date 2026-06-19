@@ -14,7 +14,6 @@ const CLINIC_ID = 'clinic-1';
 const USER_ID = 'user-1';
 const PROFILE_ID = 'profile-1';
 const SERVICE_ID = 'service-1';
-const LEAD_ID = 'lead-1';
 const PATIENT_USER_ID = 'patient-1';
 const APPOINTMENT_ID = 'appointment-1';
 const APPOINTMENT_DATE = '2099-01-02';
@@ -127,7 +126,6 @@ describe('AppointmentsService scheduling concurrency', () => {
       id: SERVICE_ID,
       durationMinutes: 30,
     });
-    txMock.lead.findFirst.mockResolvedValue({ id: LEAD_ID });
     txMock.user.findFirst.mockResolvedValue({ id: PATIENT_USER_ID });
     txMock.appointment.findFirst.mockResolvedValue(null);
     txMock.appointment.create.mockResolvedValue(createdAppointment());
@@ -293,14 +291,13 @@ describe('AppointmentsService scheduling concurrency', () => {
     expect(result).toMatchObject({ id: APPOINTMENT_ID });
   });
 
-  it('preserves tenant, profile, service, lead and patient access checks inside create transaction', async () => {
+  it('preserves tenant, profile, service and patient access checks inside create transaction', async () => {
     await service.createAppointment(
       CLINIC_ID,
       USER_ID,
       UserRole.OWNER,
       createDto({
         serviceId: SERVICE_ID,
-        leadId: LEAD_ID,
         patientUserId: PATIENT_USER_ID,
       }),
     );
@@ -317,10 +314,6 @@ describe('AppointmentsService scheduling concurrency', () => {
         isActive: true,
       },
       select: { id: true, durationMinutes: true },
-    });
-    expect(txMock.lead.findFirst).toHaveBeenCalledWith({
-      where: { id: LEAD_ID, clinicId: CLINIC_ID },
-      select: { id: true },
     });
     expect(txMock.user.findFirst).toHaveBeenCalledWith({
       where: {

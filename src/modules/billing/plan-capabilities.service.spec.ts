@@ -56,12 +56,29 @@ describe('PlanCapabilitiesService', () => {
       },
     );
 
-    it('allows all gated features for professional plan', async () => {
+    it('allows all gated features available on professional plan', async () => {
       prismaMock.subscription.findUnique.mockResolvedValue({ plan: { slug: 'professional' } });
 
-      for (const feature of Object.values(PlanFeature)) {
+      // CLINICAL_DICTATION is premium-only — excluded here and tested separately below.
+      const professionalFeatures = [
+        PlanFeature.FINANCE,
+        PlanFeature.INVENTORY,
+        PlanFeature.FISCAL_CONTROL,
+        PlanFeature.REPORTS,
+        PlanFeature.GOOGLE_CALENDAR,
+      ];
+
+      for (const feature of professionalFeatures) {
         await expect(service.assertFeature(CLINIC_ID, feature)).resolves.toBeUndefined();
       }
+    });
+
+    it('denies CLINICAL_DICTATION for professional plan (premium-only feature)', async () => {
+      prismaMock.subscription.findUnique.mockResolvedValue({ plan: { slug: 'professional' } });
+
+      await expect(
+        service.assertFeature(CLINIC_ID, PlanFeature.CLINICAL_DICTATION),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ForbiddenException for starter plan (no gated features)', async () => {

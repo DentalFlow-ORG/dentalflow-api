@@ -14,6 +14,11 @@ import { AiQuotaService } from './ai-quota.service';
 import { FinanceContextBuilder } from './builders/finance-context.builder';
 import { InventoryContextBuilder } from './builders/inventory-context.builder';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilDaysAgoIso,
+  formatBrazilDateOnly,
+  parseBrazilDateOnlyToUtcRange,
+} from '../../common/utils/brazil-timezone';
 
 export type AiAnalysisSection = {
   title: string;
@@ -224,11 +229,10 @@ export class AiAssistantService {
   // ─── Persistence: load saved analyses ────────────────────────────────────
 
   async getLatestFinance(userId: string, clinicId: string): Promise<AiLatestResult> {
-    const [record, dataReadiness, quota] = await Promise.all([
-      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE),
-      this.getFinanceDataReadiness(clinicId),
-      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE);
+    const dataReadiness = await this.getFinanceDataReadiness(clinicId);
+    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE);
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
@@ -271,11 +275,10 @@ export class AiAssistantService {
   }
 
   async getLatestInventory(userId: string, clinicId: string): Promise<AiLatestResult> {
-    const [record, dataReadiness, quota] = await Promise.all([
-      this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY),
-      this.getInventoryDataReadiness(clinicId),
-      this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const dataReadiness = await this.getInventoryDataReadiness(clinicId);
+    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
@@ -377,8 +380,10 @@ export class AiAssistantService {
   // ─── Data readiness checks ────────────────────────────────────────────────
 
   private async getFinanceDataReadiness(clinicId: string): Promise<DataReadiness> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // transactionDate is stored as UTC midnight; use UTC midnight of the Brazil
+    // date 30 days ago so records from that calendar day are correctly included.
+    const thirtyDaysAgoStr = brazilDaysAgoIso(30);
+    const thirtyDaysAgo = new Date(`${thirtyDaysAgoStr}T00:00:00.000Z`);
 
     const groups = await this.prisma.financialTransaction.groupBy({
       by: ['transactionDate'],
@@ -403,24 +408,24 @@ export class AiAssistantService {
   }
 
   private async getInventoryDataReadiness(clinicId: string): Promise<DataReadiness> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // createdAt/updatedAt are UTC timestamps — use Brazil midnight boundaries.
+    const thirtyDaysAgoTs = parseBrazilDateOnlyToUtcRange(brazilDaysAgoIso(30)).start;
 
     const movements = await this.prisma.stockMovement.findMany({
-      where: { clinicId, createdAt: { gte: thirtyDaysAgo } },
+      where: { clinicId, createdAt: { gte: thirtyDaysAgoTs } },
       select: { createdAt: true },
     });
     const products = await this.prisma.stockProduct.findMany({
-      where: { clinicId, updatedAt: { gte: thirtyDaysAgo } },
+      where: { clinicId, updatedAt: { gte: thirtyDaysAgoTs } },
       select: { updatedAt: true },
     });
 
     const daysWithActivity = new Set<string>();
     for (const movement of movements) {
-      daysWithActivity.add(movement.createdAt.toISOString().slice(0, 10));
+      daysWithActivity.add(formatBrazilDateOnly(movement.createdAt));
     }
     for (const product of products) {
-      daysWithActivity.add(product.updatedAt.toISOString().slice(0, 10));
+      daysWithActivity.add(formatBrazilDateOnly(product.updatedAt));
     }
 
     if (daysWithActivity.size < 20) {

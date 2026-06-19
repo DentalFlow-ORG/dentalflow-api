@@ -449,8 +449,9 @@ export class NotificationService {
           process.env.WHATSAPP_CLOUD_API_VERSION &&
             process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID &&
             process.env.WHATSAPP_CLOUD_ACCESS_TOKEN &&
-            process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN &&
-            process.env.WHATSAPP_WEBHOOK_APP_SECRET &&
+            process.env.WHATSAPP_VERIFY_TOKEN &&
+            (process.env.WHATSAPP_APP_SECRET ??
+              process.env.WHATSAPP_WEBHOOK_APP_SECRET) &&
             process.env.WHATSAPP_DEFAULT_LANGUAGE,
         ),
     };

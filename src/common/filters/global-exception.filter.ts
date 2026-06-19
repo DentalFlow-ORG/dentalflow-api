@@ -29,6 +29,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
+    if (response.headersSent) {
+      this.logger.error({
+        statusCode: 500,
+        method: request.method,
+        path: request.url,
+        errorName:
+          exception instanceof Error ? exception.name : typeof exception,
+        errorMessage: 'Exception after headers already sent — response not written',
+      });
+      return;
+    }
+
     const body = this.buildResponseBody(exception, request);
 
     this.logException(exception, request, body.statusCode);
@@ -52,10 +64,30 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return this.generic(HttpStatus.BAD_REQUEST, 'Dados invalidos.', request);
     }
 
+    // body-parser throws a plain Error (not HttpException) when the request
+    // body exceeds the configured limit.  Map it to 413 so the client receives
+    // the correct status instead of a misleading 500.
+    if (this.isPayloadTooLarge(exception)) {
+      return this.generic(
+        HttpStatus.PAYLOAD_TOO_LARGE,
+        'Payload muito grande.',
+        request,
+      );
+    }
+
     return this.generic(
       HttpStatus.INTERNAL_SERVER_ERROR,
       GENERIC_INTERNAL_ERROR,
       request,
+    );
+  }
+
+  private isPayloadTooLarge(exception: unknown): boolean {
+    if (!(exception instanceof Error)) return false;
+    const err = exception as Error & { type?: string };
+    return (
+      err.name === 'PayloadTooLargeError' ||
+      err.type === 'entity.too.large'
     );
   }
 

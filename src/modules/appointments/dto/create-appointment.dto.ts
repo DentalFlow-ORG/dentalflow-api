@@ -37,12 +37,6 @@ export class CreateAppointmentDto {
   @IsString()
   @MaxLength(MAX_ID_LENGTH)
   @IsSafeId()
-  leadId?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(MAX_ID_LENGTH)
-  @IsSafeId()
   patientUserId?: string;
 
   @Transform(({ value }: { value: unknown }) =>

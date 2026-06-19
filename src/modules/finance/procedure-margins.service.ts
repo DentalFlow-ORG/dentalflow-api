@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ProcedureMarginsQueryDto } from './dto/procedure-margins-query.dto';
+import { brazilCurrentIsoMonth } from '../../common/utils/brazil-timezone';
 
 export type ProcedureMarginStatus = 'HEALTHY' | 'ATTENTION' | 'INSUFFICIENT_DATA';
 
@@ -199,13 +200,15 @@ export class ProcedureMarginsService {
     if (dto.startDate && dto.endDate) {
       return {
         from: new Date(`${dto.startDate}T00:00:00.000Z`),
-        to: new Date(`${dto.endDate}T23:59:59.999Z`),
+        to: new Date(`${dto.endDate}T00:00:00.000Z`),
       };
     }
-    const now = new Date();
+    // appointmentDate is stored as UTC midnight — use Brazil calendar month so
+    // the default window doesn't shift during 00:00-03:00 UTC.
+    const [bmy, bmm] = brazilCurrentIsoMonth().split('-').map(Number);
     return {
-      from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
-      to: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)),
+      from: new Date(Date.UTC(bmy, bmm - 1, 1)),
+      to: new Date(Date.UTC(bmy, bmm, 0)),
     };
   }
 

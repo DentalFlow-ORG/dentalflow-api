@@ -6,6 +6,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
 interface PatientRow {
   identifier: string;
@@ -16,6 +17,7 @@ interface PatientRow {
   completedAppointments: bigint;
   canceledAppointments: bigint;
   lastVisit: Date | null;
+  avatarUrl: string | null;
 }
 
 export type AttentionReason =
@@ -54,19 +56,23 @@ export class PatientsService {
     const rows = await this.prisma.$queryRaw<PatientRow[]>(
       Prisma.sql`
         SELECT
-          COALESCE("patientEmail", "patientName") AS identifier,
-          "patientName",
-          "patientEmail",
-          MAX("patientPhone") AS "patientPhone",
+          COALESCE(a."patientEmail", a."patientName") AS identifier,
+          a."patientName",
+          a."patientEmail",
+          MAX(a."patientPhone") AS "patientPhone",
           COUNT(*)::bigint AS "totalAppointments",
-          COUNT(CASE WHEN status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
-          COUNT(CASE WHEN status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
-          MAX("appointmentDate") AS "lastVisit"
-        FROM appointments
-        WHERE "clinicId" = ${clinicId}
+          COUNT(CASE WHEN a.status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
+          COUNT(CASE WHEN a.status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
+          MAX(a."appointmentDate") AS "lastVisit",
+          MAX(pa."avatarUrl") AS "avatarUrl"
+        FROM appointments a
+        LEFT JOIN patient_avatars pa
+          ON pa."clinicId" = a."clinicId"
+          AND pa.identifier = COALESCE(a."patientEmail", a."patientName")
+        WHERE a."clinicId" = ${clinicId}
         ${searchFilter}
-        GROUP BY COALESCE("patientEmail", "patientName"), "patientName", "patientEmail"
-        ORDER BY MAX("appointmentDate") DESC NULLS LAST
+        GROUP BY COALESCE(a."patientEmail", a."patientName"), a."patientName", a."patientEmail"
+        ORDER BY MAX(a."appointmentDate") DESC NULLS LAST
       `,
     );
 
@@ -81,9 +87,56 @@ export class PatientsService {
       lastVisit: row.lastVisit
         ? row.lastVisit.toISOString().slice(0, 10)
         : null,
+      avatarUrl: row.avatarUrl ?? null,
     }));
 
     return { data, total: data.length };
+  }
+
+  async getPatientAvatar(clinicId: string, identifier: string) {
+    const row = await this.prisma.patientAvatar.findUnique({
+      where: { clinicId_identifier: { clinicId, identifier } },
+      select: { avatarUrl: true },
+    });
+    return { avatarUrl: row?.avatarUrl ?? null };
+  }
+
+  async batchGetPatientAvatars(
+    clinicId: string,
+    rawIdentifiers: string[],
+  ): Promise<{ avatars: Record<string, string | null> }> {
+    // Trim, filter blanks, and deduplicate before hitting the database.
+    const identifiers = [
+      ...new Set(
+        rawIdentifiers.map((id) => id.trim()).filter((id) => id.length > 0),
+      ),
+    ];
+
+    if (identifiers.length === 0) return { avatars: {} };
+
+    const rows = await this.prisma.patientAvatar.findMany({
+      where: { clinicId, identifier: { in: identifiers } },
+      select: { identifier: true, avatarUrl: true },
+    });
+
+    // Build result: every requested identifier gets an entry (null if absent).
+    const avatars: Record<string, string | null> = {};
+    for (const id of identifiers) avatars[id] = null;
+    for (const row of rows) avatars[row.identifier] = row.avatarUrl ?? null;
+
+    return { avatars };
+  }
+
+  async upsertPatientAvatar(
+    clinicId: string,
+    identifier: string,
+    avatarBase64: string | null | undefined,
+  ) {
+    await this.prisma.patientAvatar.upsert({
+      where: { clinicId_identifier: { clinicId, identifier } },
+      create: { clinicId, identifier, avatarUrl: avatarBase64 ?? null },
+      update: { avatarUrl: avatarBase64 ?? null },
+    });
   }
 
   async getPatientHistory(clinicId: string, identifier: string) {
@@ -107,14 +160,13 @@ export class PatientsService {
   }
 
   async getPatientsAttention(clinicId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const ninetyDaysAgo = new Date(today);
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    // appointmentDate is stored as UTC midnight. Use UTC midnight of the Brazil
+    // calendar date so day boundaries don't shift during 00:00-03:00 UTC.
+    const todayStr = brazilTodayIso();
+    const [ty, tm, td] = todayStr.split('-').map(Number);
+    const today       = new Date(Date.UTC(ty, tm - 1, td));
+    const thirtyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 30));
+    const ninetyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 90));
 
     // Load all appointments with profile info (ordered ascending for processing)
     const appointments = await this.prisma.appointment.findMany({

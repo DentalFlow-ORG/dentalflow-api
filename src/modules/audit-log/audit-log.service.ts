@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
+import { parseBrazilDateOnlyToUtcRange } from '../../common/utils/brazil-timezone';
 
 export type CreateAuditLogInput = {
   actorUserId?: string | null;
@@ -39,8 +40,12 @@ export class AuditLogService {
       ...(dto.clinicId && { clinicId: dto.clinicId }),
       ...((dto.dateFrom || dto.dateTo) && {
         createdAt: {
-          ...(dto.dateFrom && { gte: new Date(dto.dateFrom) }),
-          ...(dto.dateTo && { lte: new Date(dto.dateTo) }),
+          ...(dto.dateFrom && {
+            gte: parseBrazilDateOnlyToUtcRange(dto.dateFrom).start,
+          }),
+          ...(dto.dateTo && {
+            lt: parseBrazilDateOnlyToUtcRange(dto.dateTo).end,
+          }),
         },
       }),
     };

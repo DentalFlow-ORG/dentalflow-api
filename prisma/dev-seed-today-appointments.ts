@@ -9,7 +9,7 @@
  *   dev-seed-pedro.ts já deve ter sido executado (usuário, clínica, perfil e serviço existem).
  *
  * Como rodar:
- *   DATABASE_URL=<url> npx ts-node prisma/dev-seed-today-appointments.ts
+ *   DATABASE_URL=<url> bunx ts-node prisma/dev-seed-today-appointments.ts
  *
  * Idempotência:
  *   Se já existir qualquer agendamento marcado com DF_PEDRO_TODAY_SEED na data de hoje,

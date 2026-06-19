@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { parseBrazilDateOnlyToUtcRange } from '../../common/utils/brazil-timezone';
 
 type ListSubscriptionsQuery = {
   page: number;
@@ -254,7 +255,6 @@ export class AdminFinanceService {
       priceMonthly: plan.priceMonthly,
       priceYearly: plan.priceYearly,
       maxProfiles: plan.maxProfiles,
-      maxLeadsPerMonth: plan.maxLeadsPerMonth,
       maxServicesPerProfile: plan.maxServicesPerProfile,
       hasAppointments: plan.hasAppointments,
       hasAnalytics: plan.hasAnalytics,
@@ -455,8 +455,10 @@ export class AdminFinanceService {
 
   private dateRange(from?: string, to?: string) {
     const range: Prisma.DateTimeFilter = {};
-    if (from) range.gte = new Date(`${from}T00:00:00.000Z`);
-    if (to) range.lte = new Date(`${to}T23:59:59.999Z`);
+    // createdAt / receivedAt are UTC timestamps — use Brazil midnight boundaries
+    // so "from June 1" correctly starts at Brazil midnight (UTC 03:00), not UTC midnight.
+    if (from) range.gte = parseBrazilDateOnlyToUtcRange(from).start;
+    if (to) range.lt = parseBrazilDateOnlyToUtcRange(to).end;
     return Object.keys(range).length > 0 ? range : null;
   }
 }

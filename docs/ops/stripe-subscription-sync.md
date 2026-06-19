@@ -14,21 +14,21 @@ O script consulta a Stripe como fonte de verdade, valida a clínica local associ
 ## Dry run
 
 ```bash
-pnpm exec ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --email "clinica@example.com" --dry-run
+bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --email "clinica@example.com" --dry-run
 ```
 
 ## Aplicar reconciliação
 
 ```bash
-pnpm exec ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --email "clinica@example.com"
+bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --email "clinica@example.com"
 ```
 
 Também é possível selecionar por:
 
 ```bash
-pnpm exec ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --stripe-customer-id "cus_..." --dry-run
-pnpm exec ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --stripe-subscription-id "sub_..." --dry-run
-pnpm exec ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --clinic-id "..." --dry-run
+bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --stripe-customer-id "cus_..." --dry-run
+bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --stripe-subscription-id "sub_..." --dry-run
+bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts --clinic-id "..." --dry-run
 ```
 
 Se houver ambiguidade entre cliente Stripe, assinatura e clínica local, o script interrompe a execução e pede um seletor mais específico.

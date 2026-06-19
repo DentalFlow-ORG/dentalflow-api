@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpStatus,
   Post,
   Res,
@@ -28,11 +29,32 @@ export class StockCopilotController {
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
+  /**
+   * Returns the most-recently persisted stock copilot analysis for this clinic,
+   * without checking the current purchase-list state.  Safe to call on every
+   * page mount — DB-only, no AI, no quota consumed.
+   */
+  @Get('copilot-summary/latest')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async getLatestCopilotSummary(
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+  ) {
+    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    const result = await this.copilotService.getLatestAnalysis(clinicId);
+
+    if (result === null) {
+      return res.status(HttpStatus.NO_CONTENT).send();
+    }
+
+    return res.status(HttpStatus.OK).json(result);
+  }
+
   @Post('copilot-summary')
   async getCopilotSummary(
     @CurrentUser() user: AuthUser,
     @Body() dto: StockCopilotDto,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
   ) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
     const result = await this.copilotService.getCopilotSummary(
@@ -42,10 +64,9 @@ export class StockCopilotController {
     );
 
     if (result === null) {
-      res.status(HttpStatus.NO_CONTENT).end();
-      return;
+      return res.status(HttpStatus.NO_CONTENT).send();
     }
 
-    return result;
+    return res.status(HttpStatus.OK).json(result);
   }
 }

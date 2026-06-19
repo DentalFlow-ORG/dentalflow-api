@@ -10,12 +10,19 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { RequirePlanFeature } from '../../common/decorators/require-plan-feature.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { AccessPolicyService } from '../../common/services/access-policy.service';
 import { AuthUser } from '../../common/types/auth-user.type';
+import { PlanFeature } from '../billing/plan-feature.types';
+import {
+  ClinicalDictationService,
+  type DictationResult,
+} from './clinical-dictation.service';
 import { ClinicalRecordsService } from './clinical-records.service';
 import { CreateClinicalRecordDto } from './dto/create-clinical-record.dto';
 import { UpdateClinicalRecordDto } from './dto/update-clinical-record.dto';
@@ -30,6 +37,7 @@ import {
   AddClinicalAttachmentDto,
   UpdateClinicalAttachmentDescriptionDto,
 } from './dto/clinical-attachment.dto';
+import { DictateRecordDto } from './dto/dictate-record.dto';
 
 @Controller('clinical-records')
 @TenantScoped()
@@ -37,6 +45,7 @@ import {
 export class ClinicalRecordsController {
   constructor(
     private readonly clinicalRecordsService: ClinicalRecordsService,
+    private readonly clinicalDictationService: ClinicalDictationService,
     private readonly accessPolicy: AccessPolicyService,
   ) {}
 
@@ -219,6 +228,40 @@ export class ClinicalRecordsController {
       user.role,
       id,
     );
+  }
+
+  // ----------------------------------------------------------------
+  // AI dictation (premium-only)
+  // ----------------------------------------------------------------
+
+  /**
+   * Transcribes audio and classifies it into clinical record fields.
+   * Access checks run before any AI call:
+   *   1. Record must exist in the current clinic.
+   *   2. DENTIST role may only access own records.
+   *   3. Record must be DRAFT (editable).
+   *
+   * The result is returned for the frontend to review and apply;
+   * this endpoint does NOT automatically save fields to the record.
+   */
+  @Post(':id/dictate')
+  @Roles('OWNER', 'DENTIST')
+  @RequirePlanFeature(PlanFeature.CLINICAL_DICTATION)
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @HttpCode(HttpStatus.OK)
+  async dictate(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: DictateRecordDto,
+  ): Promise<DictationResult> {
+    const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
+    await this.clinicalRecordsService.validateRecordForDictation(
+      clinicId,
+      user.id,
+      user.role,
+      id,
+    );
+    return this.clinicalDictationService.dictate(clinicId, user.id, dto);
   }
 
   @Get(':id/print-data')

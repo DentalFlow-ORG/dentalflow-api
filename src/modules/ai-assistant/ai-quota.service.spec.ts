@@ -2,6 +2,10 @@ import { ForbiddenException, HttpStatus } from '@nestjs/common';
 import { AiAssistantAnalysisType, SubscriptionStatus } from '@prisma/client';
 
 import { AiQuotaService } from './ai-quota.service';
+import {
+  brazilCurrentIsoMonth,
+  getBrazilMonthRange,
+} from '../../common/utils/brazil-timezone';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -112,14 +116,15 @@ describe('AiQuotaService', () => {
   });
 
   describe('getQuota — metadata fields', () => {
-    it('returns nextResetAt as first day of the next calendar month (UTC)', async () => {
+    it('returns nextResetAt as first day of the next Brazil month at UTC', async () => {
       mockPlan('professional');
 
       const result = await service.getQuota(CLINIC_ID, ANALYSIS_TYPE);
 
       const resetDate = new Date(result.nextResetAt);
-      const now = new Date();
-      const expectedReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      // Uses Brazil month boundaries: next reset = first day of next Brazil month
+      // at Brazil midnight = UTC 03:00 of that date.
+      const { end: expectedReset } = getBrazilMonthRange(brazilCurrentIsoMonth());
 
       expect(resetDate.toISOString()).toBe(expectedReset.toISOString());
     });

@@ -18,7 +18,6 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { HealthModule } from './modules/health/health.module';
 import { PatientsModule } from './modules/patients/patients.module';
-import { LeadsModule } from './modules/leads/leads.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { SpecialtiesModule } from './modules/specialties/specialties.module';
@@ -31,7 +30,6 @@ import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ClinicModule } from './modules/clinic/clinic.module';
 import { ReportsModule } from './modules/reports/reports.module';
-import { PublicLeadsModule } from './modules/public-leads/public-leads.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -53,7 +51,6 @@ import { PrismaModule } from './prisma/prisma.module';
     ProfilesModule,
     SpecialtiesModule,
     StockModule,
-    LeadsModule,
     SubscriptionsModule,
     BillingModule,
     CalendarIntegrationsModule,
@@ -68,7 +65,6 @@ import { PrismaModule } from './prisma/prisma.module';
     NotificationModule,
     ClinicModule,
     ReportsModule,
-    PublicLeadsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

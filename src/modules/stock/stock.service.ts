@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilTodayIso,
+  parseBrazilDateOnlyToUtcRange,
+} from '../../common/utils/brazil-timezone';
 import { CreateStockCategoryDto } from './dto/create-stock-category.dto';
 import { UpdateStockCategoryDto } from './dto/update-stock-category.dto';
 import { CreateStockProductDto } from './dto/create-stock-product.dto';
@@ -105,20 +109,19 @@ export class StockService {
   // ── Summary ─────────────────────────────────────────────────────
 
   async getSummary(clinicId: string) {
-    const [activeProducts, inactive, totalCategories] = await Promise.all([
-      this.prisma.stockProduct.findMany({
-        where: { clinicId, isActive: true },
-        select: {
-          isActive: true,
-          currentQuantity: true,
-          minQuantity: true,
-          expiresAt: true,
-          purchasePrice: true,
-        },
-      }),
-      this.prisma.stockProduct.count({ where: { clinicId, isActive: false } }),
-      this.prisma.stockCategory.count({ where: { clinicId } }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const activeProducts = await this.prisma.stockProduct.findMany({
+      where: { clinicId, isActive: true },
+      select: {
+        isActive: true,
+        currentQuantity: true,
+        minQuantity: true,
+        expiresAt: true,
+        purchasePrice: true,
+      },
+    });
+    const inactive = await this.prisma.stockProduct.count({ where: { clinicId, isActive: false } });
+    const totalCategories = await this.prisma.stockCategory.count({ where: { clinicId } });
 
     let lowStock = 0;
     let emptyStock = 0;
@@ -537,12 +540,13 @@ export class StockService {
   }): StockProductStatus {
     if (!product.isActive) return 'INACTIVE';
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // expiresAt is stored as UTC midnight of the calendar date. Use UTC midnight
+    // of the Brazil today date so an item expiring "today Brazil" is not shown
+    // as EXPIRED at 00:01-02:59 UTC when Brazil is still the previous day.
+    const today = new Date(`${brazilTodayIso()}T00:00:00.000Z`);
 
     if (product.expiresAt) {
       const expires = new Date(product.expiresAt);
-      expires.setUTCHours(0, 0, 0, 0);
       if (expires < today) return 'EXPIRED';
       const daysUntilExpiry = Math.ceil(
         (expires.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
@@ -598,7 +602,7 @@ export class StockService {
     return {
       createdAt: {
         ...(dateFrom ? { gte: this.startOfDay(dateFrom) } : {}),
-        ...(dateTo ? { lte: this.endOfDay(dateTo) } : {}),
+        ...(dateTo ? { lt: this.endOfDay(dateTo) } : {}),
       },
     };
   }
@@ -679,11 +683,13 @@ export class StockService {
     return new Date(`${value}T00:00:00.000Z`);
   }
 
+  // createdAt is a UTC timestamp — use Brazil midnight boundaries so filters
+  // like "from June 1" don't accidentally include May 31 Brazil records.
   private startOfDay(value: string): Date {
-    return new Date(`${value}T00:00:00.000Z`);
+    return parseBrazilDateOnlyToUtcRange(value).start;
   }
 
   private endOfDay(value: string): Date {
-    return new Date(`${value}T23:59:59.999Z`);
+    return parseBrazilDateOnlyToUtcRange(value).end;
   }
 }

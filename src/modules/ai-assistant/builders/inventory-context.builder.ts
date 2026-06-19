@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StockService } from '../../stock/stock.service';
+import { brazilTodayIso } from '../../../common/utils/brazil-timezone';
 
 export type InventoryAiContext = {
   generatedAt: string;
@@ -41,11 +42,12 @@ function computeStatus(product: {
   expiresAt: Date | null;
 }): string {
   if (!product.isActive) return 'INACTIVE';
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // expiresAt is stored as UTC midnight of the calendar date. Use UTC midnight
+  // of the Brazil today date so items expiring "today Brazil" are not shown
+  // as EXPIRED at 00:00-02:59 UTC when Brazil is still the previous day.
+  const today = new Date(`${brazilTodayIso()}T00:00:00.000Z`);
   if (product.expiresAt) {
     const expires = new Date(product.expiresAt);
-    expires.setUTCHours(0, 0, 0, 0);
     if (expires < today) return 'EXPIRED';
     const days = Math.ceil(
       (expires.getTime() - today.getTime()) / 86_400_000,
@@ -76,14 +78,13 @@ export class InventoryContextBuilder {
   ) {}
 
   async build(clinicId: string): Promise<InventoryAiContext> {
-    const [summary, rawProducts] = await Promise.all([
-      this.stockService.getSummary(clinicId),
-      this.prisma.stockProduct.findMany({
-        where: { clinicId, isActive: true },
-        include: { category: { select: { name: true } } },
-        orderBy: { currentQuantity: 'asc' },
-      }),
-    ]);
+    // Sequential to avoid concurrent pg queries on the same connection.
+    const summary = await this.stockService.getSummary(clinicId);
+    const rawProducts = await this.prisma.stockProduct.findMany({
+      where: { clinicId, isActive: true },
+      include: { category: { select: { name: true } } },
+      orderBy: { currentQuantity: 'asc' },
+    });
 
     const limitations: string[] = [];
     if (summary.totalActive === 0) {

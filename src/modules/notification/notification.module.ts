@@ -7,6 +7,7 @@ import { LocalNotificationProvider } from './providers/local-notification.provid
 import { WhatsAppCloudProvider } from './providers/whatsapp-cloud.provider';
 import { NotificationController } from './notification.controller';
 import { WhatsAppWebhookController } from './whatsapp-webhook.controller';
+import { WhatsAppWebhookService } from './whatsapp-webhook.service';
 import { NotificationService } from './notification.service';
 
 @Module({
@@ -14,6 +15,7 @@ import { NotificationService } from './notification.service';
   controllers: [NotificationController, WhatsAppWebhookController],
   providers: [
     NotificationService,
+    WhatsAppWebhookService,
     WhatsAppCloudProvider,
     {
       provide: NOTIFICATION_PROVIDER,

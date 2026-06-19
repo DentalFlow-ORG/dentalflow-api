@@ -12,8 +12,6 @@ import {
   AppointmentStatus,
   FinancialTransactionStatus,
   FinancialTransactionType,
-  LeadSource,
-  LeadStatus,
   ServiceInvoiceStatus,
 } from '@prisma/client';
 
@@ -63,16 +61,6 @@ export class InventoryReportQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
-}
-
-export class LeadsReportQueryDto extends ReportDateRangeDto {
-  @IsOptional()
-  @IsEnum(LeadStatus, { message: 'Status de lead inválido' })
-  status?: LeadStatus;
-
-  @IsOptional()
-  @IsEnum(LeadSource, { message: 'Origem de lead inválida' })
-  source?: LeadSource;
 }
 
 export class InvoicesReportQueryDto extends ReportDateRangeDto {

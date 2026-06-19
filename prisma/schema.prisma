@@ -28,36 +28,6 @@ enum UserRole {
   PATIENT
 }
 
-enum LeadSource {
-  PROFILE_PAGE
-  MANUAL
-  IMPORT
-  REFERRAL
-  WEBSITE
-  WHATSAPP
-  INSTAGRAM
-  GOOGLE
-  OTHER
-}
-
-enum LeadStatus {
-  NEW
-  CONTACTED
-  SCHEDULED
-  CONVERTED
-  LOST
-  ARCHIVED
-}
-
-enum LeadActivityAction {
-  CREATED
-  STATUS_CHANGED
-  NOTE_ADDED
-  CONTACTED
-  APPOINTMENT_SCHEDULED
-  WHATSAPP_SENT
-}
-
 enum AppointmentStatus {
   PENDING
   CONFIRMED
@@ -196,6 +166,7 @@ enum AiAssistantAnalysisType {
   ABNORMAL_CONSUMPTION_COPILOT
   EXPENSE_CLASSIFICATION
   MONTHLY_FINANCE_DIAGNOSIS
+  CLINICAL_DICTATION
 }
 
 enum AiAssistantAnalysisStatus {
@@ -261,7 +232,6 @@ model Clinic {
 
   users        User[]
   profiles     Profile[]
-  leads        Lead[]
   availability Availability[]
   availabilityExceptions AvailabilityException[]
   appointments Appointment[]
@@ -287,6 +257,7 @@ model Clinic {
   notificationPreference NotificationPreference?
   notificationQuotas    NotificationQuota[]
   notificationMessages  NotificationMessage[]
+  patientAvatars        PatientAvatar[]
 
   @@map("clinics")
 }
@@ -320,8 +291,6 @@ model User {
   refreshTokens        RefreshToken[]
   passwordResetTokens  PasswordResetToken[]
   authOAuthStates      AuthOAuthState[] @relation("AuthOAuthStates")
-  leadActivities LeadActivity[]
-  assignedLeads  Lead[]         @relation("AssignedLeads")
   patientAppointments Appointment[] @relation("PatientAppointments")
   patientServiceInvoices ServiceInvoice[] @relation("ServiceInvoicePatient")
   createdFinancialTransactions FinancialTransaction[] @relation("FinancialTransactionCreatedBy")
@@ -429,7 +398,6 @@ model Profile {
   user                   User?                   @relation(fields: [userId], references: [id])
   profileSpecialties     ProfileSpecialty[]
   services               Service[]
-  leads                  Lead[]
   availability           Availability[]
   availabilityExceptions AvailabilityException[]
   appointments           Appointment[]
@@ -481,74 +449,12 @@ model Service {
   updatedAt                 DateTime @updatedAt
 
   profile      Profile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  leads        Lead[]
   appointments Appointment[]
   financialTransactions FinancialTransaction[]
 
   @@index([profileId])
   @@index([clinicId])
   @@map("services")
-}
-
-// ================================================================
-// DOMAIN 3 — LEAD MANAGEMENT
-// ================================================================
-
-model Lead {
-  id               String     @id @default(cuid())
-  clinicId         String
-  profileId        String
-  serviceId        String?
-  assignedToUserId String?
-  name             String
-  email            String?
-  phone            String?
-  whatsappNumber   String?
-  message          String?    @db.Text
-  source           LeadSource @default(PROFILE_PAGE)
-  status           LeadStatus @default(NEW)
-  utmSource        String?
-  utmMedium        String?
-  utmCampaign      String?
-  utmContent       String?
-  referrerUrl      String?
-  nextFollowUpAt   DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-
-  clinic       Clinic         @relation(fields: [clinicId], references: [id])
-  profile      Profile        @relation(fields: [profileId], references: [id])
-  service      Service?       @relation(fields: [serviceId], references: [id])
-  assignedTo   User?          @relation("AssignedLeads", fields: [assignedToUserId], references: [id])
-  activities   LeadActivity[]
-  appointments Appointment[]
-
-  @@index([clinicId])
-  @@index([clinicId, status])
-  @@index([profileId])
-  @@index([status])
-  @@index([assignedToUserId])
-  @@index([createdAt])
-  @@map("leads")
-}
-
-model LeadActivity {
-  id        String             @id @default(cuid())
-  leadId    String
-  userId    String?
-  action    LeadActivityAction
-  oldStatus LeadStatus?
-  newStatus LeadStatus?
-  note      String?            @db.Text
-  metadata  Json?
-  createdAt DateTime           @default(now())
-
-  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user User? @relation(fields: [userId], references: [id])
-
-  @@index([leadId])
-  @@index([createdAt])
-  @@map("lead_activities")
 }
 
 // ================================================================
@@ -600,7 +506,6 @@ model Appointment {
   clinicId           String
   profileId          String
   patientUserId      String?
-  leadId             String?
   serviceId          String?
   patientName        String
   patientEmail       String?
@@ -631,7 +536,6 @@ model Appointment {
   clinic  Clinic  @relation(fields: [clinicId], references: [id])
   profile Profile  @relation(fields: [profileId], references: [id])
   patient User?    @relation("PatientAppointments", fields: [patientUserId], references: [id])
-  lead    Lead?    @relation(fields: [leadId], references: [id])
   service Service? @relation(fields: [serviceId], references: [id])
   financialTransactions FinancialTransaction[]
   serviceInvoices ServiceInvoice[]
@@ -643,7 +547,6 @@ model Appointment {
   @@index([patientUserId])
   @@index([appointmentDate])
   @@index([status])
-  @@index([leadId])
   @@index([clinicId, appointmentDate])
   @@index([profileId, appointmentDate])
   @@index([clinicId, profileId, appointmentDate])
@@ -727,7 +630,6 @@ model Plan {
   priceYearly           Int      // in cents
   maxUsersPerClinic     Int      @default(8)
   maxProfiles           Int?     // NULL = unlimited
-  maxLeadsPerMonth      Int?     // NULL = unlimited
   maxServicesPerProfile Int?     // NULL = unlimited
   hasAppointments       Boolean  @default(false)
   hasAnalytics          Boolean  @default(false)
@@ -1320,12 +1222,6 @@ enum AuditAction {
   NOTIFICATION_SENT
   NOTIFICATION_CONSENT_GRANTED
   NOTIFICATION_CONSENT_REVOKED
-  // Leads
-  LEAD_CREATED
-  LEAD_UPDATED
-  LEAD_STATUS_CHANGED
-  LEAD_ACTIVITY_CREATED
-  LEAD_CONVERTED
   // Reports
   REPORT_EXPORTED
   // Generic
@@ -1540,18 +1436,27 @@ model NotificationTemplate {
   @@map("notification_templates")
 }
 
-model WebsiteLead {
-  id             String    @id @default(cuid())
-  name           String
-  phone          String
-  clinicName     String?
-  preferredTime  String?
-  context        String?
-  consentGiven   Boolean   @default(false)
-  consentAt      DateTime?
-  ipHash         String?
-  createdAt      DateTime  @default(now())
 
-  @@index([phone, createdAt])
-  @@map("website_leads")
+
+// ================================================================
+// DOMAIN — PATIENT AVATARS
+// ================================================================
+
+// Stores patient profile photos keyed by clinic + patient identifier.
+// Patients are not User records — they are identified by email (preferred)
+// or name in the appointments table. avatarUrl stores a compressed base64
+// data URL (JPEG, ≤512×512 px) so no external object storage is required.
+model PatientAvatar {
+  id         String   @id @default(cuid())
+  clinicId   String
+  identifier String   // patient email (preferred) or name when no email
+  avatarUrl  String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, identifier])
+  @@index([clinicId])
+  @@map("patient_avatars")
 }

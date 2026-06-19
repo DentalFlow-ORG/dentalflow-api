@@ -21,8 +21,9 @@ import {
   FinanceReportQueryDto,
   InventoryReportQueryDto,
   InvoicesReportQueryDto,
-  LeadsReportQueryDto,
 } from './dto/report-query.dto';
+import type { ReportPreviewResponse } from './dto/report-preview-response.dto';
+import { brazilTodayIso } from '../../common/utils/brazil-timezone';
 
 function sendCsv(res: Response, csv: string, filename: string): void {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -32,8 +33,7 @@ function sendCsv(res: Response, csv: string, filename: string): void {
 }
 
 function safeFilename(base: string): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return `${base}_${date}.csv`;
+  return `${base}_${brazilTodayIso()}.csv`;
 }
 
 @Controller('reports')
@@ -46,6 +46,8 @@ export class ReportsController {
     private readonly accessPolicy: AccessPolicyService,
     private readonly auditLog: AuditLogService,
   ) {}
+
+  // ── Finance ──────────────────────────────────────────────────────────────
 
   @Get('finance/export')
   @Roles('OWNER')
@@ -74,6 +76,18 @@ export class ReportsController {
     sendCsv(res, csv, safeFilename('relatorio_financeiro'));
   }
 
+  @Get('finance/preview')
+  @Roles('OWNER')
+  async previewFinance(
+    @CurrentUser() user: AuthUser,
+    @Query() query: FinanceReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    const clinicId = this.accessPolicy.assertOwnerAccess(user);
+    return this.reports.previewFinance(clinicId, query);
+  }
+
+  // ── Appointments ──────────────────────────────────────────────────────────
+
   @Get('appointments/export')
   @Roles('OWNER', 'ASSISTANT')
   async exportAppointments(
@@ -101,6 +115,18 @@ export class ReportsController {
     sendCsv(res, csv, safeFilename('relatorio_agendamentos'));
   }
 
+  @Get('appointments/preview')
+  @Roles('OWNER', 'ASSISTANT')
+  async previewAppointments(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AppointmentsReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    return this.reports.previewAppointments(clinicId, query);
+  }
+
+  // ── Inventory ─────────────────────────────────────────────────────────────
+
   @Get('inventory/export')
   @Roles('OWNER', 'ASSISTANT')
   async exportInventory(
@@ -122,32 +148,17 @@ export class ReportsController {
     sendCsv(res, csv, safeFilename('relatorio_estoque'));
   }
 
-  @Get('leads/export')
+  @Get('inventory/preview')
   @Roles('OWNER', 'ASSISTANT')
-  async exportLeads(
+  async previewInventory(
     @CurrentUser() user: AuthUser,
-    @Query() query: LeadsReportQueryDto,
-    @Res() res: Response,
-  ) {
+    @Query() query: InventoryReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
-    const csv = await this.reports.exportLeads(clinicId, query);
-
-    void this.auditLog.log({
-      actorUserId: user.id,
-      clinicId,
-      action: AuditAction.REPORT_EXPORTED,
-      entityType: 'Report',
-      metadata: {
-        report: 'leads',
-        status: query.status,
-        source: query.source,
-        startDate: query.startDate,
-        endDate: query.endDate,
-      },
-    });
-
-    sendCsv(res, csv, safeFilename('relatorio_leads'));
+    return this.reports.previewInventory(clinicId, query);
   }
+
+  // ── Invoices ──────────────────────────────────────────────────────────────
 
   @Get('invoices/export')
   @Roles('OWNER', 'ASSISTANT')
@@ -173,5 +184,15 @@ export class ReportsController {
     });
 
     sendCsv(res, csv, safeFilename('relatorio_notas_fiscais'));
+  }
+
+  @Get('invoices/preview')
+  @Roles('OWNER', 'ASSISTANT')
+  async previewInvoices(
+    @CurrentUser() user: AuthUser,
+    @Query() query: InvoicesReportQueryDto,
+  ): Promise<ReportPreviewResponse> {
+    const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
+    return this.reports.previewInvoices(clinicId, query);
   }
 }

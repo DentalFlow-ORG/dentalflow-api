@@ -8,15 +8,17 @@
  *     - Transações financeiras em 20+ dias distintos (receitas + despesas)
  *     - 6 produtos em estoque (normal / baixo / zerado / vencendo / vencido / inativo)
  *     - Movimentações de estoque para definir quantidades
- *     - 6 leads (um por status)
  *     - Consentimentos de notificação WhatsApp
  *     - 5 notas fiscais (DRAFT, READY_TO_ISSUE, SIMULATED, ISSUED, CANCELED)
  *
- * Pré-requisito:
- *   pedro@pedro.com deve existir no banco e ter um clinicId vinculado.
+ * Comportamento:
+ *   Se pedro@pedro.com não existir, o script cria o usuário e a clínica
+ *   com a senha padrão definida por SEED_USER_PASSWORD (default: Pedro@123).
+ *   Para restaurar o login use a senha configurada na env ou redefina via
+ *   script de atualização de senha separado.
  *
  * Como rodar:
- *   DATABASE_URL=<url> npx ts-node prisma/dev-seed-pedro.ts
+ *   DATABASE_URL=<url> bunx ts-node prisma/dev-seed-pedro.ts
  *
  * Idempotência:
  *   Se a clínica já tiver dados marcados com DF_PEDRO_DEV_SEED ou mais de 10
@@ -480,56 +482,7 @@ async function main(): Promise<void> {
 
     console.log('✓ 20 movimentações históricas de estoque criadas');
 
-    // ── 7. Leads ───────────────────────────────────────────────────────────────
-    type LeadSeed = {
-      name: string;
-      phone: string;
-      source: 'MANUAL' | 'WEBSITE' | 'WHATSAPP' | 'INSTAGRAM' | 'GOOGLE' | 'REFERRAL';
-      status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'CONVERTED' | 'LOST' | 'ARCHIVED';
-      message?: string;
-      followUpDays?: number;
-    };
-
-    const LEADS: LeadSeed[] = [
-      { name: 'Amanda Vieira',    phone: '(21) 97001-0001', source: 'WEBSITE',   status: 'NEW',       message: 'Preciso de uma avaliação ortodôntica.' },
-      { name: 'Bernardo Castro',  phone: '(21) 97001-0002', source: 'INSTAGRAM', status: 'CONTACTED',  message: 'Vi o perfil no Instagram e fiquei interessado.' },
-      { name: 'Cristina Barros',  phone: '(21) 97001-0003', source: 'GOOGLE',    status: 'SCHEDULED',  message: 'Encontrei pelo Google Maps.' },
-      { name: 'Danilo Rocha',     phone: '(21) 97001-0004', source: 'REFERRAL',  status: 'CONVERTED',  message: 'Indicação da minha esposa que é paciente.' },
-      { name: 'Eduarda Matos',    phone: '(21) 97001-0005', source: 'WHATSAPP',  status: 'LOST',       message: 'Veio pelo WhatsApp mas não respondeu mais.' },
-      { name: 'Fabrício Leal',    phone: '(21) 97001-0006', source: 'MANUAL',    status: 'ARCHIVED',   message: 'Lead antigo arquivado.' },
-    ];
-
-    let leadsCreated = 0;
-    for (const l of LEADS) {
-      const lead = await prisma.lead.create({
-        data: {
-          clinicId,
-          profileId: profile.id,
-          name: l.name,
-          phone: l.phone,
-          source: l.source,
-          status: l.status,
-          message: l.message,
-          nextFollowUpAt: l.followUpDays ? daysFromNow(l.followUpDays) : undefined,
-        },
-      });
-
-      await prisma.leadActivity.create({
-        data: {
-          leadId: lead.id,
-          userId,
-          action: 'CREATED',
-          newStatus: l.status,
-          note: `Lead criado via seed de desenvolvimento — status inicial: ${l.status}`,
-        },
-      });
-
-      leadsCreated++;
-    }
-
-    console.log(`✓ ${leadsCreated} leads criados (todos os status)`);
-
-    // ── 8. Notification Consents ───────────────────────────────────────────────
+    // ── 7. Notification Consents ───────────────────────────────────────────────
     const CONSENT_PHONES = ['21990011111', '21990022222', '21990033333', '21990044444'];
     let consentsCreated = 0;
 

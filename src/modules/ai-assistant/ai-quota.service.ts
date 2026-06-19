@@ -10,6 +10,10 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  brazilCurrentIsoMonth,
+  getBrazilMonthRange,
+} from '../../common/utils/brazil-timezone';
 
 export type AiQuotaInfo = {
   allowed: boolean;
@@ -35,12 +39,12 @@ const AI_PLAN_LIMITS: Record<string, PlanLimits> = {
   professional: {
     allowed: true,
     perTypeMonthly: 1,
-    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30, MONTHLY_FINANCE_DIAGNOSIS: 5 },
+    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30, MONTHLY_FINANCE_DIAGNOSIS: 5, CLINICAL_DICTATION: 10 },
   },
   premium: {
     allowed: true,
     perTypeMonthly: 10,
-    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100, MONTHLY_FINANCE_DIAGNOSIS: 20 },
+    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100, MONTHLY_FINANCE_DIAGNOSIS: 20, CLINICAL_DICTATION: 30 },
   },
 };
 const DEFAULT_LIMITS: PlanLimits = { allowed: false, perTypeMonthly: 0 };
@@ -52,11 +56,13 @@ export class AiQuotaService {
   async getQuota(clinicId: string, type: AiAssistantAnalysisType): Promise<AiQuotaInfo> {
     const { start, nextResetAt } = this.monthBounds();
 
-    const [planKey, used, lastRecord] = await Promise.all([
-      this.getPlanKey(clinicId),
-      this.countMonthlyUsed(clinicId, type, start, nextResetAt),
-      this.getLastSuccess(clinicId, type),
-    ]);
+    // Sequential awaits to ensure each query uses its own dedicated pg connection.
+    // Running these concurrently with Promise.all can cause pg to dispatch multiple
+    // queries to the same client before one resolves, triggering the pg@8 deprecation
+    // warning "Calling client.query() when the client is already executing a query".
+    const planKey   = await this.getPlanKey(clinicId);
+    const used      = await this.countMonthlyUsed(clinicId, type, start, nextResetAt);
+    const lastRecord = await this.getLastSuccess(clinicId, type);
 
     const limits = planKey ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS) : DEFAULT_LIMITS;
     const monthlyLimit = limits.typeOverrides?.[type] ?? limits.perTypeMonthly;
@@ -109,13 +115,11 @@ export class AiQuotaService {
   }
 
   private monthBounds(): { start: Date; nextResetAt: Date } {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    return {
-      start: new Date(Date.UTC(year, month, 1)),
-      nextResetAt: new Date(Date.UTC(year, month + 1, 1)),
-    };
+    // generatedAt is a UTC timestamp — use Brazil month boundaries so quota
+    // counting doesn't advance to the next month at 00:00 UTC while Brazil
+    // is still in the previous calendar month.
+    const { start, end } = getBrazilMonthRange(brazilCurrentIsoMonth());
+    return { start, nextResetAt: end };
   }
 
   private async countMonthlyUsed(

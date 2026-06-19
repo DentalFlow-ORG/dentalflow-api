@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { fiscalConfig } from '../../config/fiscal.config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { brazilCurrentIsoMonth } from '../../common/utils/brazil-timezone';
 import {
   CancelInvoiceDto,
   CreateServiceInvoiceDto,
@@ -95,9 +96,10 @@ export class FiscalService {
   }
 
   async getSummary(clinicId: string) {
-    const startOfMonth = new Date();
-    startOfMonth.setUTCDate(1);
-    startOfMonth.setUTCHours(0, 0, 0, 0);
+    // competenceDate is stored as UTC midnight — derive first-of-month from the
+    // Brazil calendar so the window doesn't shift during 00:00-03:00 UTC.
+    const [bmy, bmm] = brazilCurrentIsoMonth().split('-').map(Number);
+    const startOfMonth = new Date(Date.UTC(bmy, bmm - 1, 1));
 
     const statusRows = await this.prisma.serviceInvoice.groupBy({
       by: ['status'],
@@ -627,9 +629,18 @@ export class FiscalService {
     }
 
     if (dto.patientId) {
-      const patient = await this.prisma.user.findUnique({
-        where: { id: dto.patientId },
-        select: { id: true, clinicId: true, role: true },
+      // Patients are global PATIENT-role users (clinicId === null), mirroring
+      // AppointmentsService.assertPatientUser. Scoping the lookup by role (and
+      // active/not-deleted) prevents linking an arbitrary user — e.g. another
+      // clinic's owner or a platform admin — as the invoice's patient.
+      const patient = await this.prisma.user.findFirst({
+        where: {
+          id: dto.patientId,
+          role: UserRole.PATIENT,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
       });
       if (!patient) {
         throw new BadRequestException('Paciente vinculado inválido.');

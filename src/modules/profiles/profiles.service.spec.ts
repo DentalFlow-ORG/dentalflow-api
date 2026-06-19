@@ -11,7 +11,6 @@ const mockPrisma = {
   service: { findFirst: jest.fn(), delete: jest.fn() },
   appointment: { count: jest.fn() },
   financialTransaction: { count: jest.fn() },
-  lead: { count: jest.fn() },
   subscription: { findUnique: jest.fn() },
 };
 
@@ -33,7 +32,6 @@ describe('ProfilesService.removeService', () => {
     mockPrisma.service.findFirst.mockResolvedValue(serviceRecord());
     mockPrisma.appointment.count.mockResolvedValue(0);
     mockPrisma.financialTransaction.count.mockResolvedValue(0);
-    mockPrisma.lead.count.mockResolvedValue(0);
   });
 
   it('throws ConflictException when appointments are linked to the service', async () => {
@@ -47,15 +45,6 @@ describe('ProfilesService.removeService', () => {
 
   it('throws ConflictException when financial transactions are linked to the service', async () => {
     mockPrisma.financialTransaction.count.mockResolvedValue(2);
-
-    await expect(
-      service.removeService(CLINIC_ID, PROFILE_ID, SERVICE_ID),
-    ).rejects.toThrow(ConflictException);
-    expect(mockPrisma.service.delete).not.toHaveBeenCalled();
-  });
-
-  it('throws ConflictException when leads are linked to the service', async () => {
-    mockPrisma.lead.count.mockResolvedValue(1);
 
     await expect(
       service.removeService(CLINIC_ID, PROFILE_ID, SERVICE_ID),

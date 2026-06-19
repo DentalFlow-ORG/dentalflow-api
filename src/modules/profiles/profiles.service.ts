@@ -235,13 +235,12 @@ export class ProfilesService {
     await this.assertClinicOwnership(clinicId, profileId);
     await this.assertServiceOwnership(profileId, serviceId);
 
-    const [appointmentCount, transactionCount, leadCount] = await Promise.all([
+    const [appointmentCount, transactionCount] = await Promise.all([
       this.prisma.appointment.count({ where: { serviceId } }),
       this.prisma.financialTransaction.count({ where: { serviceId } }),
-      this.prisma.lead.count({ where: { serviceId } }),
     ]);
 
-    if (appointmentCount > 0 || transactionCount > 0 || leadCount > 0) {
+    if (appointmentCount > 0 || transactionCount > 0) {
       throw new ConflictException(
         'Este serviço possui registros vinculados e não pode ser removido.',
       );
