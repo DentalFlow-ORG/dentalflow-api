@@ -9,6 +9,11 @@ type EnvRule = {
 const rules: EnvRule[] = [
   { key: 'JWT_SECRET', required: true, description: 'JWT signing secret' },
   { key: 'DATABASE_URL', required: true, description: 'PostgreSQL connection string' },
+  {
+    key: 'WHATSAPP_VERIFY_TOKEN',
+    required: true,
+    description: 'Meta WhatsApp webhook verification token',
+  },
   { key: 'DIRECT_URL', required: isProduction, description: 'Direct PostgreSQL URL for Prisma migrations (bypasses PgBouncer)' },
   { key: 'FRONTEND_ORIGIN', required: isProduction, description: 'Allowed CORS origin' },
   { key: 'FRONTEND_URL', required: isProduction, description: 'Frontend base URL for transactional email links (e.g. https://app.dentalflow.com.br)' },
@@ -64,11 +69,16 @@ export function validateEnv(): void {
         'WHATSAPP_CLOUD_API_VERSION',
         'WHATSAPP_CLOUD_PHONE_NUMBER_ID',
         'WHATSAPP_CLOUD_ACCESS_TOKEN',
-        'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
-        'WHATSAPP_WEBHOOK_APP_SECRET',
+        'WHATSAPP_VERIFY_TOKEN',
         'WHATSAPP_DEFAULT_LANGUAGE',
       ];
       const missingWhatsapp = whatsappRequired.filter((k) => !process.env[k]);
+      if (
+        !process.env.WHATSAPP_APP_SECRET &&
+        !process.env.WHATSAPP_WEBHOOK_APP_SECRET
+      ) {
+        missingWhatsapp.push('WHATSAPP_APP_SECRET');
+      }
       if (missingWhatsapp.length > 0) {
         throw new Error(
           `NOTIFICATION_PROVIDER=whatsapp_cloud requires the following env vars:\n` +

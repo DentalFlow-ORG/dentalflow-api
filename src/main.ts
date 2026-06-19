@@ -10,7 +10,7 @@ process.on('warning', (warning) => {
   }
   console.warn(warning);
 });
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import * as express from 'express';
@@ -140,7 +140,9 @@ async function bootstrap() {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
   }
 
-  app.setGlobalPrefix(appConfig.apiPrefix);
+  app.setGlobalPrefix(appConfig.apiPrefix, {
+    exclude: [{ path: 'webhooks/whatsapp', method: RequestMethod.ALL }],
+  });
   app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
