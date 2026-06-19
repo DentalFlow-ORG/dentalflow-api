@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -48,6 +48,10 @@ describe('WhatsAppWebhookController', () => {
     await app.close();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('verifies the webhook with the correct token and returns the challenge', () => {
     return request(app.getHttpServer())
       .get('/webhooks/whatsapp')
@@ -91,8 +95,10 @@ describe('WhatsAppWebhookController', () => {
       .expect(403);
   });
 
-  it('accepts a realistic WhatsApp status payload', () => {
-    return request(app.getHttpServer())
+  it('logs only safe aggregate metadata for a status payload', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+
+    await request(app.getHttpServer())
       .post('/webhooks/whatsapp')
       .send({
         object: 'whatsapp_business_account',
@@ -119,6 +125,18 @@ describe('WhatsAppWebhookController', () => {
       })
       .expect(200)
       .expect({ status: 'ok' });
+
+    const receiptLog = logSpy.mock.calls
+      .map(([message]) => String(message))
+      .find((message) => message.startsWith('WhatsApp webhook received:'));
+
+    expect(receiptLog).toEqual(
+      expect.stringContaining(
+        'object=whatsapp_business_account entries=1 fields=messages statuses=1 messages=0 statusValues=delivered',
+      ),
+    );
+    expect(receiptLog).not.toContain('5511999999999');
+    expect(receiptLog).not.toContain('wamid.status-example');
   });
 
   it('accepts a realistic incoming WhatsApp message payload', () => {

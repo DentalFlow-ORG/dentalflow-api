@@ -44,7 +44,7 @@ export class WhatsAppWebhookService {
     this.verifySignature(rawBody, signature);
 
     const events = normalizeEvents(payload);
-    this.logDevelopmentMetadata(events);
+    this.logReceiptMetadata(payload, events);
 
     const statusUpdates = events
       .filter(
@@ -80,16 +80,27 @@ export class WhatsAppWebhookService {
     }
   }
 
-  private logDevelopmentMetadata(events: NormalizedEvent[]): void {
-    if (process.env.NODE_ENV === 'production') return;
+  private logReceiptMetadata(
+    payload: unknown,
+    events: NormalizedEvent[],
+  ): void {
+    const objectType =
+      isRecord(payload) && isSafeMetadataLabel(payload.object)
+        ? payload.object
+        : 'unknown';
+    const entries =
+      isRecord(payload) && Array.isArray(payload.entry) ? payload.entry : [];
+    const fields = collectSafeFieldNames(entries);
+    const statuses = events.filter((event) => event.type === 'status');
+    const messages = events.filter((event) => event.type === 'message');
+    const statusValues = [...new Set(statuses.map((event) => event.status))];
 
-    for (const event of events) {
-      if (event.type === 'status') {
-        this.logger.debug(`WhatsApp webhook event: status=${event.status}`);
-      } else {
-        this.logger.debug('WhatsApp webhook event: message');
-      }
-    }
+    this.logger.log(
+      `WhatsApp webhook received: object=${objectType} entries=${entries.length} ` +
+        `fields=${fields.length > 0 ? fields.join(',') : 'none'} ` +
+        `statuses=${statuses.length} messages=${messages.length} ` +
+        `statusValues=${statusValues.length > 0 ? statusValues.join(',') : 'none'}`,
+    );
   }
 
   private async processStatusUpdates(
@@ -195,6 +206,30 @@ function normalizeStatusLabel(status?: string): string {
   return ['sent', 'delivered', 'read', 'failed'].includes(status ?? '')
     ? (status as string)
     : 'unknown';
+}
+
+function collectSafeFieldNames(entries: unknown[]): string[] {
+  const fields = new Set<string>();
+
+  for (const entry of entries) {
+    if (!isRecord(entry) || !Array.isArray(entry.changes)) continue;
+
+    for (const change of entry.changes) {
+      if (isRecord(change) && isSafeMetadataLabel(change.field)) {
+        fields.add(change.field);
+      }
+    }
+  }
+
+  return [...fields];
+}
+
+function isSafeMetadataLabel(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= 64 &&
+    /^[a-zA-Z0-9_.-]+$/.test(value)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
