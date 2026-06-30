@@ -297,3 +297,61 @@ describe('CalendarIntegrationsService.getStatus (OWNER)', () => {
     expect(result.calendarSummary).toBe('Clínica Agenda');
   });
 });
+
+// ── resolveCallbackRedirectRole ──────────────────────────────────────────────
+
+describe('CalendarIntegrationsService.resolveCallbackRedirectRole', () => {
+  let service: CalendarIntegrationsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = buildService();
+  });
+
+  it('returns null when state is undefined', async () => {
+    const result = await service.resolveCallbackRedirectRole(undefined);
+
+    expect(result).toBeNull();
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('returns null when state is not found or expired', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([]);
+
+    const result = await service.resolveCallbackRedirectRole('unknown-state');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns DENTIST when the stored state belongs to a dentist', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'state-1',
+        clinicId: CLINIC_ID,
+        userId: USER_ID,
+        expiresAt: FUTURE,
+        userRole: 'DENTIST',
+      },
+    ]);
+
+    const result = await service.resolveCallbackRedirectRole('state-1');
+
+    expect(result).toBe('DENTIST');
+  });
+
+  it('returns OWNER when the stored state belongs to an owner', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'state-2',
+        clinicId: CLINIC_ID,
+        userId: 'user-owner-1',
+        expiresAt: FUTURE,
+        userRole: 'OWNER',
+      },
+    ]);
+
+    const result = await service.resolveCallbackRedirectRole('state-2');
+
+    expect(result).toBe('OWNER');
+  });
+});

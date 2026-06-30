@@ -50,7 +50,9 @@ export class CalendarIntegrationsController {
     @Query('error') error: string | undefined,
     @Res() response: Response,
   ) {
-    const redirectUrl = new URL('/app/agendamentos', appConfig.frontendOrigin);
+    const redirectRole = await this.integrationsService.resolveCallbackRedirectRole(state);
+    const redirectPath = redirectRole === 'DENTIST' ? '/app/agenda' : '/app/agendamentos';
+    const redirectUrl = new URL(redirectPath, appConfig.frontendOrigin);
 
     if (error) {
       redirectUrl.searchParams.set('googleCalendar', 'error');

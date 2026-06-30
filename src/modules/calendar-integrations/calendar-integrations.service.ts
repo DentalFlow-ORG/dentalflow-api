@@ -143,6 +143,23 @@ export class CalendarIntegrationsService {
     return { url: this.buildOAuthUrl(state) };
   }
 
+  async resolveCallbackRedirectRole(
+    state: string | undefined,
+  ): Promise<'OWNER' | 'DENTIST' | null> {
+    if (!state) return null;
+
+    const [storedState] = await this.prisma.$queryRaw<OAuthStateWithRoleRow[]>`
+      SELECT s."id", s."clinicId", s."userId", s."expiresAt", u."role" AS "userRole"
+      FROM "google_calendar_oauth_states" s
+      INNER JOIN "users" u ON u."id" = s."userId"
+      WHERE s."id" = ${state} AND s."expiresAt" >= NOW()
+      LIMIT 1
+    `;
+
+    if (!storedState) return null;
+    return storedState.userRole === 'DENTIST' ? 'DENTIST' : 'OWNER';
+  }
+
   async handleCallback(code: string | undefined, state: string | undefined) {
     this.assertConfig();
 
