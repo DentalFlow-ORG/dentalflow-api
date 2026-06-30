@@ -7,11 +7,19 @@ import {
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
+type WhatsAppError = {
+  code?: string;
+  title?: string;
+  message?: string;
+  details?: string;
+  href?: string;
+};
+
 type WhatsAppStatus = {
   id?: string;
   status?: string;
   timestamp?: string;
-  errors?: Array<{ title?: string; message?: string }>;
+  errors?: WhatsAppError[];
 };
 
 type NormalizedEvent =
@@ -44,7 +52,7 @@ export class WhatsAppWebhookService {
     this.verifySignature(rawBody, signature);
 
     const events = normalizeEvents(payload);
-    this.logDevelopmentMetadata(events);
+    this.logReceiptMetadata(payload, events);
 
     const statusUpdates = events
       .filter(
@@ -80,14 +88,53 @@ export class WhatsAppWebhookService {
     }
   }
 
-  private logDevelopmentMetadata(events: NormalizedEvent[]): void {
-    if (process.env.NODE_ENV === 'production') return;
+  private logReceiptMetadata(
+    payload: unknown,
+    events: NormalizedEvent[],
+  ): void {
+    const objectType =
+      isRecord(payload) && isSafeMetadataLabel(payload.object)
+        ? payload.object
+        : 'unknown';
+    const entries =
+      isRecord(payload) && Array.isArray(payload.entry) ? payload.entry : [];
+    const fields = collectSafeFieldNames(entries);
+    const statuses = events.filter((event) => event.type === 'status');
+    const messages = events.filter((event) => event.type === 'message');
+    const statusValues = [...new Set(statuses.map((event) => event.status))];
 
-    for (const event of events) {
-      if (event.type === 'status') {
-        this.logger.debug(`WhatsApp webhook event: status=${event.status}`);
-      } else {
-        this.logger.debug('WhatsApp webhook event: message');
+    this.logger.log(
+      `WhatsApp webhook received: object=${objectType} entries=${entries.length} ` +
+        `fields=${fields.length > 0 ? fields.join(',') : 'none'} ` +
+        `statuses=${statuses.length} messages=${messages.length} ` +
+        `statusValues=${statusValues.length > 0 ? statusValues.join(',') : 'none'}`,
+    );
+
+    this.logFailedStatusMetadata(statuses);
+  }
+
+  private logFailedStatusMetadata(
+    statuses: Extract<NormalizedEvent, { type: 'status' }>[],
+  ): void {
+    for (const event of statuses) {
+      if (event.status !== 'failed') continue;
+
+      const errors = event.update.errors ?? [];
+      const errorsWithMetadata = errors.filter(hasErrorMetadata);
+
+      if (errorsWithMetadata.length === 0) {
+        this.logger.warn('WhatsApp webhook failed status: no error metadata');
+        continue;
+      }
+
+      for (const error of errorsWithMetadata) {
+        this.logger.warn(
+          `WhatsApp webhook failed status: code=${error.code ?? 'unknown'} ` +
+            `title=${quoteSafeText(error.title)} ` +
+            `message=${quoteSafeText(error.message)} ` +
+            `details=${quoteSafeText(error.details)} ` +
+            `href=${quoteSafeText(sanitizeErrorHref(error.href))}`,
+        );
       }
     }
   }
@@ -182,12 +229,20 @@ function toStatus(value: Record<string, unknown>): WhatsAppStatus {
     timestamp:
       typeof value.timestamp === 'string' ? value.timestamp : undefined,
     errors: Array.isArray(value.errors)
-      ? value.errors.filter(isRecord).map((error) => ({
-          title: typeof error.title === 'string' ? error.title : undefined,
-          message:
-            typeof error.message === 'string' ? error.message : undefined,
-        }))
+      ? value.errors.filter(isRecord).map(toWhatsAppError)
       : undefined,
+  };
+}
+
+function toWhatsAppError(error: Record<string, unknown>): WhatsAppError {
+  const errorData = isRecord(error.error_data) ? error.error_data : undefined;
+
+  return {
+    code: normalizeErrorCode(error.code),
+    title: sanitizeErrorText(error.title),
+    message: sanitizeErrorText(error.message),
+    details: sanitizeErrorText(errorData?.details),
+    href: sanitizeErrorHref(error.href),
   };
 }
 
@@ -195,6 +250,76 @@ function normalizeStatusLabel(status?: string): string {
   return ['sent', 'delivered', 'read', 'failed'].includes(status ?? '')
     ? (status as string)
     : 'unknown';
+}
+
+function collectSafeFieldNames(entries: unknown[]): string[] {
+  const fields = new Set<string>();
+
+  for (const entry of entries) {
+    if (!isRecord(entry) || !Array.isArray(entry.changes)) continue;
+
+    for (const change of entry.changes) {
+      if (isRecord(change) && isSafeMetadataLabel(change.field)) {
+        fields.add(change.field);
+      }
+    }
+  }
+
+  return [...fields];
+}
+
+function isSafeMetadataLabel(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= 64 &&
+    /^[a-zA-Z0-9_.-]+$/.test(value)
+  );
+}
+
+function normalizeErrorCode(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) {
+    return String(value);
+  }
+
+  return isSafeMetadataLabel(value) ? value : undefined;
+}
+
+function sanitizeErrorText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  const sanitized = value
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\+?\d[\d\s().-]{5,}\d/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+
+  return sanitized || undefined;
+}
+
+function sanitizeErrorHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return undefined;
+    }
+
+    return sanitizeErrorText(`${url.origin}${url.pathname}`);
+  } catch {
+    return undefined;
+  }
+}
+
+function quoteSafeText(value?: string): string {
+  return JSON.stringify(value ?? 'none');
+}
+
+function hasErrorMetadata(error: WhatsAppError): boolean {
+  return Boolean(
+    error.code || error.title || error.message || error.details || error.href,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
