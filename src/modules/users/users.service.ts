@@ -292,8 +292,146 @@ export class UsersService {
   async adminListClinics() {
     return this.prisma.clinic.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, email: true, isActive: true, createdAt: true },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  /**
+   * Platform-wide clinic health summary for the ADMIN dashboard.
+   *
+   * Uses grouped/batched queries (one query per metric across all clinics)
+   * instead of per-clinic Promise.all fan-out, so the query count stays
+   * constant regardless of how many clinics exist.
+   */
+  async adminGetClinicsHealth() {
+    const clinics = await this.prisma.clinic.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (clinics.length === 0) return [];
+
+    const clinicIds = clinics.map((c) => c.id);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      subscriptions,
+      dentistCounts,
+      activeUserCounts,
+      totalAppointmentCounts,
+      recentAppointmentCounts,
+      lastLoginByClinic,
+      lastAuditByClinic,
+      fiscalProfiles,
+    ] = await Promise.all([
+      this.prisma.subscription.findMany({
+        where: { clinicId: { in: clinicIds } },
+        include: { plan: { select: { name: true, slug: true } } },
+      }),
+      this.prisma.profile.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.user.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds }, isActive: true, deletedAt: null },
+        _count: { _all: true },
+      }),
+      this.prisma.appointment.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.appointment.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds }, appointmentDate: { gte: thirtyDaysAgo } },
+        _count: { _all: true },
+      }),
+      this.prisma.user.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds }, deletedAt: null },
+        _max: { lastLoginAt: true },
+      }),
+      this.prisma.auditLog.groupBy({
+        by: ['clinicId'],
+        where: { clinicId: { in: clinicIds } },
+        _max: { createdAt: true },
+      }),
+      this.prisma.clinicFiscalProfile.findMany({
+        where: { clinicId: { in: clinicIds } },
+        select: { clinicId: true, isConfigured: true },
+      }),
+    ]);
+
+    const subscriptionByClinic = new Map(subscriptions.map((s) => [s.clinicId, s]));
+    const dentistCountByClinic = new Map(
+      dentistCounts.map((row) => [row.clinicId, row._count._all]),
+    );
+    const activeUserCountByClinic = new Map(
+      activeUserCounts.map((row) => [row.clinicId, row._count._all]),
+    );
+    const totalAppointmentCountByClinic = new Map(
+      totalAppointmentCounts.map((row) => [row.clinicId, row._count._all]),
+    );
+    const recentAppointmentCountByClinic = new Map(
+      recentAppointmentCounts.map((row) => [row.clinicId, row._count._all]),
+    );
+    const lastLoginMap = new Map(
+      lastLoginByClinic.map((row) => [row.clinicId, row._max.lastLoginAt]),
+    );
+    const lastAuditMap = new Map(
+      lastAuditByClinic.map((row) => [row.clinicId, row._max.createdAt]),
+    );
+    const fiscalProfileByClinic = new Map(fiscalProfiles.map((f) => [f.clinicId, f]));
+
+    return clinics.map((clinic) => {
+      const subscription = subscriptionByClinic.get(clinic.id) ?? null;
+      const lastLoginAt = lastLoginMap.get(clinic.id) ?? null;
+      const lastAuditAt = lastAuditMap.get(clinic.id) ?? null;
+
+      let lastActivity: { timestamp: Date | null; source: 'USER_LOGIN' | 'AUDIT_LOG' | null };
+      if (lastLoginAt && (!lastAuditAt || lastLoginAt >= lastAuditAt)) {
+        lastActivity = { timestamp: lastLoginAt, source: 'USER_LOGIN' };
+      } else if (lastAuditAt) {
+        lastActivity = { timestamp: lastAuditAt, source: 'AUDIT_LOG' };
+      } else {
+        lastActivity = { timestamp: null, source: null };
+      }
+
+      const fiscalProfile = fiscalProfileByClinic.get(clinic.id) ?? null;
+
+      return {
+        clinic: {
+          id: clinic.id,
+          name: clinic.name,
+          email: clinic.email,
+          createdAt: clinic.createdAt,
+          isActive: clinic.isActive,
+        },
+        subscription: subscription
+          ? {
+              planSlug: subscription.plan?.slug ?? null,
+              planName: subscription.plan?.name ?? null,
+              status: subscription.status,
+              trialEndsAt: subscription.trialEndsAt,
+              billingInterval: subscription.billingInterval,
+              createdAt: subscription.createdAt,
+            }
+          : null,
+        counts: {
+          dentists: dentistCountByClinic.get(clinic.id) ?? 0,
+          activeUsers: activeUserCountByClinic.get(clinic.id) ?? 0,
+          totalAppointments: totalAppointmentCountByClinic.get(clinic.id) ?? 0,
+          recentAppointments: recentAppointmentCountByClinic.get(clinic.id) ?? 0,
+        },
+        lastActivity,
+        compliance: {
+          fiscalSetupComplete: fiscalProfile ? fiscalProfile.isConfigured : null,
+        },
+      };
     });
   }
 

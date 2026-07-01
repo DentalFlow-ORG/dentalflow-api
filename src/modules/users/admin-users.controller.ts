@@ -33,6 +33,12 @@ export class AdminUsersController {
     return this.usersService.adminListClinics();
   }
 
+  @Get('clinics/health')
+  getClinicsHealth(@CurrentUser() user: AuthUser) {
+    this.accessPolicy.assertPlatformAdmin(user);
+    return this.usersService.adminGetClinicsHealth();
+  }
+
   @Get()
   findAll(
     @CurrentUser() user: AuthUser,
