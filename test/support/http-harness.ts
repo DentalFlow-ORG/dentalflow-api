@@ -65,11 +65,14 @@ export async function createHarness(
   // routes cannot trip per-route limits (dictation allows 3 req/min) and turn
   // an authorization assertion into a spurious 429. Dedicated throttling tests
   // opt back in with `{ throttling: true }`.
-  const throttleSpy = options.throttling
-    ? null
-    : jest
-        .spyOn(ThrottlerGuard.prototype, 'canActivate')
-        .mockResolvedValue(true);
+  //
+  // Assigned rather than spied: a spec calling `jest.restoreAllMocks()` in an
+  // afterEach would otherwise silently undo the harness's own wiring partway
+  // through a run. `close()` puts the original back.
+  const originalCanActivate = ThrottlerGuard.prototype.canActivate;
+  if (!options.throttling) {
+    ThrottlerGuard.prototype.canActivate = () => Promise.resolve(true);
+  }
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PrismaService)
@@ -123,20 +126,25 @@ export async function createHarness(
   const planCapabilities = app.get(PlanCapabilitiesService, { strict: false });
   let billingAllowed = true;
 
-  jest
-    .spyOn(billing, 'getCurrentSubscriptionStatus')
-    .mockImplementation(async () =>
+  // Billing and plan gating are covered by their own guard specs. Here they
+  // would only obscure whatever a suite is actually testing, so they answer
+  // "allowed" until a test says otherwise via `setBillingAllowed(false)`.
+  // Assigned rather than spied, for the same reason as the throttler above.
+  billing.getCurrentSubscriptionStatus = (() =>
+    Promise.resolve(
       billingAllowed
-        ? ({ accessAllowed: true, status: 'ACTIVE' } as any)
-        : ({
+        ? { accessAllowed: true, status: 'ACTIVE' }
+        : {
             accessAllowed: false,
             status: 'CANCELED',
             requiresPlanSelection: true,
             requiresPayment: false,
             message: 'Escolha um plano para continuar.',
-          } as any),
-    );
-  jest.spyOn(planCapabilities, 'assertFeature').mockResolvedValue(undefined as any);
+          },
+    )) as unknown as typeof billing.getCurrentSubscriptionStatus;
+
+  planCapabilities.assertFeature = (() =>
+    Promise.resolve()) as unknown as typeof planCapabilities.assertFeature;
 
   const server = () => app.getHttpServer();
 
@@ -173,7 +181,7 @@ export async function createHarness(
     put: (path) => request(server()).put(apiPath(path)),
     del: (path) => request(server()).delete(apiPath(path)),
     close: async () => {
-      throttleSpy?.mockRestore();
+      ThrottlerGuard.prototype.canActivate = originalCanActivate;
       await app.close();
     },
   };
