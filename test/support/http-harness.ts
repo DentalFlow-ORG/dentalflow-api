@@ -76,7 +76,14 @@ export async function createHarness(
     .useValue(prisma)
     .compile();
 
-  const app = moduleRef.createNestApplication({ rawBody: true, bodyParser: false });
+  const app = moduleRef.createNestApplication({
+    rawBody: true,
+    bodyParser: false,
+    // Handlers are deliberately exercised into their error paths here; the
+    // GlobalExceptionFilter's logging is covered by its own spec, and leaving
+    // it on buries test results under hundreds of stack traces.
+    logger: false,
+  });
 
   app.use(express.json({ limit: '6mb', verify: (req: any, _res, buf: Buffer) => {
     if (Buffer.isBuffer(buf)) req.rawBody = buf;

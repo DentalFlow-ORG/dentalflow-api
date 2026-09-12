@@ -19,6 +19,8 @@ import { Prisma } from '@prisma/client';
  */
 export type PrismaMock = Record<string, any> & {
   __reset(): void;
+  /** Every Prisma query issued since the last `__reset()`, in order. */
+  __calls(): PrismaCall[];
 };
 
 function defaultFor(method: string): unknown {
@@ -48,6 +50,9 @@ export function recordNotFoundError(): Error {
   });
   return error;
 }
+
+/** One recorded Prisma query, as issued by the application. */
+export type PrismaCall = { model: string; operation: string; args: unknown };
 
 function createModelMock(): Record<string, jest.Mock> {
   const model: Record<string, jest.Mock> = {};
@@ -89,8 +94,30 @@ export function createPrismaMock(): PrismaMock {
     return arg;
   });
 
+  root.__calls = (): PrismaCall[] => {
+    const calls: PrismaCall[] = [];
+    for (const [modelName, methods] of models) {
+      for (const [operation, fn] of Object.entries(methods)) {
+        for (const args of fn.mock.calls) {
+          calls.push({ model: modelName, operation, args: args[0] });
+        }
+      }
+    }
+    for (const operation of ['$queryRaw', '$executeRaw', '$queryRawUnsafe', '$executeRawUnsafe']) {
+      for (const args of (root[operation] as jest.Mock).mock.calls) {
+        calls.push({ model: 'raw', operation, args });
+      }
+    }
+    return calls;
+  };
+
+  // Clears recorded calls only. Configured implementations (notably the
+  // harness's authentication lookup) survive, so a suite can reset between
+  // requests without re-wiring the application.
   root.__reset = () => {
-    models.clear();
+    for (const methods of models.values()) {
+      for (const fn of Object.values(methods)) fn.mockClear();
+    }
     for (const key of Object.keys(root)) {
       const value = root[key];
       if (typeof value === 'function' && 'mockClear' in value) {
