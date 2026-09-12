@@ -122,8 +122,6 @@ export class UsersController {
     );
   }
 
-  // ─── ADMIN stub ──────────────────────────────────────────────────────────────
-
   @Patch('clinic/members/:id')
   @Roles('OWNER')
   @RequiresBillingAccess()
@@ -168,6 +166,12 @@ export class UsersController {
       userId,
     );
   }
+
+  // ─── ADMIN stub ──────────────────────────────────────────────────────────────
+  // Returns no data — it exists so an ADMIN token can be verified end to end
+  // against a live deployment. Kept because it is a published endpoint and this
+  // repository cannot observe which clients call it; remove once the frontend
+  // is confirmed not to use it.
 
   @Get('admin-only')
   @Roles('ADMIN')

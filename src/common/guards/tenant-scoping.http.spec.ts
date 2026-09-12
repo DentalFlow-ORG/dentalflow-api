@@ -1,6 +1,10 @@
 import type { UserRole } from '@prisma/client';
 
-import { apiPath, createHarness, Harness } from '../../../test/support/http-harness';
+import {
+  apiPath,
+  createHarness,
+  Harness,
+} from '../../../test/support/http-harness';
 import { ROUTE_ACCESS_MATRIX } from '../../../test/support/route-access-matrix';
 
 /**
@@ -32,8 +36,10 @@ const UNSCOPED_BY_DESIGN: Record<string, string> = {
   // Subscription plans are a platform-wide catalogue with no clinicId column.
   'plan.findMany': 'global plan catalogue, no tenant column',
   // WhatsApp templates are a platform-wide catalogue with no clinicId column.
-  'notificationTemplate.findMany': 'global template catalogue, no tenant column',
-  'notificationTemplate.findUnique': 'global template catalogue, no tenant column',
+  'notificationTemplate.findMany':
+    'global template catalogue, no tenant column',
+  'notificationTemplate.findUnique':
+    'global template catalogue, no tenant column',
   // Read-then-verify: the row is fetched by primary key and the handler
   // compares `consent.clinicId` before mutating, answering 404 (not 403) on a
   // mismatch so a foreign id is indistinguishable from a missing one.
@@ -46,7 +52,8 @@ const UNSCOPED_BY_DESIGN: Record<string, string> = {
 function deepContains(value: unknown, needle: string, depth = 0): boolean {
   if (depth > 10) return false;
   if (typeof value === 'string') return value === needle;
-  if (Array.isArray(value)) return value.some((v) => deepContains(v, needle, depth + 1));
+  if (Array.isArray(value))
+    return value.some((v) => deepContains(v, needle, depth + 1));
   if (value && typeof value === 'object') {
     return Object.values(value).some((v) => deepContains(v, needle, depth + 1));
   }

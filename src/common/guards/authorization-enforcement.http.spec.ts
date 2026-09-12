@@ -64,8 +64,14 @@ type Principal = { name: string; user: TestUser };
 
 const PRINCIPALS: Principal[] = [
   { name: 'ADMIN', user: { id: 'authz-admin', clinicId: null, role: 'ADMIN' } },
-  { name: 'OWNER', user: { id: 'authz-owner', clinicId: CLINIC_A, role: 'OWNER' } },
-  { name: 'DENTIST', user: { id: 'authz-dentist', clinicId: CLINIC_A, role: 'DENTIST' } },
+  {
+    name: 'OWNER',
+    user: { id: 'authz-owner', clinicId: CLINIC_A, role: 'OWNER' },
+  },
+  {
+    name: 'DENTIST',
+    user: { id: 'authz-dentist', clinicId: CLINIC_A, role: 'DENTIST' },
+  },
   {
     name: 'ASSISTANT',
     user: { id: 'authz-assistant', clinicId: CLINIC_A, role: 'ASSISTANT' },
@@ -122,7 +128,12 @@ describe('Authorization enforcement (every route × every role)', () => {
     const agent = harness.app.getHttpServer();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const request = require('supertest') as typeof import('supertest');
-    const verb = method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
+    const verb = method.toLowerCase() as
+      | 'get'
+      | 'post'
+      | 'put'
+      | 'patch'
+      | 'delete';
     const req = request(agent)[verb](apiPath(concretePath(path)));
     return token ? req.set('Authorization', `Bearer ${token}`) : req;
   }
@@ -135,7 +146,9 @@ describe('Authorization enforcement (every route × every role)', () => {
     if (policy !== 'PUBLIC') {
       it('rejects an unauthenticated request with 401', async () => {
         const res = await send(method, path);
-        expect(`${method} ${path} -> ${res.status}`).toBe(`${method} ${path} -> 401`);
+        expect(`${method} ${path} -> ${res.status}`).toBe(
+          `${method} ${path} -> 401`,
+        );
       });
     } else {
       it('is reachable without route authorization', async () => {
@@ -153,14 +166,15 @@ describe('Authorization enforcement (every route × every role)', () => {
       if (isPermitted(policy, flags, role)) {
         // The guard chain must not be what stops a permitted principal.
         const blocked = rejectionMessage(res.body);
-        expect(blocked ? `${where} blocked by "${blocked}"` : 'authorized').toBe(
-          'authorized',
-        );
+        expect(
+          blocked ? `${where} blocked by "${blocked}"` : 'authorized',
+        ).toBe('authorized');
       } else {
         expect(`${where} -> ${res.status}`).toBe(`${where} -> 403`);
         // …and specifically because authorization said no.
-        expect(`${where}: ${rejectionMessage(res.body) ?? 'NOT an authorization rejection'}`)
-          .not.toContain('NOT an authorization rejection');
+        expect(
+          `${where}: ${rejectionMessage(res.body) ?? 'NOT an authorization rejection'}`,
+        ).not.toContain('NOT an authorization rejection');
       }
     });
   });
@@ -191,7 +205,9 @@ describe('Authorization enforcement (every route × every role)', () => {
         role: 'PATIENT' as UserRole,
       });
 
-      const protectedRoutes = cases.filter(([, , policy]) => policy !== 'PUBLIC');
+      const protectedRoutes = cases.filter(
+        ([, , policy]) => policy !== 'PUBLIC',
+      );
       const escalations: string[] = [];
       const unexpectedDenials: string[] = [];
 

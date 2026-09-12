@@ -4,7 +4,6 @@ import {
   brazilDaysAgoIso,
   brazilTodayIso,
   formatBrazilDateOnly,
-  getBrazilDayRange,
   getBrazilMonthRange,
   parseBrazilDateOnlyToUtcRange,
 } from './brazil-timezone';
@@ -26,18 +25,26 @@ describe('BRAZIL_TIME_ZONE', () => {
 describe('formatBrazilDateOnly', () => {
   it('returns YYYY-MM-DD in Brazil timezone, not UTC', () => {
     // 2026-06-01 01:00 UTC → May 31 22:00 Brazil → Brazil date is May 31
-    expect(formatBrazilDateOnly(new Date('2026-06-01T01:00:00Z'))).toBe('2026-05-31');
+    expect(formatBrazilDateOnly(new Date('2026-06-01T01:00:00Z'))).toBe(
+      '2026-05-31',
+    );
   });
 
   it('returns the correct Brazil date during the day', () => {
-    expect(formatBrazilDateOnly(new Date('2026-06-15T12:00:00Z'))).toBe('2026-06-15');
+    expect(formatBrazilDateOnly(new Date('2026-06-15T12:00:00Z'))).toBe(
+      '2026-06-15',
+    );
   });
 
   it('transitions to the new Brazil day at UTC 03:00', () => {
     // 2026-06-01 02:59 UTC → still May 31 Brazil
-    expect(formatBrazilDateOnly(new Date('2026-06-01T02:59:59Z'))).toBe('2026-05-31');
+    expect(formatBrazilDateOnly(new Date('2026-06-01T02:59:59Z'))).toBe(
+      '2026-05-31',
+    );
     // 2026-06-01 03:00 UTC → Brazil midnight, now June 1
-    expect(formatBrazilDateOnly(new Date('2026-06-01T03:00:00Z'))).toBe('2026-06-01');
+    expect(formatBrazilDateOnly(new Date('2026-06-01T03:00:00Z'))).toBe(
+      '2026-06-01',
+    );
   });
 });
 
@@ -49,20 +56,28 @@ describe('brazilTodayIso', () => {
   });
 
   it('returns YYYY-MM-DD format', () => {
-    expect(brazilTodayIso(new Date('2026-06-15T12:00:00Z'))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(brazilTodayIso(new Date('2026-06-15T12:00:00Z'))).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
   });
 });
 
 describe('brazilCurrentIsoMonth', () => {
   it('returns YYYY-MM format', () => {
-    expect(brazilCurrentIsoMonth(new Date('2026-06-15T12:00:00Z'))).toMatch(/^\d{4}-\d{2}$/);
+    expect(brazilCurrentIsoMonth(new Date('2026-06-15T12:00:00Z'))).toMatch(
+      /^\d{4}-\d{2}$/,
+    );
   });
 
   it('returns the correct Brazil month near month boundary', () => {
     // 2026-06-01 01:00 UTC → Brazil is still May 31 → month is 2026-05
-    expect(brazilCurrentIsoMonth(new Date('2026-06-01T01:00:00Z'))).toBe('2026-05');
+    expect(brazilCurrentIsoMonth(new Date('2026-06-01T01:00:00Z'))).toBe(
+      '2026-05',
+    );
     // 2026-06-01 03:00 UTC → Brazil is now June 1 → month is 2026-06
-    expect(brazilCurrentIsoMonth(new Date('2026-06-01T03:00:00Z'))).toBe('2026-06');
+    expect(brazilCurrentIsoMonth(new Date('2026-06-01T03:00:00Z'))).toBe(
+      '2026-06',
+    );
   });
 });
 
@@ -136,27 +151,6 @@ describe('parseBrazilDateOnlyToUtcRange', () => {
   });
 });
 
-describe('getBrazilDayRange', () => {
-  it('returns today Brazil day as UTC timestamps', () => {
-    // UTC 02:00 June 1 → Brazil today is May 31
-    const { start, end } = getBrazilDayRange(new Date('2026-06-01T02:00:00Z'));
-    expect(start.toISOString()).toBe('2026-05-31T03:00:00.000Z');
-    expect(end.toISOString()).toBe('2026-06-01T03:00:00.000Z');
-  });
-
-  it('returns June 1 range once Brazil day starts at UTC 03:00', () => {
-    const { start, end } = getBrazilDayRange(new Date('2026-06-01T03:00:00Z'));
-    expect(start.toISOString()).toBe('2026-06-01T03:00:00.000Z');
-    expect(end.toISOString()).toBe('2026-06-02T03:00:00.000Z');
-  });
-
-  it('end is exclusive (gte start, lt end covers exactly one Brazil day)', () => {
-    const { start, end } = getBrazilDayRange(new Date('2026-06-15T12:00:00Z'));
-    // Duration is exactly 24 hours
-    expect(end.getTime() - start.getTime()).toBe(24 * 60 * 60 * 1000);
-  });
-});
-
 describe('getBrazilMonthRange', () => {
   it('returns month start and exclusive end in UTC for a Brazil month', () => {
     const { start, end } = getBrazilMonthRange('2026-05');
@@ -224,7 +218,11 @@ describe('paymentDate default — Brazil today as UTC midnight', () => {
     const paymentDate = new Date(`${brazilToday}T00:00:00.000Z`);
     // Simulate dateOnly():
     const transactionDate = new Date(
-      Date.UTC(paymentDate.getUTCFullYear(), paymentDate.getUTCMonth(), paymentDate.getUTCDate()),
+      Date.UTC(
+        paymentDate.getUTCFullYear(),
+        paymentDate.getUTCMonth(),
+        paymentDate.getUTCDate(),
+      ),
     );
     expect(transactionDate.toISOString()).toBe('2026-05-31T00:00:00.000Z');
   });

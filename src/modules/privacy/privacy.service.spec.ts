@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrivacyRequestStatus, UserRole } from '@prisma/client';
 
 import { PrivacyService } from './privacy.service';
@@ -14,8 +18,16 @@ import type { AuthUser } from '../../common/types/auth-user.type';
  */
 
 const ADMIN: AuthUser = { id: 'admin-1', clinicId: null, role: UserRole.ADMIN };
-const OWNER: AuthUser = { id: 'owner-1', clinicId: 'clinic-1', role: UserRole.OWNER };
-const DENTIST: AuthUser = { id: 'dentist-1', clinicId: 'clinic-1', role: UserRole.DENTIST };
+const OWNER: AuthUser = {
+  id: 'owner-1',
+  clinicId: 'clinic-1',
+  role: UserRole.OWNER,
+};
+const DENTIST: AuthUser = {
+  id: 'dentist-1',
+  clinicId: 'clinic-1',
+  role: UserRole.DENTIST,
+};
 const ASSISTANT: AuthUser = {
   id: 'assistant-1',
   clinicId: 'clinic-1',
@@ -70,7 +82,10 @@ describe('PrivacyService', () => {
     it('refuses a request without an identity-verification confirmation', async () => {
       await expect(
         service.createRequest(
-          { ...(VALID_REQUEST as object), identityConfirmationAccepted: false } as never,
+          {
+            ...(VALID_REQUEST as object),
+            identityConfirmationAccepted: false,
+          } as never,
           {},
         ),
       ).rejects.toThrow(BadRequestException);
@@ -79,7 +94,10 @@ describe('PrivacyService', () => {
     it('writes nothing when identity confirmation is missing', async () => {
       await service
         .createRequest(
-          { ...(VALID_REQUEST as object), identityConfirmationAccepted: false } as never,
+          {
+            ...(VALID_REQUEST as object),
+            identityConfirmationAccepted: false,
+          } as never,
           {},
         )
         .catch(() => undefined);
@@ -98,15 +116,19 @@ describe('PrivacyService', () => {
     it('opens the request in the OPEN state', async () => {
       await service.createRequest(VALID_REQUEST, {});
 
-      expect(prisma.privacyRequest.create.mock.calls[0][0].data.status).toBe('OPEN');
+      expect(prisma.privacyRequest.create.mock.calls[0][0].data.status).toBe(
+        'OPEN',
+      );
     });
 
     it('generates a prefixed, unique-looking request code', async () => {
       await service.createRequest(VALID_REQUEST, {});
-      const first = prisma.privacyRequest.create.mock.calls[0][0].data.requestCode;
+      const first =
+        prisma.privacyRequest.create.mock.calls[0][0].data.requestCode;
 
       await service.createRequest(VALID_REQUEST, {});
-      const second = prisma.privacyRequest.create.mock.calls[1][0].data.requestCode;
+      const second =
+        prisma.privacyRequest.create.mock.calls[1][0].data.requestCode;
 
       expect(first).toMatch(/^PR-[0-9A-F]{8}$/);
       expect(first).not.toBe(second);
@@ -118,7 +140,9 @@ describe('PrivacyService', () => {
         {},
       );
 
-      expect(prisma.privacyRequest.create.mock.calls[0][0].data.clinicName).toBeNull();
+      expect(
+        prisma.privacyRequest.create.mock.calls[0][0].data.clinicName,
+      ).toBeNull();
     });
 
     it('records an audit entry with the request metadata', async () => {
@@ -153,7 +177,9 @@ describe('PrivacyService', () => {
       ['DENTIST', DENTIST],
       ['ASSISTANT', ASSISTANT],
     ])('refuses %s access to the request register', async (_name, actor) => {
-      await expect(service.listRequests(actor)).rejects.toThrow(ForbiddenException);
+      await expect(service.listRequests(actor)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('allows ADMIN to list requests', async () => {
@@ -161,7 +187,9 @@ describe('PrivacyService', () => {
     });
 
     it('refuses a non-ADMIN reading a single request', async () => {
-      await expect(service.getRequest('req-1', OWNER)).rejects.toThrow(ForbiddenException);
+      await expect(service.getRequest('req-1', OWNER)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('checks the role before querying, so a non-ADMIN learns nothing from the response', async () => {
@@ -215,7 +243,9 @@ describe('PrivacyService', () => {
     });
 
     it('caps the page size at one hundred', async () => {
-      const result = await service.listRequests(ADMIN, { limit: 5000 } as never);
+      const result = await service.listRequests(ADMIN, {
+        limit: 5000,
+      } as never);
       expect(result.limit).toBe(100);
     });
 
@@ -242,7 +272,9 @@ describe('PrivacyService', () => {
         requesterType: 'PATIENT',
       } as never);
 
-      expect(prisma.privacyRequest.findMany.mock.calls[0][0].where).toMatchObject({
+      expect(
+        prisma.privacyRequest.findMany.mock.calls[0][0].where,
+      ).toMatchObject({
         status: 'OPEN',
         requestType: 'ACCESS',
         requesterType: 'PATIENT',
@@ -287,11 +319,15 @@ describe('PrivacyService', () => {
   describe('getRequest', () => {
     it('returns the request for an ADMIN', async () => {
       prisma.privacyRequest.findUnique.mockResolvedValue({ id: 'req-1' });
-      await expect(service.getRequest('req-1', ADMIN)).resolves.toEqual({ id: 'req-1' });
+      await expect(service.getRequest('req-1', ADMIN)).resolves.toEqual({
+        id: 'req-1',
+      });
     });
 
     it('answers 404 for an unknown request', async () => {
-      await expect(service.getRequest('missing', ADMIN)).rejects.toThrow(NotFoundException);
+      await expect(service.getRequest('missing', ADMIN)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -310,7 +346,12 @@ describe('PrivacyService', () => {
       prisma.privacyRequest.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateStatus('missing', { status: PrivacyRequestStatus.IN_REVIEW } as never, ADMIN, {}),
+        service.updateStatus(
+          'missing',
+          { status: PrivacyRequestStatus.IN_REVIEW } as never,
+          ADMIN,
+          {},
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -322,9 +363,9 @@ describe('PrivacyService', () => {
         {},
       );
 
-      expect(prisma.privacyRequest.update.mock.calls[0][0].data.completedAt).toBeInstanceOf(
-        Date,
-      );
+      expect(
+        prisma.privacyRequest.update.mock.calls[0][0].data.completedAt,
+      ).toBeInstanceOf(Date);
     });
 
     it('stamps completedAt when the request is rejected', async () => {
@@ -335,9 +376,9 @@ describe('PrivacyService', () => {
         {},
       );
 
-      expect(prisma.privacyRequest.update.mock.calls[0][0].data.completedAt).toBeInstanceOf(
-        Date,
-      );
+      expect(
+        prisma.privacyRequest.update.mock.calls[0][0].data.completedAt,
+      ).toBeInstanceOf(Date);
     });
 
     it('leaves completedAt untouched for a non-terminal status', async () => {
@@ -348,7 +389,9 @@ describe('PrivacyService', () => {
         {},
       );
 
-      expect(prisma.privacyRequest.update.mock.calls[0][0].data.completedAt).toBeUndefined();
+      expect(
+        prisma.privacyRequest.update.mock.calls[0][0].data.completedAt,
+      ).toBeUndefined();
     });
 
     it('leaves existing notes alone when none are supplied', async () => {
@@ -359,7 +402,9 @@ describe('PrivacyService', () => {
         {},
       );
 
-      expect(prisma.privacyRequest.update.mock.calls[0][0].data.responseNotes).toBeUndefined();
+      expect(
+        prisma.privacyRequest.update.mock.calls[0][0].data.responseNotes,
+      ).toBeUndefined();
     });
 
     it('records both the previous and the new status in the audit trail', async () => {
@@ -396,9 +441,9 @@ describe('PrivacyService', () => {
     it('answers 404 for an unknown request', async () => {
       prisma.privacyRequest.findUnique.mockResolvedValue(null);
 
-      await expect(service.respondToRequest('missing', 'nota', ADMIN, {})).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.respondToRequest('missing', 'nota', ADMIN, {}),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('completes the request and stamps completedAt', async () => {
@@ -462,7 +507,9 @@ describe('PrivacyService', () => {
 
     it('stores no IP hash when no address was seen', async () => {
       await service.logCookieConsent(CONSENT, {});
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.ipHash).toBeUndefined();
+      expect(
+        prisma.cookieConsentLog.create.mock.calls[0][0].data.ipHash,
+      ).toBeUndefined();
     });
 
     it('truncates an oversized user agent rather than rejecting the consent', async () => {
@@ -474,24 +521,30 @@ describe('PrivacyService', () => {
 
     it('keeps a short user agent intact', async () => {
       await service.logCookieConsent(CONSENT, { userAgent: 'Mozilla/5.0' });
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.userAgent).toBe(
-        'Mozilla/5.0',
-      );
+      expect(
+        prisma.cookieConsentLog.create.mock.calls[0][0].data.userAgent,
+      ).toBe('Mozilla/5.0');
     });
 
     it('stores no user agent when none was sent', async () => {
       await service.logCookieConsent(CONSENT, {});
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.userAgent).toBeUndefined();
+      expect(
+        prisma.cookieConsentLog.create.mock.calls[0][0].data.userAgent,
+      ).toBeUndefined();
     });
 
     it('links the consent to the signed-in user when there is one', async () => {
       await service.logCookieConsent(CONSENT, { userId: 'user-9' });
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.userId).toBe('user-9');
+      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.userId).toBe(
+        'user-9',
+      );
     });
 
     it('records an anonymous consent with a null user', async () => {
       await service.logCookieConsent(CONSENT, {});
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.userId).toBeNull();
+      expect(
+        prisma.cookieConsentLog.create.mock.calls[0][0].data.userId,
+      ).toBeNull();
     });
 
     it('records a null anonymousId when the banner did not supply one', async () => {
@@ -499,7 +552,9 @@ describe('PrivacyService', () => {
         { ...(CONSENT as object), anonymousId: undefined } as never,
         {},
       );
-      expect(prisma.cookieConsentLog.create.mock.calls[0][0].data.anonymousId).toBeNull();
+      expect(
+        prisma.cookieConsentLog.create.mock.calls[0][0].data.anonymousId,
+      ).toBeNull();
     });
 
     it('audits the consent with its policy version', async () => {
@@ -525,7 +580,9 @@ describe('PrivacyService', () => {
         userId: 'user-9',
       } as never);
 
-      expect(prisma.cookieConsentLog.findMany.mock.calls[0][0].where).toMatchObject({
+      expect(
+        prisma.cookieConsentLog.findMany.mock.calls[0][0].where,
+      ).toMatchObject({
         source: 'BANNER',
         policyVersion: '2026-01',
         userId: 'user-9',
@@ -539,7 +596,9 @@ describe('PrivacyService', () => {
       } as never);
 
       const where = prisma.cookieConsentLog.findMany.mock.calls[0][0].where;
-      expect(where.createdAt.gte.toISOString()).toBe('2026-06-01T03:00:00.000Z');
+      expect(where.createdAt.gte.toISOString()).toBe(
+        '2026-06-01T03:00:00.000Z',
+      );
       expect(where.createdAt.lt).toBeInstanceOf(Date);
     });
 
@@ -553,7 +612,9 @@ describe('PrivacyService', () => {
 
     it('omits the date filter entirely when no bound is supplied', async () => {
       await service.listCookieConsents({} as never);
-      expect(prisma.cookieConsentLog.findMany.mock.calls[0][0].where).toEqual({});
+      expect(prisma.cookieConsentLog.findMany.mock.calls[0][0].where).toEqual(
+        {},
+      );
     });
 
     it('never projects the stored user agent into the compliance dashboard', async () => {

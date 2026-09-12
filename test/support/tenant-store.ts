@@ -78,18 +78,22 @@ function matchesCondition(actual: unknown, condition: unknown): boolean {
         if (matchesCondition(actual, expected)) return false;
         break;
       case 'in':
-        if (!(expected as unknown[]).some((v) => matchesCondition(actual, v))) return false;
+        if (!(expected as unknown[]).some((v) => matchesCondition(actual, v)))
+          return false;
         break;
       case 'notIn':
-        if ((expected as unknown[]).some((v) => matchesCondition(actual, v))) return false;
+        if ((expected as unknown[]).some((v) => matchesCondition(actual, v)))
+          return false;
         break;
       case 'lt':
       case 'lte':
       case 'gt':
       case 'gte': {
         if (actual === null || actual === undefined) return false;
-        const a = actual instanceof Date ? actual.getTime() : (actual as number);
-        const b = expected instanceof Date ? expected.getTime() : (expected as number);
+        const a =
+          actual instanceof Date ? actual.getTime() : (actual as number);
+        const b =
+          expected instanceof Date ? expected.getTime() : (expected as number);
         if (operator === 'lt' && !(a < b)) return false;
         if (operator === 'lte' && !(a <= b)) return false;
         if (operator === 'gt' && !(a > b)) return false;
@@ -133,10 +137,15 @@ export function matchesWhere(row: Row, where: unknown): boolean {
     if (condition === undefined) continue;
 
     if (LOGICAL.has(field)) {
-      const clauses = (Array.isArray(condition) ? condition : [condition]) as unknown[];
-      if (field === 'AND' && !clauses.every((c) => matchesWhere(row, c))) return false;
-      if (field === 'OR' && !clauses.some((c) => matchesWhere(row, c))) return false;
-      if (field === 'NOT' && clauses.some((c) => matchesWhere(row, c))) return false;
+      const clauses = (
+        Array.isArray(condition) ? condition : [condition]
+      ) as unknown[];
+      if (field === 'AND' && !clauses.every((c) => matchesWhere(row, c)))
+        return false;
+      if (field === 'OR' && !clauses.some((c) => matchesWhere(row, c)))
+        return false;
+      if (field === 'NOT' && clauses.some((c) => matchesWhere(row, c)))
+        return false;
       continue;
     }
 
@@ -151,16 +160,29 @@ export function matchesWhere(row: Row, where: unknown): boolean {
  * through `matchesWhere`, so tenant predicates and read-then-verify checks are
  * both exercised against realistic results.
  */
-export function seedModel(prisma: PrismaMock, model: string, rows: Row[]): void {
+export function seedModel(
+  prisma: PrismaMock,
+  model: string,
+  rows: Row[],
+): void {
   const find = (args: { where?: unknown } | undefined) =>
     rows.filter((row) => matchesWhere(row, args?.where));
 
-  const first = (args: { where?: unknown } | undefined) => find(args)[0] ?? null;
+  const first = (args: { where?: unknown } | undefined) =>
+    find(args)[0] ?? null;
 
-  prisma[model].findMany.mockImplementation((args: any) => Promise.resolve(find(args)));
-  prisma[model].findFirst.mockImplementation((args: any) => Promise.resolve(first(args)));
-  prisma[model].findUnique.mockImplementation((args: any) => Promise.resolve(first(args)));
-  prisma[model].count.mockImplementation((args: any) => Promise.resolve(find(args).length));
+  prisma[model].findMany.mockImplementation((args: any) =>
+    Promise.resolve(find(args)),
+  );
+  prisma[model].findFirst.mockImplementation((args: any) =>
+    Promise.resolve(first(args)),
+  );
+  prisma[model].findUnique.mockImplementation((args: any) =>
+    Promise.resolve(first(args)),
+  );
+  prisma[model].count.mockImplementation((args: any) =>
+    Promise.resolve(find(args).length),
+  );
 
   const orThrow = (args: any) => {
     const row = first(args);

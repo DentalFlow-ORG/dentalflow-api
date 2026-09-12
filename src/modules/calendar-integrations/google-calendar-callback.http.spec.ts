@@ -5,12 +5,17 @@ jest.mock('../../config/google-calendar.config', () => ({
   googleCalendarConfig: {
     clientId: 'test-google-client-id',
     clientSecret: 'test-google-client-secret',
-    redirectUri: 'http://localhost:3000/api/calendar-integrations/google/callback',
+    redirectUri:
+      'http://localhost:3000/api/calendar-integrations/google/callback',
     tokenSecret: 'test-google-token-secret-32-bytes-long',
   },
 }));
 
-import { createHarness, Harness, USERS } from '../../../test/support/http-harness';
+import {
+  createHarness,
+  Harness,
+  USERS,
+} from '../../../test/support/http-harness';
 
 /**
  * REGRESSION — Google Calendar OAuth callback
@@ -82,7 +87,9 @@ describe('Google Calendar OAuth callback', () => {
         );
       }
       if (url.includes('googleapis.com/calendar')) {
-        return Promise.resolve(jsonResponse({ id: 'primary', summary: 'Agenda' }));
+        return Promise.resolve(
+          jsonResponse({ id: 'primary', summary: 'Agenda' }),
+        );
       }
       return Promise.reject(new Error(`unexpected call to ${url}`));
     });
@@ -103,7 +110,10 @@ describe('Google Calendar OAuth callback', () => {
   }
 
   /** The row `resolveCallbackRedirectRole` and `handleCallback` read. */
-  function storedState(role: 'OWNER' | 'DENTIST', expiresAt = new Date(Date.now() + 60_000)) {
+  function storedState(
+    role: 'OWNER' | 'DENTIST',
+    expiresAt = new Date(Date.now() + 60_000),
+  ) {
     return [
       {
         id: 'state-123',
@@ -149,7 +159,9 @@ describe('Google Calendar OAuth callback', () => {
 
       const statements = executedStatements();
       expect(
-        statements.some((sql) => sql.includes('INSERT INTO "google_calendar_integrations"')),
+        statements.some((sql) =>
+          sql.includes('INSERT INTO "google_calendar_integrations"'),
+        ),
       ).toBe(true);
       // Single-use: the state row is removed once redeemed.
       expect(
@@ -194,7 +206,9 @@ describe('Google Calendar OAuth callback', () => {
 
       await harness.get(`${CALLBACK}?code=abc&state=state-123`);
 
-      const serialized = JSON.stringify(insertValuesFor('google_calendar_integrations'));
+      const serialized = JSON.stringify(
+        insertValuesFor('google_calendar_integrations'),
+      );
       expect(serialized).not.toContain('google-access-token');
       expect(serialized).not.toContain('google-refresh-token');
     });
@@ -214,7 +228,9 @@ describe('Google Calendar OAuth callback', () => {
     it('sends an OWNER back to /app/agendamentos when Google reports an error', async () => {
       harness.prisma.$queryRaw.mockResolvedValue(storedState('OWNER'));
 
-      const res = await harness.get(`${CALLBACK}?error=access_denied&state=state-123`);
+      const res = await harness.get(
+        `${CALLBACK}?error=access_denied&state=state-123`,
+      );
 
       const url = redirectTarget(res.headers.location);
       expect(url.pathname).toBe(OWNER_PATH);
@@ -225,7 +241,9 @@ describe('Google Calendar OAuth callback', () => {
     it('sends a DENTIST back to /app/agenda when Google reports an error', async () => {
       harness.prisma.$queryRaw.mockResolvedValue(storedState('DENTIST'));
 
-      const res = await harness.get(`${CALLBACK}?error=access_denied&state=state-123`);
+      const res = await harness.get(
+        `${CALLBACK}?error=access_denied&state=state-123`,
+      );
 
       const url = redirectTarget(res.headers.location);
       expect(url.pathname).toBe(DENTIST_PATH);
@@ -269,7 +287,9 @@ describe('Google Calendar OAuth callback', () => {
       // handleCallback re-reads without the filter and rejects on the date.
       harness.prisma.$queryRaw
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce(storedState('DENTIST', new Date(Date.now() - 60_000)));
+        .mockResolvedValueOnce(
+          storedState('DENTIST', new Date(Date.now() - 60_000)),
+        );
 
       const res = await harness.get(`${CALLBACK}?code=abc&state=state-123`);
 
@@ -334,8 +354,11 @@ describe('Google Calendar OAuth callback', () => {
       expect(url.searchParams.get('access_type')).toBe('offline');
 
       // The stored state carries the authenticated caller's clinic and id.
-      const insert = harness.prisma.$executeRaw.mock.calls.find(([parts]: any) =>
-        parts.join('?').includes('INSERT INTO "google_calendar_oauth_states"'),
+      const insert = harness.prisma.$executeRaw.mock.calls.find(
+        ([parts]: any) =>
+          parts
+            .join('?')
+            .includes('INSERT INTO "google_calendar_oauth_states"'),
       );
       expect(insert.slice(1)).toEqual(
         expect.arrayContaining([USERS.ownerA.clinicId, USERS.ownerA.id]),
@@ -349,8 +372,11 @@ describe('Google Calendar OAuth callback', () => {
         .post('/calendar-integrations/google/connect')
         .set('Authorization', `Bearer ${token}`);
 
-      const insert = harness.prisma.$executeRaw.mock.calls.find(([parts]: any) =>
-        parts.join('?').includes('INSERT INTO "google_calendar_oauth_states"'),
+      const insert = harness.prisma.$executeRaw.mock.calls.find(
+        ([parts]: any) =>
+          parts
+            .join('?')
+            .includes('INSERT INTO "google_calendar_oauth_states"'),
       );
       expect(insert.slice(1)).toEqual(
         expect.arrayContaining([USERS.dentistA.clinicId, USERS.dentistA.id]),
@@ -364,8 +390,11 @@ describe('Google Calendar OAuth callback', () => {
         .post('/calendar-integrations/google/connect')
         .set('Authorization', `Bearer ${token}`);
 
-      const cleanup = harness.prisma.$executeRaw.mock.calls.find(([parts]: any) =>
-        parts.join('?').includes('DELETE FROM "google_calendar_oauth_states"'),
+      const cleanup = harness.prisma.$executeRaw.mock.calls.find(
+        ([parts]: any) =>
+          parts
+            .join('?')
+            .includes('DELETE FROM "google_calendar_oauth_states"'),
       );
       expect(cleanup).toBeDefined();
       expect(cleanup.slice(1)).toContain(USERS.dentistA.id);

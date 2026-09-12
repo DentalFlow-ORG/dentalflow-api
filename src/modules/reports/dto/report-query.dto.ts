@@ -20,12 +20,16 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 export class ReportDateRangeDto {
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data inicial deve estar no formato AAAA-MM-DD' })
+  @Matches(datePattern, {
+    message: 'Data inicial deve estar no formato AAAA-MM-DD',
+  })
   startDate?: string;
 
   @IsOptional()
   @IsString()
-  @Matches(datePattern, { message: 'Data final deve estar no formato AAAA-MM-DD' })
+  @Matches(datePattern, {
+    message: 'Data final deve estar no formato AAAA-MM-DD',
+  })
   endDate?: string;
 }
 
@@ -67,19 +71,4 @@ export class InvoicesReportQueryDto extends ReportDateRangeDto {
   @IsOptional()
   @IsEnum(ServiceInvoiceStatus, { message: 'Status de nota fiscal inválido' })
   status?: ServiceInvoiceStatus;
-}
-
-export class PaginatedReportQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(5000)
-  limit?: number;
 }

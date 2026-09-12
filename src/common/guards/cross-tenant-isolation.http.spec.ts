@@ -27,8 +27,16 @@ import { seedModel } from '../../../test/support/tenant-store';
 const OWN_ID = 'row-owned-by-clinic-a';
 const FOREIGN_ID = 'row-owned-by-clinic-b';
 
-const PROFILE_A = { id: 'profile-a', clinicId: CLINIC_A, userId: USERS.dentistA.id };
-const PROFILE_B = { id: 'profile-b', clinicId: CLINIC_B, userId: USERS.dentistB.id };
+const PROFILE_A = {
+  id: 'profile-a',
+  clinicId: CLINIC_A,
+  userId: USERS.dentistA.id,
+};
+const PROFILE_B = {
+  id: 'profile-b',
+  clinicId: CLINIC_B,
+  userId: USERS.dentistB.id,
+};
 
 describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
   let harness: Harness;
@@ -98,7 +106,9 @@ describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
 
       const updates = harness.prisma
         .__calls()
-        .filter((c) => c.model === 'appointment' && c.operation.startsWith('update'));
+        .filter(
+          (c) => c.model === 'appointment' && c.operation.startsWith('update'),
+        );
       expect(updates).toEqual([]);
     });
 
@@ -197,7 +207,9 @@ describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
 
       const writes = harness.prisma
         .__calls()
-        .filter((c) => c.model === 'stockProduct' && c.operation.startsWith('update'));
+        .filter(
+          (c) => c.model === 'stockProduct' && c.operation.startsWith('update'),
+        );
       expect(writes).toEqual([]);
     });
   });
@@ -238,7 +250,9 @@ describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
       const writes = harness.prisma
         .__calls()
         .filter(
-          (c) => c.model === 'financialTransaction' && c.operation.startsWith('update'),
+          (c) =>
+            c.model === 'financialTransaction' &&
+            c.operation.startsWith('update'),
         );
       expect(writes).toEqual([]);
     });
@@ -309,7 +323,9 @@ describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
       const writes = harness.prisma
         .__calls()
         .filter(
-          (c) => c.model === 'notificationConsent' && c.operation.startsWith('update'),
+          (c) =>
+            c.model === 'notificationConsent' &&
+            c.operation.startsWith('update'),
         );
       expect(writes).toEqual([]);
     });
@@ -326,8 +342,20 @@ describe('Cross-tenant isolation (clinic A vs clinic B)', () => {
   describe('profiles', () => {
     beforeEach(() => {
       seedModel(harness.prisma, 'profile', [
-        { ...PROFILE_A, id: OWN_ID, name: 'Dra. A', slug: 'dra-a', isPublished: false },
-        { ...PROFILE_B, id: FOREIGN_ID, name: 'Dr. B', slug: 'dr-b', isPublished: false },
+        {
+          ...PROFILE_A,
+          id: OWN_ID,
+          name: 'Dra. A',
+          slug: 'dra-a',
+          isPublished: false,
+        },
+        {
+          ...PROFILE_B,
+          id: FOREIGN_ID,
+          name: 'Dr. B',
+          slug: 'dr-b',
+          isPublished: false,
+        },
       ]);
     });
 

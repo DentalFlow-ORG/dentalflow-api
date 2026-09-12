@@ -52,7 +52,11 @@ const PLAN = {
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 };
 
-const CLINIC = { id: 'clinic-1', name: 'Alpha Odonto', email: 'alpha@example.test' };
+const CLINIC = {
+  id: 'clinic-1',
+  name: 'Alpha Odonto',
+  email: 'alpha@example.test',
+};
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -164,7 +168,9 @@ describe('AdminFinanceService', () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
         subscription({
-          items: [item({ unitAmount: null, unitAmountDecimal: 'not-a-number' })],
+          items: [
+            item({ unitAmount: null, unitAmountDecimal: 'not-a-number' }),
+          ],
         }),
       ]);
 
@@ -176,7 +182,9 @@ describe('AdminFinanceService', () => {
     it('treats a null decimal amount with no unitAmount as zero', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
-        subscription({ items: [item({ unitAmount: null, unitAmountDecimal: null })] }),
+        subscription({
+          items: [item({ unitAmount: null, unitAmountDecimal: null })],
+        }),
       ]);
 
       const summary = await service.getSummary();
@@ -185,7 +193,9 @@ describe('AdminFinanceService', () => {
 
     it('falls back to the plan price when a subscription carries no Stripe items', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
-      prisma.subscription.findMany.mockResolvedValue([subscription({ items: [] })]);
+      prisma.subscription.findMany.mockResolvedValue([
+        subscription({ items: [] }),
+      ]);
 
       const summary = await service.getSummary();
       expect(summary.kpis.estimatedMrr).toBe(PLAN.priceMonthly);
@@ -256,22 +266,37 @@ describe('AdminFinanceService', () => {
     it('reports the highest-revenue currency as the primary one', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
-        subscription({ id: 'a', items: [item({ currency: 'BRL', unitAmount: 1000 })] }),
-        subscription({ id: 'b', items: [item({ currency: 'USD', unitAmount: 9000 })] }),
+        subscription({
+          id: 'a',
+          items: [item({ currency: 'BRL', unitAmount: 1000 })],
+        }),
+        subscription({
+          id: 'b',
+          items: [item({ currency: 'USD', unitAmount: 9000 })],
+        }),
       ]);
 
       const summary = await service.getSummary();
 
       expect(summary.kpis.currency).toBe('USD');
       expect(summary.kpis.estimatedMrr).toBe(9000);
-      expect(summary.revenueByCurrency.map((row) => row.currency)).toEqual(['USD', 'BRL']);
+      expect(summary.revenueByCurrency.map((row) => row.currency)).toEqual([
+        'USD',
+        'BRL',
+      ]);
     });
 
     it('never sums across currencies in the headline figure', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
-        subscription({ id: 'a', items: [item({ currency: 'BRL', unitAmount: 1000 })] }),
-        subscription({ id: 'b', items: [item({ currency: 'USD', unitAmount: 9000 })] }),
+        subscription({
+          id: 'a',
+          items: [item({ currency: 'BRL', unitAmount: 1000 })],
+        }),
+        subscription({
+          id: 'b',
+          items: [item({ currency: 'USD', unitAmount: 9000 })],
+        }),
       ]);
 
       const summary = await service.getSummary();
@@ -298,8 +323,14 @@ describe('AdminFinanceService', () => {
     it('falls back to the primary currency for a plan billed in several', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
-        subscription({ id: 'a', items: [item({ currency: 'BRL', unitAmount: 9000 })] }),
-        subscription({ id: 'b', items: [item({ currency: 'USD', unitAmount: 1000 })] }),
+        subscription({
+          id: 'a',
+          items: [item({ currency: 'BRL', unitAmount: 9000 })],
+        }),
+        subscription({
+          id: 'b',
+          items: [item({ currency: 'USD', unitAmount: 1000 })],
+        }),
       ]);
 
       const summary = await service.getSummary();
@@ -344,17 +375,22 @@ describe('AdminFinanceService', () => {
     it('reports every known status in the distribution, including the empty ones', async () => {
       const summary = await service.getSummary();
 
-      expect(summary.statusDistribution.map((row) => row.status).sort()).toEqual(
-        Object.values(SubscriptionStatus).sort(),
+      expect(
+        summary.statusDistribution.map((row) => row.status).sort(),
+      ).toEqual(Object.values(SubscriptionStatus).sort());
+      expect(summary.statusDistribution.every((row) => row.count === 0)).toBe(
+        true,
       );
-      expect(summary.statusDistribution.every((row) => row.count === 0)).toBe(true);
     });
 
     it('groups revenue by price and counts distinct subscribers', async () => {
       prisma.plan.findMany.mockResolvedValue([PLAN]);
       prisma.subscription.findMany.mockResolvedValue([
         subscription({ id: 'a', items: [item({ unitAmount: 10000 })] }),
-        subscription({ id: 'b', items: [item({ id: 'i2', unitAmount: 10000 })] }),
+        subscription({
+          id: 'b',
+          items: [item({ id: 'i2', unitAmount: 10000 })],
+        }),
       ]);
 
       const summary = await service.getSummary();
@@ -458,7 +494,11 @@ describe('AdminFinanceService', () => {
       // Reachable when the filter matched on one field and the sort reads the
       // other; the fallback keeps the comparison total.
       prisma.subscription.findMany.mockResolvedValue([
-        subscription({ id: 'x', endedAt: new Date('2026-01-01'), canceledAt: null }),
+        subscription({
+          id: 'x',
+          endedAt: new Date('2026-01-01'),
+          canceledAt: null,
+        }),
       ]);
 
       const summary = await service.getSummary();
@@ -469,15 +509,15 @@ describe('AdminFinanceService', () => {
       prisma.subscription.findMany.mockResolvedValue([subscription()]);
 
       const summary = await service.getSummary();
-      expect(Object.keys(summary.recentlyCreatedSubscriptions[0].clinic).sort()).toEqual([
-        'email',
-        'id',
-        'name',
-      ]);
+      expect(
+        Object.keys(summary.recentlyCreatedSubscriptions[0].clinic).sort(),
+      ).toEqual(['email', 'id', 'name']);
     });
 
     it('defaults a preview currency to BRL when the subscription has no items', async () => {
-      prisma.subscription.findMany.mockResolvedValue([subscription({ items: [] })]);
+      prisma.subscription.findMany.mockResolvedValue([
+        subscription({ items: [] }),
+      ]);
 
       const summary = await service.getSummary();
       expect(summary.recentlyCreatedSubscriptions[0].currency).toBe('BRL');
@@ -517,28 +557,44 @@ describe('AdminFinanceService', () => {
     it('filters by a known status', async () => {
       await service.listSubscriptions({ page: 1, limit: 20, status: 'ACTIVE' });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.status).toBe('ACTIVE');
     });
 
     it('ignores an unrecognised status rather than returning nothing', async () => {
-      await service.listSubscriptions({ page: 1, limit: 20, status: 'NOT_A_STATUS' });
+      await service.listSubscriptions({
+        page: 1,
+        limit: 20,
+        status: 'NOT_A_STATUS',
+      });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).not.toHaveProperty('status');
     });
 
     it('filters by plan', async () => {
-      await service.listSubscriptions({ page: 1, limit: 20, planId: 'plan-pro' });
+      await service.listSubscriptions({
+        page: 1,
+        limit: 20,
+        planId: 'plan-pro',
+      });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.planId).toBe('plan-pro');
     });
 
     it('searches clinic names case-insensitively, trimming the term', async () => {
-      await service.listSubscriptions({ page: 1, limit: 20, search: '  alpha  ' });
+      await service.listSubscriptions({
+        page: 1,
+        limit: 20,
+        search: '  alpha  ',
+      });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.clinic).toEqual({
         name: { contains: 'alpha', mode: 'insensitive' },
       });
@@ -547,7 +603,8 @@ describe('AdminFinanceService', () => {
     it('ignores a whitespace-only search term', async () => {
       await service.listSubscriptions({ page: 1, limit: 20, search: '   ' });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).not.toHaveProperty('clinic');
     });
 
@@ -559,16 +616,24 @@ describe('AdminFinanceService', () => {
         to: '2026-06-30',
       });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       // Brazil is UTC-3, so a Brazil-midnight start is 03:00 UTC.
-      expect(where.createdAt.gte.toISOString()).toBe('2026-06-01T03:00:00.000Z');
+      expect(where.createdAt.gte.toISOString()).toBe(
+        '2026-06-01T03:00:00.000Z',
+      );
       expect(where.createdAt.lt).toBeInstanceOf(Date);
     });
 
     it('accepts an open-ended range', async () => {
-      await service.listSubscriptions({ page: 1, limit: 20, from: '2026-06-01' });
+      await service.listSubscriptions({
+        page: 1,
+        limit: 20,
+        from: '2026-06-01',
+      });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.createdAt).toHaveProperty('gte');
       expect(where.createdAt).not.toHaveProperty('lt');
     });
@@ -576,7 +641,8 @@ describe('AdminFinanceService', () => {
     it('omits the date filter entirely when neither bound is supplied', async () => {
       await service.listSubscriptions({ page: 1, limit: 20 });
 
-      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.subscription.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).not.toHaveProperty('createdAt');
     });
 
@@ -591,7 +657,10 @@ describe('AdminFinanceService', () => {
       [Number.NaN, 1],
       [3, 3],
     ])('normalises page %p to %p', async (input, expected) => {
-      const result = await service.listSubscriptions({ page: input, limit: 20 });
+      const result = await service.listSubscriptions({
+        page: input,
+        limit: 20,
+      });
       expect(result.page).toBe(expected);
     });
 
@@ -703,42 +772,64 @@ describe('AdminFinanceService', () => {
     it('filters to processed events', async () => {
       await service.listStripeEvents({ page: 1, limit: 20, processed: 'true' });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.processed).toBe(true);
     });
 
     it('filters to unprocessed events', async () => {
-      await service.listStripeEvents({ page: 1, limit: 20, processed: 'false' });
+      await service.listStripeEvents({
+        page: 1,
+        limit: 20,
+        processed: 'false',
+      });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.processed).toBe(false);
     });
 
     it('ignores any other value of the processed filter', async () => {
-      await service.listStripeEvents({ page: 1, limit: 20, processed: 'maybe' });
+      await service.listStripeEvents({
+        page: 1,
+        limit: 20,
+        processed: 'maybe',
+      });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).not.toHaveProperty('processed');
     });
 
     it('searches event types case-insensitively', async () => {
-      await service.listStripeEvents({ page: 1, limit: 20, type: ' invoice. ' });
+      await service.listStripeEvents({
+        page: 1,
+        limit: 20,
+        type: ' invoice. ',
+      });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where.type).toEqual({ contains: 'invoice.', mode: 'insensitive' });
     });
 
     it('ignores a whitespace-only type filter', async () => {
       await service.listStripeEvents({ page: 1, limit: 20, type: '  ' });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).not.toHaveProperty('type');
     });
 
     it('filters on receivedAt rather than createdAt', async () => {
-      await service.listStripeEvents({ page: 1, limit: 20, from: '2026-06-01' });
+      await service.listStripeEvents({
+        page: 1,
+        limit: 20,
+        from: '2026-06-01',
+      });
 
-      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0].where;
+      const where = (prisma.stripeEvent.findMany as Mock).mock.calls[0][0]
+        .where;
       expect(where).toHaveProperty('receivedAt');
       expect(where).not.toHaveProperty('createdAt');
     });
@@ -775,7 +866,9 @@ describe('AdminFinanceService', () => {
         'receivedAt',
         'type',
       ]);
-      expect(JSON.stringify(result.data)).not.toContain('should not be exposed');
+      expect(JSON.stringify(result.data)).not.toContain(
+        'should not be exposed',
+      );
     });
   });
 });

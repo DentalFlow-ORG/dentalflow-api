@@ -40,7 +40,8 @@ function runValidation(env: Record<string, string | undefined>): () => void {
     process.env = { ...env } as NodeJS.ProcessEnv;
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const loaded = require('./validate-env') as typeof import('./validate-env');
+      const loaded =
+        require('./validate-env') as typeof import('./validate-env');
       const run = loaded.validateEnv;
       validate = () => {
         const outer = process.env;
@@ -80,7 +81,9 @@ describe('validateEnv', () => {
 
     it('names every missing variable at once rather than one per restart', () => {
       const run = runValidation({ NODE_ENV: 'development' });
-      expect(run).toThrow(/JWT_SECRET[\s\S]*DATABASE_URL[\s\S]*WHATSAPP_VERIFY_TOKEN/);
+      expect(run).toThrow(
+        /JWT_SECRET[\s\S]*DATABASE_URL[\s\S]*WHATSAPP_VERIFY_TOKEN/,
+      );
     });
 
     it('includes a description alongside each missing variable', () => {
@@ -90,7 +93,9 @@ describe('validateEnv', () => {
     });
 
     it('labels the failure with the environment it validated', () => {
-      expect(runValidation(dev({ JWT_SECRET: undefined }))).toThrow(/\(development\)/);
+      expect(runValidation(dev({ JWT_SECRET: undefined }))).toThrow(
+        /\(development\)/,
+      );
     });
 
     it('does not require production-only variables', () => {
@@ -146,7 +151,10 @@ describe('validateEnv', () => {
       it('allows a missing key when the assistant is disabled', () => {
         expect(
           runValidation(
-            prod({ OPENAI_API_KEY: undefined, OPENAI_AI_ASSISTANT_ENABLED: 'false' }),
+            prod({
+              OPENAI_API_KEY: undefined,
+              OPENAI_AI_ASSISTANT_ENABLED: 'false',
+            }),
           ),
         ).not.toThrow();
       });
@@ -154,7 +162,10 @@ describe('validateEnv', () => {
       it('still requires the key for any value other than the literal "false"', () => {
         expect(
           runValidation(
-            prod({ OPENAI_API_KEY: undefined, OPENAI_AI_ASSISTANT_ENABLED: 'true' }),
+            prod({
+              OPENAI_API_KEY: undefined,
+              OPENAI_AI_ASSISTANT_ENABLED: 'true',
+            }),
           ),
         ).toThrow('OPENAI_API_KEY');
       });
@@ -162,9 +173,9 @@ describe('validateEnv', () => {
 
     describe('HTTPS and origin hardening', () => {
       it('rejects a non-HTTPS FRONTEND_URL', () => {
-        expect(runValidation(prod({ FRONTEND_URL: 'http://app.dentalflow.com.br' }))).toThrow(
-          /HTTPS/,
-        );
+        expect(
+          runValidation(prod({ FRONTEND_URL: 'http://app.dentalflow.com.br' })),
+        ).toThrow(/HTTPS/);
       });
 
       it('rejects a wildcard CORS origin', () => {
@@ -177,7 +188,8 @@ describe('validateEnv', () => {
         expect(
           runValidation({
             ...prod(),
-            FRONTEND_ORIGIN: 'https://app.dentalflow.com.br,http://localhost:5173',
+            FRONTEND_ORIGIN:
+              'https://app.dentalflow.com.br,http://localhost:5173',
           }),
         ).toThrow(/explicit HTTPS origins/);
       });
@@ -186,7 +198,8 @@ describe('validateEnv', () => {
         expect(
           runValidation({
             ...prod(),
-            FRONTEND_ORIGIN: 'https://app.dentalflow.com.br, https://www.dentalflow.com.br',
+            FRONTEND_ORIGIN:
+              'https://app.dentalflow.com.br, https://www.dentalflow.com.br',
           }),
         ).not.toThrow();
       });
@@ -238,7 +251,9 @@ describe('validateEnv', () => {
 
       it('requires a webhook app secret so payload signatures can be verified', () => {
         expect(
-          runValidation(prod({ ...whatsappEnabled, WHATSAPP_APP_SECRET: undefined })),
+          runValidation(
+            prod({ ...whatsappEnabled, WHATSAPP_APP_SECRET: undefined }),
+          ),
         ).toThrow('WHATSAPP_APP_SECRET');
       });
 
@@ -263,7 +278,8 @@ describe('validateEnv', () => {
       GOOGLE_CLIENT_SECRET: 'secret',
       GOOGLE_CALLBACK_URL: 'https://api.dentalflow.com.br/auth/google/callback',
       FRONTEND_AUTH_SUCCESS_URL: 'https://app.dentalflow.com.br/ok',
-      FRONTEND_AUTH_COMPLETE_PROFILE_URL: 'https://app.dentalflow.com.br/complete',
+      FRONTEND_AUTH_COMPLETE_PROFILE_URL:
+        'https://app.dentalflow.com.br/complete',
       FRONTEND_ORIGIN: 'https://app.dentalflow.com.br',
     };
 
@@ -336,7 +352,8 @@ describe('validateEnv', () => {
           ...PRODUCTION_REQUIRED,
           NODE_ENV: 'production',
           ...googleEnabled,
-          FRONTEND_AUTH_COMPLETE_PROFILE_URL: 'http://app.dentalflow.com.br/complete',
+          FRONTEND_AUTH_COMPLETE_PROFILE_URL:
+            'http://app.dentalflow.com.br/complete',
         }),
       ).toThrow(/HTTPS in production/);
     });

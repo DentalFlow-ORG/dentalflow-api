@@ -3,7 +3,11 @@ export const BRAZIL_TIME_ZONE = 'America/Sao_Paulo';
 // Brazil is UTC-3 year-round since DST was abolished in 2019.
 const BRAZIL_UTC_OFFSET_HOURS = 3;
 
-function brazilDateParts(date: Date): { year: number; month: number; day: number } {
+function brazilDateParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+} {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: BRAZIL_TIME_ZONE,
     year: 'numeric',
@@ -71,19 +75,9 @@ export function parseBrazilDateOnlyToUtcRange(dateString: string): {
   }
   const [, y, m, d] = match.map(Number);
   return {
-    start: new Date(Date.UTC(y, m - 1, d,     BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
-    end:   new Date(Date.UTC(y, m - 1, d + 1, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
+    start: new Date(Date.UTC(y, m - 1, d, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
+    end: new Date(Date.UTC(y, m - 1, d + 1, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
   };
-}
-
-/**
- * Returns UTC timestamp boundaries for the current Brazil calendar day.
- * Shorthand for `parseBrazilDateOnlyToUtcRange(brazilTodayIso(now))`.
- *
- * Usage: `gte: start, lt: end`
- */
-export function getBrazilDayRange(now = new Date()): { start: Date; end: Date } {
-  return parseBrazilDateOnlyToUtcRange(brazilTodayIso(now));
 }
 
 /**
@@ -94,7 +88,10 @@ export function getBrazilDayRange(now = new Date()): { start: Date; end: Date } 
  *
  * Usage: `gte: start, lt: end`
  */
-export function getBrazilMonthRange(yearMonth: string): { start: Date; end: Date } {
+export function getBrazilMonthRange(yearMonth: string): {
+  start: Date;
+  end: Date;
+} {
   const match = yearMonth.match(/^(\d{4})-(\d{2})$/);
   if (!match) {
     throw new Error(`getBrazilMonthRange: invalid year-month "${yearMonth}"`);
@@ -102,6 +99,6 @@ export function getBrazilMonthRange(yearMonth: string): { start: Date; end: Date
   const [, y, m] = match.map(Number);
   return {
     start: new Date(Date.UTC(y, m - 1, 1, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
-    end:   new Date(Date.UTC(y, m,     1, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
+    end: new Date(Date.UTC(y, m, 1, BRAZIL_UTC_OFFSET_HOURS, 0, 0)),
   };
 }

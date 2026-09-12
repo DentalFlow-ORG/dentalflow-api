@@ -1,5 +1,9 @@
 import { AuthService } from './auth.service';
-import { createHarness, Harness, USERS } from '../../../test/support/http-harness';
+import {
+  createHarness,
+  Harness,
+  USERS,
+} from '../../../test/support/http-harness';
 
 /**
  * AUTHENTICATION AND SESSION SECURITY (HTTP boundary)
@@ -23,7 +27,9 @@ const HOSTILE_ORIGIN = 'https://evil.example';
 
 type CookieAttributes = Record<string, string | true>;
 
-function parseSetCookie(header: string | string[] | undefined): CookieAttributes | null {
+function parseSetCookie(
+  header: string | string[] | undefined,
+): CookieAttributes | null {
   const raw = Array.isArray(header) ? header[0] : header;
   if (!raw) return null;
 
@@ -151,7 +157,9 @@ describe('Authentication and session security', () => {
 
   describe('refresh preconditions', () => {
     it('rejects a refresh with no cookie', async () => {
-      const res = await harness.post('/auth/refresh').set('Origin', TRUSTED_ORIGIN);
+      const res = await harness
+        .post('/auth/refresh')
+        .set('Origin', TRUSTED_ORIGIN);
       expect(res.status).toBe(401);
     });
 
@@ -253,11 +261,15 @@ describe('Authentication and session security', () => {
       expect(res.body).toEqual({ success: true });
       // Nothing to revoke, so the store is not touched.
       expect(logout).not.toHaveBeenCalled();
-      expect(parseSetCookie(res.headers['set-cookie'])!['refresh_token']).toBe('');
+      expect(parseSetCookie(res.headers['set-cookie'])!['refresh_token']).toBe(
+        '',
+      );
     });
 
     it('requires authentication', async () => {
-      const res = await harness.post('/auth/logout').set('Origin', TRUSTED_ORIGIN);
+      const res = await harness
+        .post('/auth/logout')
+        .set('Origin', TRUSTED_ORIGIN);
       expect(res.status).toBe(401);
     });
 
@@ -273,7 +285,11 @@ describe('Authentication and session security', () => {
         .set('Origin', TRUSTED_ORIGIN)
         .set('Cookie', 'refresh_token=mine');
 
-      expect(logout).toHaveBeenCalledWith(USERS.ownerA.id, 'mine', expect.anything());
+      expect(logout).toHaveBeenCalledWith(
+        USERS.ownerA.id,
+        'mine',
+        expect.anything(),
+      );
     });
   });
 
@@ -284,7 +300,9 @@ describe('Authentication and session security', () => {
 
     it('accepts a token for an active, registered user', async () => {
       const token = harness.tokenFor(USERS.ownerA);
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).not.toBe(401);
     });
 
@@ -297,7 +315,8 @@ describe('Authentication and session security', () => {
 
     it('rejects a token signed with a different secret', async () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { JwtService } = require('@nestjs/jwt') as typeof import('@nestjs/jwt');
+      const { JwtService } =
+        require('@nestjs/jwt') as typeof import('@nestjs/jwt');
       const foreign = new JwtService({ secret: 'a-different-secret-entirely' });
       const token = foreign.sign({
         sub: USERS.ownerA.id,
@@ -306,7 +325,9 @@ describe('Authentication and session security', () => {
         tokenVersion: 0,
       });
 
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
 
@@ -322,7 +343,9 @@ describe('Authentication and session security', () => {
         { expiresIn: '-1s' },
       );
 
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${expired}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${expired}`);
       expect(res.status).toBe(401);
     });
 
@@ -334,13 +357,21 @@ describe('Authentication and session security', () => {
         tokenVersion: 0,
       });
 
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${orphan}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${orphan}`);
       expect(res.status).toBe(401);
     });
 
     it('rejects a token for a deactivated user', async () => {
-      const token = harness.tokenFor({ ...USERS.ownerA, id: 'inactive-user', isActive: false });
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${token}`);
+      const token = harness.tokenFor({
+        ...USERS.ownerA,
+        id: 'inactive-user',
+        isActive: false,
+      });
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
 
@@ -350,13 +381,19 @@ describe('Authentication and session security', () => {
         id: 'deleted-user',
         deletedAt: new Date(),
       });
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
     });
 
     it('rejects a token whose tokenVersion is stale (password changed since issue)', async () => {
       // The account is registered at version 3; the token still claims 2.
-      harness.tokenFor({ ...USERS.ownerA, id: 'rotated-user', tokenVersion: 3 });
+      harness.tokenFor({
+        ...USERS.ownerA,
+        id: 'rotated-user',
+        tokenVersion: 3,
+      });
       const stale = harness.signRaw({
         sub: 'rotated-user',
         clinicId: USERS.ownerA.clinicId,
@@ -364,7 +401,9 @@ describe('Authentication and session security', () => {
         tokenVersion: 2,
       });
 
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${stale}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${stale}`);
       expect(res.status).toBe(401);
     });
 
@@ -374,14 +413,20 @@ describe('Authentication and session security', () => {
         clinicId: 'some-clinic',
         role: 'ADMIN',
       });
-      const res = await harness.get(PROTECTED).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PROTECTED)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(403);
     });
 
     it('ignores a clinicId claim in the token and uses the stored one', async () => {
       // The strategy rebuilds AuthUser from the database row, so a forged
       // clinicId in the token body cannot widen access.
-      harness.tokenFor({ id: 'claims-user', clinicId: 'real-clinic', role: 'OWNER' });
+      harness.tokenFor({
+        id: 'claims-user',
+        clinicId: 'real-clinic',
+        role: 'OWNER',
+      });
       const forged = harness.signRaw({
         sub: 'claims-user',
         clinicId: 'victim-clinic',
@@ -392,7 +437,9 @@ describe('Authentication and session security', () => {
       harness.prisma.profile.findMany.mockResolvedValue([]);
       await harness.get('/profiles').set('Authorization', `Bearer ${forged}`);
 
-      const serialized = JSON.stringify(harness.prisma.profile.findMany.mock.calls);
+      const serialized = JSON.stringify(
+        harness.prisma.profile.findMany.mock.calls,
+      );
       expect(serialized).toContain('real-clinic');
       expect(serialized).not.toContain('victim-clinic');
     });
@@ -411,15 +458,20 @@ describe('Authentication and session security', () => {
 
     it('does not expose the signing secret in any auth response', async () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { authConfig } = require('../../config/auth.config') as typeof import('../../config/auth.config');
-      const res = await harness.post('/auth/refresh').set('Origin', TRUSTED_ORIGIN);
+      const { authConfig } =
+        require('../../config/auth.config') as typeof import('../../config/auth.config');
+      const res = await harness
+        .post('/auth/refresh')
+        .set('Origin', TRUSTED_ORIGIN);
       expect(JSON.stringify(res.body)).not.toContain(authConfig.jwtSecret);
     });
 
     it('answers a failed sign-in without revealing whether the account exists', async () => {
       jest.spyOn(auth, 'signIn').mockRejectedValue(
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        new (require('@nestjs/common').UnauthorizedException)('Credenciais inválidas'),
+        new (require('@nestjs/common').UnauthorizedException)(
+          'Credenciais inválidas',
+        ),
       );
 
       const res = await harness
@@ -457,7 +509,9 @@ describe('Authentication and session security', () => {
     });
 
     it('returns to the login page when the user cancels at Google', async () => {
-      const res = await harness.get('/auth/google/callback?error=access_denied');
+      const res = await harness.get(
+        '/auth/google/callback?error=access_denied',
+      );
 
       const url = new URL(res.headers.location);
       expect(url.pathname).toBe('/acessar');

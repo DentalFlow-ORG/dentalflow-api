@@ -1,4 +1,8 @@
-import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
@@ -29,7 +33,10 @@ export type Harness = {
   /** Registers a user so JwtStrategy can resolve it, and returns its bearer token. */
   tokenFor(user: TestUser): string;
   /** Signs a token WITHOUT registering the user (simulates a stale/unknown subject). */
-  signRaw(payload: Record<string, unknown>, options?: { expiresIn?: string }): string;
+  signRaw(
+    payload: Record<string, unknown>,
+    options?: { expiresIn?: string },
+  ): string;
   /** Controls `prisma.user.findUnique` for non-authentication lookups. */
   onUserFindUnique(impl: (args: any) => unknown): void;
   /** Bypasses billing/plan gating (on by default; disable to test the gates). */
@@ -88,9 +95,14 @@ export async function createHarness(
     logger: false,
   });
 
-  app.use(express.json({ limit: '6mb', verify: (req: any, _res, buf: Buffer) => {
-    if (Buffer.isBuffer(buf)) req.rawBody = buf;
-  } }));
+  app.use(
+    express.json({
+      limit: '6mb',
+      verify: (req: any, _res, buf: Buffer) => {
+        if (Buffer.isBuffer(buf)) req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
   app.setGlobalPrefix(PREFIX, {
@@ -195,8 +207,20 @@ export const CLINIC_B = 'clinic-bbbbbbbb';
 export const USERS = {
   admin: { id: 'user-admin', clinicId: null, role: 'ADMIN' as UserRole },
   ownerA: { id: 'user-owner-a', clinicId: CLINIC_A, role: 'OWNER' as UserRole },
-  dentistA: { id: 'user-dentist-a', clinicId: CLINIC_A, role: 'DENTIST' as UserRole },
-  assistantA: { id: 'user-assistant-a', clinicId: CLINIC_A, role: 'ASSISTANT' as UserRole },
+  dentistA: {
+    id: 'user-dentist-a',
+    clinicId: CLINIC_A,
+    role: 'DENTIST' as UserRole,
+  },
+  assistantA: {
+    id: 'user-assistant-a',
+    clinicId: CLINIC_A,
+    role: 'ASSISTANT' as UserRole,
+  },
   ownerB: { id: 'user-owner-b', clinicId: CLINIC_B, role: 'OWNER' as UserRole },
-  dentistB: { id: 'user-dentist-b', clinicId: CLINIC_B, role: 'DENTIST' as UserRole },
+  dentistB: {
+    id: 'user-dentist-b',
+    clinicId: CLINIC_B,
+    role: 'DENTIST' as UserRole,
+  },
 } satisfies Record<string, TestUser>;

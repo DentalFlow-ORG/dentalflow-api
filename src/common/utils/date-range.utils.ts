@@ -2,7 +2,6 @@ import { BadRequestException } from '@nestjs/common';
 import { brazilTodayIso } from './brazil-timezone';
 
 const MAX_REPORT_MONTHS = 12;
-const MAX_FOLLOW_UP_MONTHS = 24;
 
 function todayIso(): string {
   return brazilTodayIso();
@@ -52,32 +51,6 @@ export function validateReportDateRange(
   if (end > limitDate) {
     throw new BadRequestException(
       'Selecione um período de até 12 meses por vez.',
-    );
-  }
-}
-
-export function validateFollowUpDate(
-  nextFollowUpAt: string | undefined,
-  isCreate: boolean,
-): void {
-  if (!nextFollowUpAt) return;
-
-  const dateStr = nextFollowUpAt.slice(0, 10);
-  const today = todayIso();
-
-  if (isCreate && dateStr < today) {
-    throw new BadRequestException(
-      'O follow-up não pode ser anterior à data atual.',
-    );
-  }
-
-  const [ty, tm, td] = todayIso().split('-').map(Number);
-  const maxDate = new Date(Date.UTC(ty, tm - 1 + MAX_FOLLOW_UP_MONTHS, td));
-  const maxIso = maxDate.toISOString().slice(0, 10);
-
-  if (dateStr > maxIso) {
-    throw new BadRequestException(
-      'A data de follow-up deve estar dentro dos próximos 24 meses.',
     );
   }
 }

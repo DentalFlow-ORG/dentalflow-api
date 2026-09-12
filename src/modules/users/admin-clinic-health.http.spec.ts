@@ -1,4 +1,8 @@
-import { createHarness, Harness, USERS } from '../../../test/support/http-harness';
+import {
+  createHarness,
+  Harness,
+  USERS,
+} from '../../../test/support/http-harness';
 
 /**
  * REGRESSION — GET /admin/users/clinics/health
@@ -72,7 +76,9 @@ describe('ADMIN clinic health', () => {
       ['ASSISTANT', USERS.assistantA],
     ])('rejects %s with 403', async (_name, user) => {
       const token = harness.tokenFor(user);
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(403);
       expect(JSON.stringify(res.body)).not.toContain('Alpha Odonto');
     });
@@ -85,13 +91,17 @@ describe('ADMIN clinic health', () => {
         clinicId: CLINIC_FULL,
         role: 'ADMIN',
       });
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${token}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(403);
     });
 
     it('allows ADMIN', async () => {
       harness.prisma.clinic.findMany.mockResolvedValue([]);
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
     });
   });
@@ -100,7 +110,9 @@ describe('ADMIN clinic health', () => {
 
   it('is not shadowed by the GET /admin/users/:id route', async () => {
     harness.prisma.clinic.findMany.mockResolvedValue([]);
-    const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+    const res = await harness
+      .get(PATH)
+      .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -144,7 +156,9 @@ describe('ADMIN clinic health', () => {
             { clinicId: CLINIC_FULL, _max: { lastLoginAt: loginAt } },
           ]);
         }
-        return Promise.resolve([{ clinicId: CLINIC_FULL, _count: { _all: 5 } }]);
+        return Promise.resolve([
+          { clinicId: CLINIC_FULL, _count: { _all: 5 } },
+        ]);
       });
       harness.prisma.appointment.groupBy.mockImplementation((args: any) => {
         const recent = args?.where?.appointmentDate !== undefined;
@@ -164,7 +178,9 @@ describe('ADMIN clinic health', () => {
 
     it('returns an empty list and issues no aggregate queries when no clinic exists', async () => {
       harness.prisma.clinic.findMany.mockResolvedValue([]);
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.body).toEqual([]);
       expect(harness.prisma.subscription.findMany).not.toHaveBeenCalled();
@@ -173,7 +189,9 @@ describe('ADMIN clinic health', () => {
 
     it('reports counts, subscription, activity and fiscal state for a populated clinic', async () => {
       seedFullPlatform();
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       const full = res.body.find((row: any) => row.clinic.id === CLINIC_FULL);
@@ -204,7 +222,9 @@ describe('ADMIN clinic health', () => {
 
     it('reports a clinic with no subscription, no fiscal profile and no appointments as zeroed rather than omitted', async () => {
       seedFullPlatform();
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
 
       const bare = res.body.find((row: any) => row.clinic.id === CLINIC_BARE);
       expect(bare).toBeDefined();
@@ -234,7 +254,9 @@ describe('ADMIN clinic health', () => {
 
     it('prefers the most recent of login and audit activity', async () => {
       seedFullPlatform();
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
 
       const full = res.body.find((row: any) => row.clinic.id === CLINIC_FULL);
       // auditAt is the later of the two.
@@ -247,10 +269,15 @@ describe('ADMIN clinic health', () => {
     it('reports USER_LOGIN when the last login is the more recent signal', async () => {
       seedFullPlatform();
       harness.prisma.auditLog.groupBy.mockResolvedValue([
-        { clinicId: CLINIC_FULL, _max: { createdAt: new Date('2026-01-01T00:00:00.000Z') } },
+        {
+          clinicId: CLINIC_FULL,
+          _max: { createdAt: new Date('2026-01-01T00:00:00.000Z') },
+        },
       ]);
 
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
       const full = res.body.find((row: any) => row.clinic.id === CLINIC_FULL);
       expect(full.lastActivity).toEqual({
         timestamp: loginAt.toISOString(),
@@ -268,7 +295,9 @@ describe('ADMIN clinic health', () => {
         ),
       );
 
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
       const full = res.body.find((row: any) => row.clinic.id === CLINIC_FULL);
       expect(full.lastActivity).toEqual({
         timestamp: auditAt.toISOString(),
@@ -283,7 +312,10 @@ describe('ADMIN clinic health', () => {
       const countCall = harness.prisma.user.groupBy.mock.calls.find(
         ([args]: any) => args?._count !== undefined,
       );
-      expect(countCall[0].where).toMatchObject({ isActive: true, deletedAt: null });
+      expect(countCall[0].where).toMatchObject({
+        isActive: true,
+        deletedAt: null,
+      });
     });
   });
 
@@ -307,7 +339,8 @@ describe('ADMIN clinic health', () => {
       await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
       return harness.prisma
         .__calls()
-        .filter((c) => !(c.model === 'user' && c.operation === 'findUnique')).length;
+        .filter((c) => !(c.model === 'user' && c.operation === 'findUnique'))
+        .length;
     }
 
     it('issues the same number of queries for 2 clinics as for 50 (no per-clinic fan-out)', async () => {
@@ -347,7 +380,9 @@ describe('ADMIN clinic health', () => {
         { clinicId: CLINIC_FULL, _count: { _all: 3 } },
       ]);
 
-      const res = await harness.get(PATH).set('Authorization', `Bearer ${adminToken}`);
+      const res = await harness
+        .get(PATH)
+        .set('Authorization', `Bearer ${adminToken}`);
       const row = res.body[0];
 
       expect(Object.keys(row).sort()).toEqual([
@@ -383,7 +418,9 @@ describe('ADMIN clinic health', () => {
 
     it('excludes soft-deleted clinics', async () => {
       harness.prisma.clinic.findMany.mockResolvedValue([]);
-      await harness.get('/admin/users/clinics').set('Authorization', `Bearer ${adminToken}`);
+      await harness
+        .get('/admin/users/clinics')
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(harness.prisma.clinic.findMany.mock.calls[0][0].where).toEqual({
         deletedAt: null,
       });

@@ -37,7 +37,9 @@ const ALL_ROLES: UserRole[] = ['ADMIN', 'OWNER', 'DENTIST', 'ASSISTANT'];
 
 function serialize(row: RouteRow): string {
   const [method, path, policy, flags] = row;
-  const policyText = Array.isArray(policy) ? [...policy].sort().join('|') : policy;
+  const policyText = Array.isArray(policy)
+    ? [...policy].sort().join('|')
+    : policy;
   return `${method} ${path} :: ${policyText} :: ${[...flags].sort().join(',')}`;
 }
 
@@ -54,24 +56,35 @@ describe('Role-access matrix (all HTTP routes)', () => {
       for (const [, wrapper] of module.controllers) {
         if (!wrapper.instance) continue;
         const prototype = Object.getPrototypeOf(wrapper.instance);
-        const controllerPath = Reflect.getMetadata('path', wrapper.metatype) as string;
+        const controllerPath = Reflect.getMetadata(
+          'path',
+          wrapper.metatype,
+        ) as string;
 
         for (const key of Object.getOwnPropertyNames(prototype)) {
           if (key === 'constructor') continue;
           const handler = prototype[key];
-          const methodIndex = Reflect.getMetadata('method', handler) as number | undefined;
+          const methodIndex = Reflect.getMetadata('method', handler) as
+            | number
+            | undefined;
           if (methodIndex === undefined) continue;
 
-          const rawPath = Reflect.getMetadata('path', handler) as string | string[];
+          const rawPath = Reflect.getMetadata('path', handler) as
+            | string
+            | string[];
           const paths: string[] = Array.isArray(rawPath) ? rawPath : [rawPath];
           const targets = [handler, wrapper.metatype];
 
-          const isPublic = !!reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets);
+          const isPublic = !!reflector.getAllAndOverride<boolean>(
+            IS_PUBLIC_KEY,
+            targets,
+          );
           const anyAuth = !!reflector.getAllAndOverride<boolean>(
             IS_ANY_AUTHENTICATED_KEY,
             targets,
           );
-          const roles = reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, targets) ?? null;
+          const roles =
+            reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, targets) ?? null;
           const policy = (
             isPublic ? 'PUBLIC' : anyAuth ? 'ANY_AUTHENTICATED' : roles
           ) as Policy;
@@ -81,8 +94,13 @@ describe('Role-access matrix (all HTTP routes)', () => {
             targets,
           );
           const flags = [
-            reflector.getAllAndOverride<boolean>(TENANT_SCOPED_KEY, targets) ? 'tenant' : null,
-            reflector.getAllAndOverride<boolean>(REQUIRES_BILLING_ACCESS_KEY, targets)
+            reflector.getAllAndOverride<boolean>(TENANT_SCOPED_KEY, targets)
+              ? 'tenant'
+              : null,
+            reflector.getAllAndOverride<boolean>(
+              REQUIRES_BILLING_ACCESS_KEY,
+              targets,
+            )
               ? 'billing'
               : null,
             feature ? `feature:${feature}` : null,
@@ -90,10 +108,20 @@ describe('Role-access matrix (all HTTP routes)', () => {
 
           for (const path of paths) {
             rows.push([
-              ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'ALL', 'OPTIONS', 'HEAD', 'SEARCH'][
-                methodIndex
-              ],
-              `/${controllerPath}/${path}`.replace(/\/+/g, '/').replace(/(.)\/$/, '$1'),
+              [
+                'GET',
+                'POST',
+                'PUT',
+                'DELETE',
+                'PATCH',
+                'ALL',
+                'OPTIONS',
+                'HEAD',
+                'SEARCH',
+              ][methodIndex],
+              `/${controllerPath}/${path}`
+                .replace(/\/+/g, '/')
+                .replace(/(.)\/$/, '$1'),
               policy,
               flags,
             ]);
@@ -102,7 +130,9 @@ describe('Role-access matrix (all HTTP routes)', () => {
       }
     }
 
-    live = rows.sort((a, b) => `${a[1]} ${a[0]}`.localeCompare(`${b[1]} ${b[0]}`));
+    live = rows.sort((a, b) =>
+      `${a[1]} ${a[0]}`.localeCompare(`${b[1]} ${b[0]}`),
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -117,7 +147,9 @@ describe('Role-access matrix (all HTTP routes)', () => {
     const undeclared = live
       .filter(
         ([, , policy]) =>
-          policy !== 'PUBLIC' && policy !== 'ANY_AUTHENTICATED' && !Array.isArray(policy),
+          policy !== 'PUBLIC' &&
+          policy !== 'ANY_AUTHENTICATED' &&
+          !Array.isArray(policy),
       )
       .map(([method, path]) => `${method} ${path}`);
     expect(undeclared).toEqual([]);
@@ -142,7 +174,9 @@ describe('Role-access matrix (all HTTP routes)', () => {
       .filter(([, , policy, flags]) => {
         if (!Array.isArray(policy)) return false;
         const roles = policy as string[];
-        return roles.length === 1 && roles[0] === 'ADMIN' && flags.includes('tenant');
+        return (
+          roles.length === 1 && roles[0] === 'ADMIN' && flags.includes('tenant')
+        );
       })
       .map(([method, path]) => `${method} ${path}`);
     expect(contradictory).toEqual([]);

@@ -30,7 +30,11 @@ function defaultFor(method: string): unknown {
   if (method === 'aggregate') {
     return { _sum: {}, _avg: {}, _min: {}, _max: {}, _count: 0 };
   }
-  if (method === 'createMany' || method === 'updateMany' || method === 'deleteMany') {
+  if (
+    method === 'createMany' ||
+    method === 'updateMany' ||
+    method === 'deleteMany'
+  ) {
     return { count: 0 };
   }
   return {};
@@ -44,10 +48,13 @@ function defaultFor(method: string): unknown {
  * GlobalExceptionFilter.
  */
 export function recordNotFoundError(): Error {
-  const error = new Prisma.PrismaClientKnownRequestError('No record was found', {
-    code: 'P2025',
-    clientVersion: 'test',
-  });
+  const error = new Prisma.PrismaClientKnownRequestError(
+    'No record was found',
+    {
+      code: 'P2025',
+      clientVersion: 'test',
+    },
+  );
   return error;
 }
 
@@ -103,7 +110,12 @@ export function createPrismaMock(): PrismaMock {
         }
       }
     }
-    for (const operation of ['$queryRaw', '$executeRaw', '$queryRawUnsafe', '$executeRawUnsafe']) {
+    for (const operation of [
+      '$queryRaw',
+      '$executeRaw',
+      '$queryRawUnsafe',
+      '$executeRawUnsafe',
+    ]) {
       for (const args of (root[operation] as jest.Mock).mock.calls) {
         calls.push({ model: 'raw', operation, args });
       }

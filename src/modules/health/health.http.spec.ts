@@ -1,4 +1,8 @@
-import { createHarness, Harness, USERS } from '../../../test/support/http-harness';
+import {
+  createHarness,
+  Harness,
+  USERS,
+} from '../../../test/support/http-harness';
 
 describe('HTTP harness smoke', () => {
   let h: Harness;
@@ -24,7 +28,9 @@ describe('HTTP harness smoke', () => {
 
   it('accepts a token issued for a registered active user', async () => {
     const token = h.tokenFor(USERS.ownerA);
-    const res = await h.get('/patients').set('Authorization', `Bearer ${token}`);
+    const res = await h
+      .get('/patients')
+      .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
   });
 });
