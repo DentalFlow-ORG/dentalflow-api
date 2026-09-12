@@ -1,0 +1,40 @@
+# Disposable PostgreSQL for the integration test suite.
+#
+# This database is throwaway by design: it lives on a named volume that
+# `bun run test:db:down` deletes, and the integration suite truncates every
+# table between tests. Nothing here is shared with development or production.
+#
+#   bun run test:db:up      start it and wait until it accepts connections
+#   bun run test:integration  apply migrations and run the suite
+#   bun run test:db:down    stop it and delete the volume
+#
+# Port 5433 is deliberate — 5432 is left free so this can never collide with a
+# local development PostgreSQL, and the credentials are obviously fake.
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: dentalflow-test-db
+    environment:
+      POSTGRES_USER: dentalflow_test
+      POSTGRES_PASSWORD: dentalflow_test
+      POSTGRES_DB: dentalflow_test
+      # The test database is recreated constantly; durability is wasted work.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+    ports:
+      - '5433:5432'
+    volumes:
+      - dentalflow-test-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dentalflow_test -d dentalflow_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  dentalflow-test-db-data:
