@@ -176,6 +176,15 @@ optimisation; if one looks necessary, stop and say so first.
 Work is not complete until the relevant checks pass: typecheck, tests,
 coverage, dead-code, Prisma validation, build. `bun run verify` runs them.
 
+Coverage thresholds live in `package.json` under `jest.coverageThreshold` and
+fail the run on regression. They are set just below the measured baseline —
+close enough to catch a real drop, loose enough that a legitimate refactor
+does not trip them.
+
+**Raise them when coverage rises; never lower them to make a build pass.** A
+change that genuinely cannot be covered belongs in the D/E/F exceptions
+discussed in the review notes, not in a reduced threshold.
+
 ### Git
 
 Do not commit or push unless explicitly asked. Commit messages follow
