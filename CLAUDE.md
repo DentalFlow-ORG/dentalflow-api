@@ -24,6 +24,8 @@ become two different rules.
 - **Never run `test:e2e` against the development `DATABASE_URL`** — it is a
   shared Supabase instance. See AGENTS.md §8 for the disposable-database setup.
 - **Do not commit or push unless asked.**
+- **Never add a `Co-Authored-By` trailer or a "Generated with…" footer** to a
+  commit or pull request. This project does not use them.
 
 Everything else — the guard chain, the role and tenancy model, the permanent
 testing rules, the test harness, Stripe and migration policy — is in

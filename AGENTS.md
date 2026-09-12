@@ -183,8 +183,10 @@ Conventional Commits — `.githooks/commit-msg` enforces it.
 
 ### Attribution
 
-Follow the project's existing Git attribution convention exactly. Do not add
-AI co-author trailers unless the project already uses them.
+**Never add a `Co-Authored-By` trailer to a commit**, for an AI assistant or
+anyone else. This project does not use them: the commit author is the author.
+The same goes for "Generated with…" footers in commits and pull request
+descriptions. Write the message as the engineer making the change would.
 
 ---
 
