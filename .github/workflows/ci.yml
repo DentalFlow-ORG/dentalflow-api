@@ -46,17 +46,7 @@ jobs:
       - name: Unit and application tests, with coverage
         # Coverage thresholds live in package.json and fail this step on
         # regression.
-        #
-        # Workers are capped and the heap raised deliberately. The
-        # authorization-enforcement suite boots the whole Nest application and
-        # runs ~1000 cases in a single worker; on a constrained runner an
-        # unbounded worker pool can get one killed, which Jest reports as a
-        # suite that "failed to run" with no failing test — a confusing,
-        # intermittent red build. Two workers on a 4-core runner is also no
-        # slower here, since the suite is dominated by that one file.
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: bun run test:cov --maxWorkers=2
+        run: bun run test:cov
 
       - name: Dead-code analysis
         run: bun run deadcode

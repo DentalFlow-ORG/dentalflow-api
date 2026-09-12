@@ -142,42 +142,79 @@ describe('Authorization enforcement (every route × every role)', () => {
     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method),
   );
 
-  describe.each(cases)('%s %s', (method, path, policy, flags) => {
-    if (policy !== 'PUBLIC') {
-      it('rejects an unauthenticated request with 401', async () => {
-        const res = await send(method, path);
-        expect(`${method} ${path} -> ${res.status}`).toBe(
-          `${method} ${path} -> 401`,
-        );
-      });
-    } else {
-      it('is reachable without route authorization', async () => {
-        const res = await send(method, path);
-        expect(rejectionMessage(res.body)).toBeNull();
-      });
+  /**
+   * Every route is exercised for every principal, but the results are
+   * accumulated and asserted as a list rather than as one Jest case per
+   * (route x principal).
+   *
+   * That is deliberate. The per-case form created roughly five thousand test
+   * entries in a single file, and collecting them was enough to crash the Jest
+   * worker on a loaded machine — reported as "test suite failed to run", which
+   * silently removed about 1,000 passing tests and dropped coverage below its
+   * threshold with no failing test to explain why.
+   *
+   * Aggregating loses nothing: a failure names every offending route and role
+   * at once, which is more useful than the first one Jest happens to reach.
+   */
+
+  it('rejects every unauthenticated request to a protected route with 401', async () => {
+    const offenders: string[] = [];
+
+    for (const [method, path, policy] of cases) {
+      if (policy === 'PUBLIC') continue;
+      const res = await send(method, path);
+      if (res.status !== 401)
+        offenders.push(`${method} ${path} -> ${res.status}`);
     }
 
-    it.each(PRINCIPALS.map((p) => [p.name] as const))('%s', async (name) => {
+    expect(offenders).toEqual([]);
+  }, 120_000);
+
+  it('lets every public route past the guard chain without credentials', async () => {
+    const offenders: string[] = [];
+
+    for (const [method, path, policy] of cases) {
+      if (policy !== 'PUBLIC') continue;
+      const res = await send(method, path);
+      const blocked = rejectionMessage(res.body);
+      if (blocked) offenders.push(`${method} ${path} blocked by "${blocked}"`);
+    }
+
+    expect(offenders).toEqual([]);
+  }, 120_000);
+
+  it.each(PRINCIPALS.map((p) => [p.name] as const))(
+    'enforces the declared policy of every route for %s',
+    async (name) => {
       const role = name as UserRole;
-      const res = await send(method, path, tokens[name]);
+      const wronglyBlocked: string[] = [];
+      const wronglyAllowed: string[] = [];
 
-      const where = `${method} ${path} as ${name}`;
+      for (const [method, path, policy, flags] of cases) {
+        const res = await send(method, path, tokens[name]);
+        const where = `${method} ${path} as ${name}`;
+        const rejection = rejectionMessage(res.body);
 
-      if (isPermitted(policy, flags, role)) {
-        // The guard chain must not be what stops a permitted principal.
-        const blocked = rejectionMessage(res.body);
-        expect(
-          blocked ? `${where} blocked by "${blocked}"` : 'authorized',
-        ).toBe('authorized');
-      } else {
-        expect(`${where} -> ${res.status}`).toBe(`${where} -> 403`);
-        // …and specifically because authorization said no.
-        expect(
-          `${where}: ${rejectionMessage(res.body) ?? 'NOT an authorization rejection'}`,
-        ).not.toContain('NOT an authorization rejection');
+        if (isPermitted(policy, flags, role)) {
+          // The guard chain must not be what stops a permitted principal.
+          if (rejection)
+            wronglyBlocked.push(`${where} blocked by "${rejection}"`);
+        } else if (res.status !== 403) {
+          wronglyAllowed.push(`${where} -> ${res.status}`);
+        } else if (!rejection) {
+          // 403, but not from the guard chain — the route is closed by
+          // accident rather than by policy.
+          wronglyAllowed.push(
+            `${where} -> 403 but not an authorization rejection`,
+          );
+        }
       }
-    });
-  });
+
+      expect(wronglyAllowed).toEqual([]);
+      expect(wronglyBlocked).toEqual([]);
+    },
+    180_000,
+  );
 
   describe('non-clinic principals', () => {
     /**

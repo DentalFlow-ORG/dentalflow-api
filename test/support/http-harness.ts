@@ -118,6 +118,16 @@ export async function createHarness(
 
   await app.init();
 
+  // Bind once, on an ephemeral port, and keep it bound for the harness's
+  // lifetime. Supertest only reuses a server that is already listening; given
+  // one that is merely initialised it calls listen(0) and close() around every
+  // single request. The authorization suite issues several thousand requests
+  // against one harness, and that churn exhausts ephemeral ports — the worker
+  // child process then dies with "encountered N child process exceptions", the
+  // suite is reported as failing to run with no failing test, and coverage
+  // silently drops below its threshold. Binding once removes the churn.
+  await app.listen(0);
+
   // ── Authentication wiring ───────────────────────────────────────────────────
   const registry = new Map<string, Required<TestUser>>();
   let userFindUniqueImpl: (args: any) => unknown = () => null;
