@@ -32,6 +32,9 @@ function createPrisma() {
     notificationQuota: {
       findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
+      // The conditional claim: count 1 means a unit was reserved, 0 means the
+      // allowance is already spent.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     notificationTemplate: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -260,7 +263,8 @@ describe('NotificationService', () => {
     });
 
     it('rejects a send once the monthly allowance is exhausted', async () => {
-      prisma.notificationQuota.findUnique.mockResolvedValue({ used: 50 });
+      // The conditional claim matches no row, so nothing was reserved.
+      prisma.notificationQuota.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.send(CLINIC, ACTOR, sendDto)).rejects.toMatchObject({
         status: 429,
@@ -268,10 +272,18 @@ describe('NotificationService', () => {
     });
 
     it('names the limit in the exhaustion message', async () => {
-      prisma.notificationQuota.findUnique.mockResolvedValue({ used: 50 });
+      prisma.notificationQuota.updateMany.mockResolvedValue({ count: 0 });
       await expect(service.send(CLINIC, ACTOR, sendDto)).rejects.toThrow(
         /50 mensagens/,
       );
+    });
+
+    it('does not contact the provider when nothing could be reserved', async () => {
+      prisma.notificationQuota.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.send(CLINIC, ACTOR, sendDto).catch(() => undefined);
+
+      expect(provider.send).not.toHaveBeenCalled();
     });
 
     it('rejects a send with no consent on file', async () => {
@@ -339,22 +351,35 @@ describe('NotificationService', () => {
       expect(data).not.toHaveProperty('bodyPt');
     });
 
-    it('consumes one unit of quota on success', async () => {
+    it('claims one unit of quota, conditionally on the allowance', async () => {
       await service.send(CLINIC, ACTOR, sendDto);
 
-      const args = prisma.notificationQuota.upsert.mock.calls[0][0];
-      expect(args.update).toEqual({ used: { increment: 1 } });
-      expect(args.create.used).toBe(1);
+      const args = prisma.notificationQuota.updateMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        clinicId: CLINIC,
+        channel: 'WHATSAPP',
+        used: { lt: 50 },
+      });
+      expect(args.data).toEqual({ used: { increment: 1 } });
     });
 
-    it('increments atomically rather than writing a read value back', async () => {
-      // A read-modify-write here would lose concurrent sends outright.
-      await service.send(CLINIC, ACTOR, sendDto);
-      expect(
-        prisma.notificationQuota.upsert.mock.calls[0][0].update.used,
-      ).toEqual({
-        increment: 1,
+    it('claims the unit before contacting the provider, not after', async () => {
+      // Reading the counter and incrementing afterwards leaves a window in
+      // which concurrent sends all pass the same check; the conditional claim
+      // is what actually enforces the limit.
+      const order: string[] = [];
+      prisma.notificationQuota.updateMany.mockImplementation(() => {
+        order.push('reserve');
+        return Promise.resolve({ count: 1 });
       });
+      provider.send.mockImplementation(() => {
+        order.push('send');
+        return Promise.resolve({ providerRef: 'wamid.1' });
+      });
+
+      await service.send(CLINIC, ACTOR, sendDto);
+
+      expect(order).toEqual(['reserve', 'send']);
     });
 
     it('records a failed message instead of throwing when the provider fails', async () => {
@@ -370,12 +395,25 @@ describe('NotificationService', () => {
       expect(data.sentAt).toBeNull();
     });
 
-    it('consumes no quota for a message that was never delivered', async () => {
+    it('returns the reserved unit when the message was never delivered', async () => {
       provider.send.mockRejectedValue(new Error('boom'));
 
       await service.send(CLINIC, ACTOR, sendDto);
 
-      expect(prisma.notificationQuota.upsert).not.toHaveBeenCalled();
+      // Claimed, then released — only a delivered message costs allowance.
+      const calls = prisma.notificationQuota.updateMany.mock.calls;
+      expect(calls[0][0].data).toEqual({ used: { increment: 1 } });
+      expect(calls[1][0].data).toEqual({ used: { decrement: 1 } });
+      expect(calls[1][0].where).toMatchObject({ used: { gt: 0 } });
+    });
+
+    it('keeps the released unit from driving the counter negative', async () => {
+      provider.send.mockRejectedValue(new Error('boom'));
+
+      await service.send(CLINIC, ACTOR, sendDto);
+
+      const release = prisma.notificationQuota.updateMany.mock.calls[1][0];
+      expect(release.where.used).toEqual({ gt: 0 });
     });
 
     it('records a generic reason when the provider throws a non-Error', async () => {

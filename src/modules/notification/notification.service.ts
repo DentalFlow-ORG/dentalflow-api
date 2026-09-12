@@ -15,7 +15,10 @@ import {
   NOTIFICATION_PROVIDER,
 } from './providers/notification-provider.interface';
 import { SendNotificationDto } from './dto/send-notification.dto';
-import { CreateConsentDto, ListConsentsDto } from './dto/notification-consent.dto';
+import {
+  CreateConsentDto,
+  ListConsentsDto,
+} from './dto/notification-consent.dto';
 import { UpdatePreferenceDto } from './dto/notification-preference.dto';
 import { ListMessagesDto } from './dto/list-messages.dto';
 
@@ -49,7 +52,11 @@ export class NotificationService {
   private async getWhatsAppLimit(clinicId: string): Promise<number> {
     const subscription = await this.prisma.subscription.findUnique({
       where: { clinicId },
-      include: { plan: { select: { slug: true, hasWhatsApp: true, whatsappMonthlyLimit: true } } },
+      include: {
+        plan: {
+          select: { slug: true, hasWhatsApp: true, whatsappMonthlyLimit: true },
+        },
+      },
     });
 
     if (!subscription?.plan?.hasWhatsApp) {
@@ -58,7 +65,11 @@ export class NotificationService {
       return fallback;
     }
 
-    return subscription.plan.whatsappMonthlyLimit ?? WHATSAPP_LIMIT_BY_SLUG[subscription.plan.slug] ?? 0;
+    return (
+      subscription.plan.whatsappMonthlyLimit ??
+      WHATSAPP_LIMIT_BY_SLUG[subscription.plan.slug] ??
+      0
+    );
   }
 
   // ─── Quota ─────────────────────────────────────────────────────────────────
@@ -68,7 +79,9 @@ export class NotificationService {
     const month = getCurrentMonth();
 
     const quota = await this.prisma.notificationQuota.findUnique({
-      where: { clinicId_month_channel: { clinicId, month, channel: 'WHATSAPP' } },
+      where: {
+        clinicId_month_channel: { clinicId, month, channel: 'WHATSAPP' },
+      },
     });
 
     return {
@@ -80,11 +93,65 @@ export class NotificationService {
     };
   }
 
-  private async incrementQuota(clinicId: string, month: string, limit: number): Promise<void> {
-    await this.prisma.notificationQuota.upsert({
-      where: { clinicId_month_channel: { clinicId, month, channel: 'WHATSAPP' } },
-      update: { used: { increment: 1 } },
-      create: { clinicId, month, channel: 'WHATSAPP', used: 1, limit },
+  /**
+   * Atomically claims one unit of the monthly allowance.
+   *
+   * Returns false when the allowance is already exhausted, in which case
+   * nothing was written and the caller must not send.
+   *
+   * Reserving *before* sending is what makes the limit real. Reading the
+   * counter, deciding, and incrementing afterwards leaves a window in which
+   * every concurrent request sees the same pre-send value and all of them pass
+   * — a burst of reminders could deliver (and be billed for) an unbounded
+   * number of messages. The conditional `updateMany` closes that window: it
+   * becomes a single `UPDATE … WHERE used < limit`, which PostgreSQL evaluates
+   * under a row lock, so concurrent claims serialise and each one re-reads the
+   * committed value.
+   */
+  private async reserveQuota(
+    clinicId: string,
+    month: string,
+    limit: number,
+  ): Promise<boolean> {
+    // The counter row must exist before it can be claimed. Two requests can
+    // race to create it; the loser gets a unique violation, which is harmless
+    // because the row it wanted now exists.
+    try {
+      await this.prisma.notificationQuota.upsert({
+        where: {
+          clinicId_month_channel: { clinicId, month, channel: 'WHATSAPP' },
+        },
+        update: {},
+        create: { clinicId, month, channel: 'WHATSAPP', used: 0, limit },
+      });
+    } catch (err) {
+      if (
+        !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+        err.code !== 'P2002'
+      ) {
+        throw err;
+      }
+    }
+
+    const claimed = await this.prisma.notificationQuota.updateMany({
+      where: { clinicId, month, channel: 'WHATSAPP', used: { lt: limit } },
+      data: { used: { increment: 1 } },
+    });
+
+    return claimed.count === 1;
+  }
+
+  /**
+   * Returns a reserved unit after a send that never happened.
+   *
+   * Preserves the product rule that only a delivered message costs allowance.
+   * The `used > 0` guard keeps the counter from going negative if a release is
+   * ever issued without a matching reservation.
+   */
+  private async releaseQuota(clinicId: string, month: string): Promise<void> {
+    await this.prisma.notificationQuota.updateMany({
+      where: { clinicId, month, channel: 'WHATSAPP', used: { gt: 0 } },
+      data: { used: { decrement: 1 } },
     });
   }
 
@@ -94,7 +161,14 @@ export class NotificationService {
     return this.prisma.notificationTemplate.findMany({
       where: { isActive: true, category: 'UTILITY' },
       orderBy: { slug: 'asc' },
-      select: { id: true, slug: true, channel: true, category: true, bodyPt: true, variables: true },
+      select: {
+        id: true,
+        slug: true,
+        channel: true,
+        category: true,
+        bodyPt: true,
+        variables: true,
+      },
     });
   }
 
@@ -126,10 +200,18 @@ export class NotificationService {
     await this.prisma.notificationPreference.upsert({
       where: { clinicId },
       update: {
-        ...(dto.whatsappEnabled !== undefined && { whatsappEnabled: dto.whatsappEnabled }),
-        ...(dto.autoReminder !== undefined && { autoReminder: dto.autoReminder }),
-        ...(dto.autoConfirmation !== undefined && { autoConfirmation: dto.autoConfirmation }),
-        ...(dto.reminderHoursBefore !== undefined && { reminderHoursBefore: dto.reminderHoursBefore }),
+        ...(dto.whatsappEnabled !== undefined && {
+          whatsappEnabled: dto.whatsappEnabled,
+        }),
+        ...(dto.autoReminder !== undefined && {
+          autoReminder: dto.autoReminder,
+        }),
+        ...(dto.autoConfirmation !== undefined && {
+          autoConfirmation: dto.autoConfirmation,
+        }),
+        ...(dto.reminderHoursBefore !== undefined && {
+          reminderHoursBefore: dto.reminderHoursBefore,
+        }),
       },
       create: {
         clinicId,
@@ -225,7 +307,9 @@ export class NotificationService {
     await this.auditLog.log({
       actorUserId,
       clinicId,
-      action: dto.granted ? 'NOTIFICATION_CONSENT_GRANTED' : 'NOTIFICATION_CONSENT_REVOKED',
+      action: dto.granted
+        ? 'NOTIFICATION_CONSENT_GRANTED'
+        : 'NOTIFICATION_CONSENT_REVOKED',
       entityType: 'notification_consent',
       entityId: consent.id,
       metadata: { phone, channel: dto.channel, scope: dto.scope },
@@ -234,10 +318,20 @@ export class NotificationService {
     return consent;
   }
 
-  async revokeConsent(clinicId: string, consentId: string, actorUserId: string) {
+  async revokeConsent(
+    clinicId: string,
+    consentId: string,
+    actorUserId: string,
+  ) {
     const consent = await this.prisma.notificationConsent.findUnique({
       where: { id: consentId },
-      select: { id: true, clinicId: true, phone: true, channel: true, scope: true },
+      select: {
+        id: true,
+        clinicId: true,
+        phone: true,
+        channel: true,
+        scope: true,
+      },
     });
 
     if (!consent || consent.clinicId !== clinicId) {
@@ -255,7 +349,11 @@ export class NotificationService {
       action: 'NOTIFICATION_CONSENT_REVOKED',
       entityType: 'notification_consent',
       entityId: consentId,
-      metadata: { phone: consent.phone, channel: consent.channel, scope: consent.scope },
+      metadata: {
+        phone: consent.phone,
+        channel: consent.channel,
+        scope: consent.scope,
+      },
     });
 
     return updated;
@@ -310,11 +408,15 @@ export class NotificationService {
     });
 
     if (!template || !template.isActive) {
-      throw new NotFoundException(`Template "${dto.templateSlug}" não encontrado ou inativo.`);
+      throw new NotFoundException(
+        `Template "${dto.templateSlug}" não encontrado ou inativo.`,
+      );
     }
 
     if (template.category !== 'UTILITY') {
-      throw new ForbiddenException('Apenas templates de categoria UTILITY estão disponíveis nesta fase.');
+      throw new ForbiddenException(
+        'Apenas templates de categoria UTILITY estão disponíveis nesta fase.',
+      );
     }
 
     // 2. Validate appointment belongs to clinic (when provided)
@@ -336,29 +438,40 @@ export class NotificationService {
       );
     }
 
-    // 4. Check quota
     const month = getCurrentMonth();
-    const quota = await this.prisma.notificationQuota.findUnique({
-      where: { clinicId_month_channel: { clinicId, month, channel: 'WHATSAPP' } },
-    });
-    const used = quota?.used ?? 0;
 
-    if (used >= limit) {
-      throw new HttpException(
-        `Limite mensal de ${limit} mensagens WhatsApp atingido. Aguarde o próximo mês ou faça upgrade.`,
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    // 5. Check consent
+    // 4. Check consent
     const consent = await this.prisma.notificationConsent.findFirst({
-      where: { clinicId, phone, channel: 'WHATSAPP', scope: 'UTILITY', granted: true, revokedAt: null },
+      where: {
+        clinicId,
+        phone,
+        channel: 'WHATSAPP',
+        scope: 'UTILITY',
+        granted: true,
+        revokedAt: null,
+      },
       select: { id: true },
     });
 
     if (!consent) {
       throw new ForbiddenException(
         'Consentimento de WhatsApp não registrado para este número. Obtenha o consentimento antes de enviar.',
+      );
+    }
+
+    // 5. Claim one unit of the monthly allowance. This is a reservation, not a
+    //    check — see reserveQuota for why reading the counter and incrementing
+    //    afterwards does not actually limit anything under concurrency.
+    //
+    //    It is the last thing to happen before the send, so every earlier
+    //    rejection (unknown template, foreign appointment, missing consent)
+    //    returns without having claimed anything.
+    const reserved = await this.reserveQuota(clinicId, month, limit);
+
+    if (!reserved) {
+      throw new HttpException(
+        `Limite mensal de ${limit} mensagens WhatsApp atingido. Aguarde o próximo mês ou faça upgrade.`,
+        HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
@@ -383,6 +496,9 @@ export class NotificationService {
       status = 'FAILED';
       failReason = err instanceof Error ? err.message : 'Falha no provedor';
       this.logger.error(`Send failed for template ${dto.templateSlug}`, err);
+      // Nothing was delivered, so give the reserved unit back. This keeps the
+      // product rule that only a delivered message costs allowance.
+      await this.releaseQuota(clinicId, month);
     }
 
     // 7. Persist message record (no body stored)
@@ -403,10 +519,8 @@ export class NotificationService {
       select: { id: true, status: true, templateSlug: true, sentAt: true },
     });
 
-    // 8. Increment quota only on success
-    if (status === 'SENT') {
-      await this.incrementQuota(clinicId, month, limit);
-    }
+    // 8. Allowance was already claimed in step 5 and returned above if the
+    //    send failed, so there is nothing to increment here.
 
     // 9. Audit log
     const providerStatus = this.getProviderStatus();
@@ -447,12 +561,12 @@ export class NotificationService {
         process.env.WHATSAPP_CLOUD_API_ENABLED === 'true' &&
         Boolean(
           process.env.WHATSAPP_CLOUD_API_VERSION &&
-            process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID &&
-            process.env.WHATSAPP_CLOUD_ACCESS_TOKEN &&
-            process.env.WHATSAPP_VERIFY_TOKEN &&
-            (process.env.WHATSAPP_APP_SECRET ??
-              process.env.WHATSAPP_WEBHOOK_APP_SECRET) &&
-            process.env.WHATSAPP_DEFAULT_LANGUAGE,
+          process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID &&
+          process.env.WHATSAPP_CLOUD_ACCESS_TOKEN &&
+          process.env.WHATSAPP_VERIFY_TOKEN &&
+          (process.env.WHATSAPP_APP_SECRET ??
+            process.env.WHATSAPP_WEBHOOK_APP_SECRET) &&
+          process.env.WHATSAPP_DEFAULT_LANGUAGE,
         ),
     };
   }
