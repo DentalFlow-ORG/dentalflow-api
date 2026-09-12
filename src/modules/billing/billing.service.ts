@@ -13,6 +13,7 @@ import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { StartTrialDto } from './dto/start-trial.dto';
 import { mapStripeSubscriptionStatus } from './billing-stripe-mappers';
 import { StripeService } from './stripe.service';
+import { BRAZIL_TIME_ZONE } from '../../common/utils/brazil-timezone';
 
 type BillingIntervalValue = 'MONTHLY' | 'YEARLY';
 type CancellableSubscriptionStatus = 'ACTIVE' | 'TRIALING' | 'PAST_DUE';
@@ -48,9 +49,13 @@ function buildCheckoutSuccessUrl(): string {
     return STRIPE_SUCCESS_URL;
   }
 
-  const url = new URL(STRIPE_SUCCESS_URL);
-  url.searchParams.set('session_id', '{CHECKOUT_SESSION_ID}');
-  return url.toString();
+  // Appended by hand rather than through URLSearchParams: Stripe substitutes
+  // the template variable by matching the literal string
+  // `{CHECKOUT_SESSION_ID}`, and `URLSearchParams.toString()` percent-encodes
+  // the braces to `%7B…%7D`. Encoded, the placeholder is never substituted and
+  // POST /billing/checkout-session/sync has no session id to reconcile with.
+  const separator = STRIPE_SUCCESS_URL.includes('?') ? '&' : '?';
+  return `${STRIPE_SUCCESS_URL}${separator}session_id={CHECKOUT_SESSION_ID}`;
 }
 
 @Injectable()
@@ -501,7 +506,12 @@ export class BillingService {
     });
 
     const periodEndLabel = subscription.currentPeriodEnd
-      ? ` até ${subscription.currentPeriodEnd.toLocaleDateString('pt-BR')}`
+      ? // Pinned to Brazil rather than the server's zone: the API runs in UTC,
+        // where a period ending at 00:00Z would be shown to the customer as the
+        // following day. Matches the convention in reports.service.ts.
+        ` até ${subscription.currentPeriodEnd.toLocaleDateString('pt-BR', {
+          timeZone: BRAZIL_TIME_ZONE,
+        })}`
       : '';
 
     return {
