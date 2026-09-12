@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+
+    env:
+      # Fixed, obviously-fake values. `test/jest-unit-setup.ts` supplies the
+      # same defaults; they are repeated here so a failure reads as a missing
+      # variable rather than a mysterious one. No real credential belongs in
+      # this file — the unit suite never reaches a real service.
+      NODE_ENV: test
+      JWT_SECRET: ci-jwt-secret-not-a-real-secret
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/dentalflow_ci
+      WHATSAPP_VERIFY_TOKEN: ci-whatsapp-verify-token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Validate Prisma schema
+        run: bun run prisma:validate
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Unit and application tests, with coverage
+        # Coverage thresholds live in package.json and fail this step on
+        # regression.
+        run: bun run test:cov
+
+      - name: Dead-code analysis
+        run: bun run deadcode
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  lint:
+    name: Lint (advisory)
+    runs-on: ubuntu-latest
+    # `lint:check` reports a large pre-existing backlog — mostly Prettier
+    # formatting, because the repository has only ever been linted with
+    # `--fix`. The job runs so the backlog stays visible and measurable, but
+    # does not block until it has been cleared in a dedicated style commit.
+    # Promote it to a required check at that point by deleting this line and
+    # adding `lint:check` to the `verify` script.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+      - run: bun run lint:check
+
+  # Database-backed end-to-end tests are NOT run here yet.
+  #
+  # `bun run test:e2e` needs a real PostgreSQL instance with migrations
+  # applied. The job below is the required setup, left commented out rather
+  # than silently omitted so the gap is explicit. It is not enabled because
+  # `test/app.e2e-spec.ts` currently covers only unauthenticated routing; the
+  # constraint, transaction and relational-integrity coverage that justifies
+  # the job still has to be written (see AGENTS.md §8).
+  #
+  # e2e:
+  #   name: E2E (PostgreSQL)
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     postgres:
+  #       image: postgres:16
+  #       env:
+  #         POSTGRES_PASSWORD: test
+  #         POSTGRES_DB: dentalflow_test
+  #       ports: ['5432:5432']
+  #       options: >-
+  #         --health-cmd pg_isready --health-interval 10s
+  #         --health-timeout 5s --health-retries 5
+  #   env:
+  #     NODE_ENV: test
+  #     JWT_SECRET: ci-jwt-secret-not-a-real-secret
+  #     WHATSAPP_VERIFY_TOKEN: ci-whatsapp-verify-token
+  #     DATABASE_URL: postgresql://postgres:test@localhost:5432/dentalflow_test
+  #     DIRECT_URL: postgresql://postgres:test@localhost:5432/dentalflow_test
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: oven-sh/setup-bun@v2
+  #       with:
+  #         bun-version-file: package.json
+  #     - run: bun install --frozen-lockfile
+  #     - run: bunx prisma migrate deploy
+  #     - run: bun run test:e2e

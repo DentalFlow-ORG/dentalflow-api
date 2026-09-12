@@ -1,112 +1,159 @@
 # 🦷 DentalFlow — Backend
 
-Este repositório contém o backend da plataforma DentalFlow, um SaaS para dentistas focado em crescimento, presença digital e geração de pacientes.
+API multi-tenant do DentalFlow, um SaaS de gestão para clínicas odontológicas.
+
+Para regras de desenvolvimento, testes e contribuição, leia
+**[AGENTS.md](./AGENTS.md)** — é o documento normativo do repositório.
 
 ---
 
-# 🧠 Visão Geral
+## ⚙️ Stack
 
-Backend responsável por:
-- autenticação
-- regras de negócio
-- integração Stripe
-- persistência de dados
-- API para frontend
-
----
-
-# ⚙️ Stack
-
-- Node.js
-- NestJS
-- TypeScript
-- Prisma ORM
-- PostgreSQL
-- Stripe
+- Node.js 24 · **Bun** como gerenciador de pacotes e runner de scripts
+- NestJS 11 · TypeScript
+- Prisma 7 · PostgreSQL
+- Stripe (assinaturas) · Resend (e-mail) · OpenAI (assistente) · WhatsApp Cloud API
+- Jest · Supertest
 
 ---
 
-# 🏗️ Arquitetura
+## 🏗️ Arquitetura
 
-Frontend (React)
-↓
-Backend (NestJS)
-↓
-PostgreSQL
-↓
-Stripe
+```
+Frontend (React, repositório separado)
+        │
+        ▼
+Backend (NestJS)  ──►  Stripe (fonte da verdade de billing)
+        │
+        ▼
+PostgreSQL (Prisma)
+```
+
+Camadas: `controllers` (HTTP) → `services` (regra de negócio) → `modules`
+(fronteira de domínio). Nenhuma lógica em controller.
+
+### Multi-tenancy
+
+A **clínica** é o tenant. Papéis:
+
+| Papel       | `clinicId` | Escopo                                              |
+| ----------- | ---------- | --------------------------------------------------- |
+| `ADMIN`     | `null`     | plataforma; cruza clínicas só em endpoints ADMIN     |
+| `OWNER`     | obrigatório| clínica inteira                                      |
+| `DENTIST`   | obrigatório| própria agenda e próprios prontuários                |
+| `ASSISTANT` | obrigatório| operação da clínica, sem dados financeiros/clínicos   |
+| `PATIENT`   | `null`     | transitório, entre o cadastro Google e o onboarding   |
+
+Guards globais, nesta ordem:
+`Throttler → JwtAuth → Tenant → Roles → BillingAccess → PlanFeature`.
 
 ---
 
-# 📁 Estrutura
+## 📁 Estrutura
 
+```
 src/
+  common/      guards, decorators, filtros, políticas de acesso, utilitários
+  config/      configuração e validação de ambiente
   modules/
-    auth/
-    users/
-    profiles/
-    leads/
-    subscriptions/
-    billing/
-    metrics/
-  common/
-  prisma/
-  config/
+    admin-finance/  ai-assistant/  appointments/  audit-log/  auth/
+    billing/  calendar-integrations/  clinic/  clinical-records/
+    finance/  fiscal/  health/  mail/  metrics/  notification/
+    patients/  privacy/  profiles/  reports/  specialties/  stock/
+    subscriptions/  users/
+  prisma/      PrismaService
+prisma/        schema, migrations, seeds
+scripts/       utilitários de operação e qualidade
+test/          harness HTTP, suporte de testes e specs e2e
+```
 
 ---
 
-# ✅ RF
+## 🚀 Começando
 
-- cadastro de usuário
-- autenticação JWT
-- gestão de perfil
-- gestão de leads
-- assinatura
-- integração Stripe
+```bash
+bun install
+cp .env.example .env          # preencha os valores
+bunx prisma generate
+bunx prisma migrate deploy
+bun run start:dev
+```
+
+### Comandos
+
+| Objetivo                  | Comando                   |
+| ------------------------- | ------------------------- |
+| Type check                | `bun run typecheck`       |
+| Lint (validação)          | `bun run lint:check`      |
+| Testes                    | `bun run test`            |
+| Cobertura                 | `bun run test:cov`        |
+| E2E (exige banco)         | `bun run test:e2e`        |
+| Código morto              | `bun run deadcode`        |
+| Validar schema Prisma     | `bun run prisma:validate` |
+| Build                     | `bun run build`           |
+| Tudo                      | `bun run verify`          |
+
+> `bun run lint` executa `eslint --fix` e **reescreve arquivos**. Não use como
+> validação — use `lint:check`.
+
+### Deploy
+
+```bash
+bun install && bunx prisma generate && bun run build   # build
+bunx prisma migrate deploy                             # migrações
+bun run start:prod                                     # start
+```
 
 ---
 
-# ⚠️ RNF
+## 🧪 Testes
 
-- escalável
-- seguro
-- tipado
-- modular
-- performático
+`bun run test` cobre três níveis no mesmo runner e **nunca toca em banco**:
+`test/jest-unit-setup.ts` fixa um ambiente falso e não lê o `.env`.
+
+- **Unitários** — `*.spec.ts` ao lado do código.
+- **Aplicação (HTTP)** — `*.http.spec.ts`, sobem o `AppModule` real via
+  `test/support/http-harness.ts`: roteamento, `ValidationPipe`, guards e filtro
+  de exceção reais, com o `PrismaService` substituído por um mock em memória.
+- **E2E** — `test/*.e2e-spec.ts`, contra um banco real (`bun run test:e2e`).
+
+⚠️ **Nunca aponte `test:e2e` para o `DATABASE_URL` de desenvolvimento** — ele é
+uma instância Supabase compartilhada. Use um banco descartável (AGENTS.md §8).
+
+Quatro suítes protegem invariantes de sistema inteiro e falham de propósito
+quando um endpoint muda:
+
+| Suíte                                    | Protege                                                |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `route-access-matrix.spec.ts`             | a política declarada de todas as rotas                 |
+| `authorization-enforcement.http.spec.ts`  | que essas políticas são de fato aplicadas              |
+| `tenant-scoping.http.spec.ts`             | que toda query com escopo de clínica leva o predicado  |
+| `cross-tenant-isolation.http.spec.ts`     | que a clínica A não lê nem altera dados da clínica B   |
 
 ---
 
-# 💳 Stripe
+## 💳 Stripe
 
-- source of truth para billing
-- usar webhooks
-- validar backend
+O backend valida tudo; o cliente nunca é confiável. A Stripe é a fonte da
+verdade de billing e chega via webhooks — assinatura verificada e eventos
+deduplicados por id.
 
-## Desenvolvimento local — webhook forwarding
-
-Em ambiente local o Stripe não consegue entregar eventos ao servidor. Para testar o fluxo de assinatura (checkout, ativação, cancelamento) é necessário o Stripe CLI:
+Em desenvolvimento a Stripe não alcança o servidor local. Use o Stripe CLI:
 
 ```bash
 stripe listen --forward-to http://localhost:3000/api/billing/webhook
 ```
 
-O comando imprime um webhook signing secret temporário (`whsec_...`). Copie o valor e defina em `.env`:
+Copie o `whsec_...` impresso para `STRIPE_WEBHOOK_SECRET`. Sem isso,
+`checkout.session.completed` e `customer.subscription.*` nunca chegam e a
+assinatura fica em `incomplete`.
 
-```
-STRIPE_WEBHOOK_SECRET=whsec_<valor gerado pelo stripe listen>
-```
-
-Sem este passo, `checkout.session.completed` e `customer.subscription.*` nunca chegam ao backend e a assinatura permanece com status `incomplete`.
+Para reconciliar uma assinatura que ficou fora de sincronia, veja
+[`docs/ops/stripe-subscription-sync.md`](./docs/ops/stripe-subscription-sync.md).
 
 ---
 
-# 📧 Email — Resend
-
-O DentalFlow usa o [Resend](https://resend.com) para envio de e-mails transacionais (ex: redefinição de senha).
-
-## Configuração
-
-Defina as variáveis abaixo no seu `.env`:
+## 📧 E-mail — Resend
 
 ```env
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
@@ -114,36 +161,41 @@ MAIL_FROM="DentalFlow <no-reply@seu-dominio.com>"
 FRONTEND_URL=http://localhost:5173
 ```
 
-- **`RESEND_API_KEY`** — Chave da API obtida em [resend.com/api-keys](https://resend.com/api-keys). Obrigatório para envio real.
-- **`MAIL_FROM`** — Endereço remetente verificado no painel do Resend. Obrigatório quando `RESEND_API_KEY` está definido.
-- **`FRONTEND_URL`** — URL base do frontend, usada para montar o link de redefinição de senha nos e-mails. Obrigatório em produção (deve usar HTTPS).
-
-## Desenvolvimento local
-
-Sem `RESEND_API_KEY`, o backend usa um stub seguro: em vez de enviar e-mail, **loga o link completo de redefinição no console**. Nenhum e-mail é enviado.
+Sem `RESEND_API_KEY` o backend usa um stub seguro: nenhum e-mail é enviado e o
+link de redefinição é impresso no console.
 
 ```
 [DEV] Password reset link: http://localhost:5173/recuperar-senha/redefinir?token=...
 ```
 
-Copie o link e acesse diretamente no navegador para testar o fluxo de recuperação de senha localmente.
-
-Em produção, se `RESEND_API_KEY` estiver ausente, o backend loga um aviso e responde normalmente ao frontend (resposta genérica preservada — sem exposição de existência de e-mail).
+Em produção, se a chave faltar, o backend registra um aviso e responde
+normalmente — a resposta genérica é preservada, sem revelar se o e-mail existe.
 
 ---
 
-# 📌 Status
+## 🔐 Segurança
 
-🚧 Em desenvolvimento
+- Access token JWT de 15 min no corpo da resposta, enviado via
+  `Authorization: Bearer`.
+- Refresh token opaco, com hash SHA-256 em repouso, em cookie `HttpOnly`
+  limitado a `path=/api/auth`, rotacionado a cada uso e com detecção de reuso.
+- Rotas autenticadas por cookie (`/auth/refresh`, `/auth/logout`) validam o
+  `Origin` contra a allowlist, porque o cookie é `SameSite=None` em produção.
 
-# Session Startup — DentalFlow Brain
+Detalhes em
+[`docs/security/cross-site-auth-and-csrf.md`](./docs/security/cross-site-auth-and-csrf.md).
 
-At the start of every session, read these files from the Obsidian vault:
+---
 
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Next Step.md
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Roadmap Master.md
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Database Schema.md
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Backend Analysis.md
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\DentalFlow — Architecture Patterns.md
+## ⚙️ Ambiente
 
-After reading, tell Pedro what to implement this session and ask: "Shall I start inspecting the code?"
+`validateEnv()` roda no boot e falha rápido quando falta configuração,
+listando tudo que está ausente de uma vez. Em produção exige adicionalmente
+HTTPS em `FRONTEND_URL` e em todas as origens de `FRONTEND_ORIGIN` (curinga
+`*` é rejeitado). Veja `.env.example`.
+
+---
+
+## 📌 Status
+
+🚧 Em desenvolvimento ativo.
