@@ -25,6 +25,9 @@ lib-cov
 
 # Coverage directory used by tools like istanbul
 coverage
+# Per-suite coverage maps, produced when merging unit/integration/e2e runs
+coverage-int
+coverage-e2e
 *.lcov
 
 # nyc test coverage
