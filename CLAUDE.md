@@ -21,8 +21,15 @@ become two different rules.
 - **Every confirmed bug gets a failing regression test first.**
 - **Never start the server to debug**; ask for the output of the terminal
   already running it.
-- **Never run `test:e2e` against the development `DATABASE_URL`** — it is a
-  shared Supabase instance. See AGENTS.md §8 for the disposable-database setup.
+- **Never run `test:e2e` or `test:integration` against the development
+  `DATABASE_URL`** — it is a shared Supabase instance holding real clinic
+  data. Start the throwaway one with `bun run test:db:up`; both suites refuse
+  to run against anything else. See AGENTS.md §8.
+- **The migration chain does not apply to an empty database** (an open
+  defect). Test environments are built with `prisma db push`. Do not "fix" it
+  by writing a migration without being asked — see AGENTS.md §8.
+- **Stripe has no automated coverage against the live API.** Changes to
+  checkout, the portal or subscription state need manual QA.
 - **Do not commit or push unless asked.**
 - **Never add a `Co-Authored-By` trailer or a "Generated with…" footer** to a
   commit or pull request. This project does not use them.

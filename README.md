@@ -81,17 +81,20 @@ bun run start:dev
 
 ### Comandos
 
-| Objetivo                  | Comando                   |
-| ------------------------- | ------------------------- |
-| Type check                | `bun run typecheck`       |
-| Lint (validação)          | `bun run lint:check`      |
-| Testes                    | `bun run test`            |
-| Cobertura                 | `bun run test:cov`        |
-| E2E (exige banco)         | `bun run test:e2e`        |
-| Código morto              | `bun run deadcode`        |
-| Validar schema Prisma     | `bun run prisma:validate` |
-| Build                     | `bun run build`           |
-| Tudo                      | `bun run verify`          |
+| Objetivo                    | Comando                    |
+| --------------------------- | -------------------------- |
+| Type check                  | `bun run typecheck`        |
+| Lint (validação)            | `bun run lint:check`       |
+| Testes unitários (sem banco)| `bun run test`             |
+| Cobertura                   | `bun run test:cov`         |
+| Subir o banco descartável   | `bun run test:db:up`       |
+| Integração (exige o banco)  | `bun run test:integration` |
+| E2E (exige o banco)         | `bun run test:e2e`         |
+| Derrubar o banco            | `bun run test:db:down`     |
+| Código morto                | `bun run deadcode`         |
+| Validar schema Prisma       | `bun run prisma:validate`  |
+| Build                       | `bun run build`            |
+| Tudo                        | `bun run verify`           |
 
 > `bun run lint` executa `eslint --fix` e **reescreve arquivos**. Não use como
 > validação — use `lint:check`.
@@ -108,17 +111,39 @@ bun run start:prod                                     # start
 
 ## 🧪 Testes
 
-`bun run test` cobre três níveis no mesmo runner e **nunca toca em banco**:
+`bun run test` cobre dois níveis no mesmo runner e **nunca toca em banco**:
 `test/jest-unit-setup.ts` fixa um ambiente falso e não lê o `.env`.
 
 - **Unitários** — `*.spec.ts` ao lado do código.
 - **Aplicação (HTTP)** — `*.http.spec.ts`, sobem o `AppModule` real via
   `test/support/http-harness.ts`: roteamento, `ValidationPipe`, guards e filtro
   de exceção reais, com o `PrismaService` substituído por um mock em memória.
-- **E2E** — `test/*.e2e-spec.ts`, contra um banco real (`bun run test:e2e`).
 
-⚠️ **Nunca aponte `test:e2e` para o `DATABASE_URL` de desenvolvimento** — ele é
-uma instância Supabase compartilhada. Use um banco descartável (AGENTS.md §8).
+Dois níveis exigem PostgreSQL de verdade:
+
+- **Integração** — `test/integration/*.int-spec.ts` (`bun run test:integration`),
+  a aplicação real sobre o banco real. É onde constraints, cascatas,
+  transações, `Decimal`, `@db.Date` e concorrência são provados — nada disso um
+  mock consegue demonstrar.
+- **E2E** — `test/*.e2e-spec.ts` (`bun run test:e2e`), a aplicação exatamente
+  como o `main.ts` a monta: headers de segurança, política de CORS, limites de
+  corpo, prefixo de rota e o `ValidationPipe` global.
+
+```bash
+bun run test:db:up          # postgres:16-alpine descartável na porta 5433
+bun run test:integration
+bun run test:e2e
+bun run test:db:down        # derruba e apaga o volume
+```
+
+⚠️ **Nunca aponte esses testes para o `DATABASE_URL` de desenvolvimento** — ele
+é uma instância Supabase compartilhada com dados reais. As duas suítes validam
+a URL em `test/support/test-database.ts` e se recusam a rodar contra qualquer
+coisa que não seja um banco local descartável (AGENTS.md §8).
+
+O schema de teste é aplicado com `prisma db push`, não `migrate deploy`: a
+cadeia de migrations não se aplica a um banco vazio (defeito em aberto,
+documentado em AGENTS.md §8).
 
 Quatro suítes protegem invariantes de sistema inteiro e falham de propósito
 quando um endpoint muda:

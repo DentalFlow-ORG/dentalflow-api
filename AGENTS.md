@@ -37,26 +37,31 @@ bunx ts-node <script>      # one-off TypeScript scripts
 
 ## 3. Commands
 
-| Purpose                | Command                  |
-| ---------------------- | ------------------------ |
-| Type check             | `bun run typecheck`      |
-| Lint (**validation**)  | `bun run lint:check`     |
-| Lint (mutating)        | `bun run lint`           |
-| Unit + integration     | `bun run test`           |
-| Coverage               | `bun run test:cov`       |
-| E2E (needs a database) | `bun run test:e2e`       |
-| Dead-code analysis     | `bun run deadcode`       |
-| Prisma schema check    | `bun run prisma:validate` |
-| Build                  | `bun run build`          |
-| Everything             | `bun run verify`         |
+| Purpose                       | Command                    |
+| ----------------------------- | -------------------------- |
+| Type check                    | `bun run typecheck`        |
+| Lint (**validation**)         | `bun run lint:check`       |
+| Lint (mutating)               | `bun run lint`             |
+| Unit tests (no database)      | `bun run test`             |
+| Coverage                      | `bun run test:cov`         |
+| Start the disposable database | `bun run test:db:up`       |
+| Integration (needs that DB)   | `bun run test:integration` |
+| E2E (needs that DB)           | `bun run test:e2e`         |
+| Stop and delete that DB       | `bun run test:db:down`     |
+| Dead-code analysis            | `bun run deadcode`         |
+| Prisma schema check           | `bun run prisma:validate`  |
+| Build                         | `bun run build`            |
+| Everything                    | `bun run verify`           |
 
 `bun run lint` runs `eslint --fix` and **rewrites files**. Never use it as a
 validation step or in CI. Use `lint:check`.
 
-`lint:check` currently reports a large pre-existing backlog, most of it
-Prettier formatting, because the repository has only ever been linted with
-`--fix`. It is therefore not yet part of `verify`. Do not add to that backlog:
-run Prettier over the files you touch.
+`lint:check` passes. The Prettier backlog it used to report was cleared in a
+single formatting-only commit and the CI lint job is now blocking, so any
+finding is a new one — fix it rather than adding to a backlog that no longer
+exists. The `no-unsafe-*` family and `unbound-method` are off **in test files
+only**, because a jest mock is `any` by construction; production source keeps
+every one of them.
 
 ---
 
@@ -203,11 +208,18 @@ descriptions. Write the message as the engineer making the change would.
 
 ### Layout
 
-- `*.spec.ts` beside the code — unit tests, run by `bun run test`.
+- `*.spec.ts` beside the code — unit tests, run by `bun run test`. No database.
 - `*.http.spec.ts` — the same runner, but booting the real application over
   HTTP through `test/support/http-harness.ts`. Real routing, real pipes, real
   guards, real filters, with `PrismaService` replaced by an in-memory mock.
-- `test/*.e2e-spec.ts` — `bun run test:e2e`, against a real database.
+- `test/integration/*.int-spec.ts` — `bun run test:integration`. The real
+  application over HTTP against **real PostgreSQL**, through
+  `test/support/integration-harness.ts`. This is where constraints, cascades,
+  transactions, `Decimal`, `@db.Date` and concurrency are proved; a mock
+  establishes none of them.
+- `test/*.e2e-spec.ts` — `bun run test:e2e`. The application as `main.ts`
+  builds it, asserting on the **bootstrap**: security headers, CORS policy,
+  body-size limits, route prefix and the global validation pipe.
 
 ### The harness
 
@@ -217,6 +229,15 @@ signed JWT for a registered user), `signRaw()` for malformed/expired tokens,
 
 `test/support/tenant-store.ts` adds a store that actually evaluates the `where`
 clause, so cross-tenant behaviour can be observed rather than inferred.
+
+`createIntegrationHarness()` is the database-backed equivalent. It boots the
+real `AppModule` with the same `configureApp()` wiring `main.ts` uses, and
+gives you the genuine `PrismaClient`, `tokenFor(user)` and `truncate()`
+between tests. Only two things are stubbed, neither under test: the throttler,
+so request volume cannot turn an assertion into a 429, and outbound `fetch`,
+so no test can reach Stripe, Google, OpenAI or Meta. Build fixtures with
+`test/support/factories.ts` — `seedTwoClinics()` gives two subscribed clinics
+with owners, dentists, profiles and a platform admin.
 
 ### Standards
 
@@ -250,19 +271,42 @@ changing them — they are usually right.
 `bun run test` never touches a database — `test/jest-unit-setup.ts` pins a
 fixed fake environment and never reads `.env`.
 
-`bun run test:e2e` does need PostgreSQL. **Never point it at the development
-`DATABASE_URL`**, which is a shared Supabase instance. Provide a disposable
-database:
+`test:integration` and `test:e2e` do need PostgreSQL. **Never point either at
+the development `DATABASE_URL`**: it is a shared Supabase instance holding
+real clinic data, and a truncating run against it is unrecoverable.
+
+Nothing infers that URL. Both suites resolve it through
+`test/support/test-database.ts`, which throws unless the host is unambiguously
+local, rejects every managed-host marker (Supabase, Neon, RDS, Railway, …) and
+refuses a URL identical to `DATABASE_URL`. The guard has its own test,
+`test-database.spec.ts`, asserting it rejects this project's exact Supabase
+URL shape. Do not weaken it.
 
 ```bash
-docker run --rm -d -p 5433:5432 \
-  -e POSTGRES_PASSWORD=test -e POSTGRES_DB=dentalflow_test \
-  --name dentalflow-test-db postgres:16
-
-export DATABASE_URL="postgresql://postgres:test@localhost:5433/dentalflow_test"
-bunx prisma migrate deploy
-bun run test:e2e
+bun run test:db:up          # postgres:16-alpine on 5433, on a named volume
+bun run test:integration    # pushes the schema, then runs *.int-spec.ts
+bun run test:e2e            # pushes the schema, then runs *.e2e-spec.ts
+bun run test:db:down        # stops it and deletes the volume
 ```
+
+Port 5433 is deliberate: 5432 stays free so this can never collide with a
+local development PostgreSQL. `DATABASE_URL_TEST` overrides the URL; the guard
+still applies.
+
+**The schema is applied with `prisma db push`, not `migrate deploy`.** The
+committed migration chain does not apply to an empty database.
+`20260604230209_remove_internal_leads` drops `leads` while
+`appointments_leadId_fkey` survives, because it targets a snake_case `lead_id`
+and `appointments_lead_id_idx` that the init migration never created — it
+created camelCase `leadId` and `appointments_leadId_idx` — and the `IF EXISTS`
+clauses silently no-op. It fails deterministically with PostgreSQL error
+2BP01. `scripts/push-test-schema.ts` writes no migration files, so this is a
+test-environment workaround, not a schema change. **The defect is still open**
+and will bite the first environment built from scratch.
+
+CI runs both suites against a service container mirroring
+`docker-compose.test.yml` exactly, so a red job reproduces locally with
+`bun run test:db:up` and nothing else.
 
 ---
 
@@ -279,6 +323,14 @@ stripe listen --forward-to http://localhost:3000/api/billing/webhook
 ```
 
 Put the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
+
+**Stripe is never reached by an automated test.** The integration and e2e
+harnesses stub outbound `fetch` precisely so none can. Webhook handling,
+signature verification and event de-duplication are covered by unit tests over
+recorded payloads — real coverage of our side of the contract, and none at all
+of Stripe's. Anything touching checkout, the customer portal or a subscription
+state change needs manual QA through `stripe listen` and the Stripe test
+dashboard before release; the suites will not catch a regression there.
 
 ---
 
