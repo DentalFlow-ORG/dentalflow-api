@@ -80,7 +80,7 @@ jobs:
       - run: bun run lint:check
 
   integration:
-    name: Integration (PostgreSQL)
+    name: Integration and E2E (PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -129,3 +129,9 @@ jobs:
       # files, so this job tests the schema the application actually uses.
       - name: Database-backed integration tests
         run: bun run test:integration
+
+      # Boots the application exactly as main.ts does and asserts on the
+      # bootstrap itself: security headers, CORS policy, body-size limits,
+      # route prefix and the global validation pipe.
+      - name: End-to-end tests
+        run: bun run test:e2e

@@ -1,15 +1,37 @@
-import { join } from 'node:path';
-import { loadEnvFiles } from '../src/config/env-file.loader';
+/**
+ * Environment for the end-to-end suite.
+ *
+ * This file used to load `.env`, which on a developer machine points at the
+ * **shared Supabase instance holding real clinic data**. `app.e2e-spec.ts`
+ * boots the whole AppModule, so PrismaService connected to that instance on
+ * every run — and any test that wrote would have written there.
+ *
+ * It now resolves the same disposable database the integration suite uses,
+ * through the same guard, which throws unless the URL is unambiguously a
+ * local throwaway. Start it with `bun run test:db:up`.
+ */
+import { resolveTestDatabaseUrl } from './support/test-database';
 
-loadEnvFiles([
-  join(process.cwd(), '.env.local'),
-  join(process.cwd(), '.env'),
-  join(process.cwd(), '.env.example'),
-]);
+const testDatabaseUrl = resolveTestDatabaseUrl();
 
-if (!process.env.JWT_SECRET) {
-  process.env.JWT_SECRET = 'test-secret-for-e2e-do-not-use-in-production';
-}
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = 'postgresql://localhost:5432/dentalflow_test';
+// Overwritten, not defaulted: whatever `.env` holds must not win here.
+process.env.DATABASE_URL = testDatabaseUrl;
+process.env.DIRECT_URL = testDatabaseUrl;
+
+const fixedEnv: Record<string, string> = {
+  NODE_ENV: 'test',
+  JWT_SECRET: 'e2e-test-jwt-secret-not-a-real-secret',
+  JWT_EXPIRES_IN: '15m',
+  JWT_REFRESH_EXPIRES_IN: '7d',
+  API_PREFIX: 'api',
+  FRONTEND_ORIGIN: 'http://localhost:5173',
+  FRONTEND_URL: 'http://localhost:5173',
+  WHATSAPP_VERIFY_TOKEN: 'test-whatsapp-verify-token',
+  // Deliberately absent: STRIPE_SECRET_KEY, OPENAI_API_KEY, RESEND_API_KEY,
+  // GOOGLE_CALENDAR_*. No test may reach a real provider, and an unset key
+  // makes that a loud failure rather than a silent live call.
+};
+
+for (const [key, value] of Object.entries(fixedEnv)) {
+  process.env[key] = value;
 }

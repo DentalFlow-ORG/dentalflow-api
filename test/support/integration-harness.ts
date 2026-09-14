@@ -1,16 +1,15 @@
-import {
-  INestApplication,
-  RequestMethod,
-  ValidationPipe,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import type { PrismaClient, UserRole } from '@prisma/client';
-import express from 'express';
 import request from 'supertest';
 
 import { AppModule } from '../../src/app.module';
+import {
+  NEST_APP_OPTIONS,
+  configureApp,
+} from '../../src/bootstrap/configure-app';
 import { appConfig } from '../../src/config/app.config';
 import { authConfig } from '../../src/config/auth.config';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -84,35 +83,15 @@ export async function createIntegrationHarness(): Promise<IntegrationHarness> {
   }).compile();
 
   const app = moduleRef.createNestApplication({
-    rawBody: true,
-    bodyParser: false,
+    ...NEST_APP_OPTIONS,
     logger: false,
   });
 
-  app.use(
-    express.json({
-      limit: '6mb',
-      verify: (
-        req: express.Request & { rawBody?: Buffer },
-        _res,
-        buf: Buffer,
-      ) => {
-        if (Buffer.isBuffer(buf)) req.rawBody = buf;
-      },
-    }),
-  );
-  app.use(express.urlencoded({ extended: true, limit: '100kb' }));
-
-  app.setGlobalPrefix(PREFIX, {
-    exclude: [{ path: 'webhooks/whatsapp', method: RequestMethod.ALL }],
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  // The same wiring main.ts applies: body-size limits, security headers, CORS
+  // policy, route prefix and validation pipe. Reproducing it here by hand let
+  // the harness drift from production; calling it means these tests run
+  // against the request pipeline the deployed application actually has.
+  configureApp(app);
 
   await app.init();
   // Bind once so Supertest reuses the port instead of opening one per request.
