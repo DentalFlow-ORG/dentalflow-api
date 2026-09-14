@@ -170,13 +170,16 @@ describe('CalendarIntegrationsService — OAuth lifecycle', () => {
     it('gives the state a bounded lifetime', async () => {
       const before = Date.now();
       await service.createConnectUrl(CLINIC, USER);
+      const after = Date.now();
 
       const expiresAt = prisma.$executeRaw.mock.calls[1]
         .slice(1)
         .find((value): value is Date => value instanceof Date)!;
-      const minutes = (expiresAt.getTime() - before) / 60_000;
-      expect(minutes).toBeGreaterThan(0);
-      expect(minutes).toBeLessThanOrEqual(10);
+
+      // The expiry is stamped somewhere between `before` and `after`, so
+      // bound it against each end rather than against one and a tolerance.
+      expect(expiresAt.getTime()).toBeGreaterThan(before + 9 * 60_000);
+      expect(expiresAt.getTime()).toBeLessThanOrEqual(after + 10 * 60_000);
     });
 
     it('issues a different state each time', async () => {
