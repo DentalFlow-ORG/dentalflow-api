@@ -96,8 +96,13 @@ export class ClinicalRecordsService {
     const profile = await this.assertProfileInClinic(clinicId, dto.profileId);
     this.assertDentistRecordAccess(role, userId, profile.userId);
 
+    // One clinic-scoped read serves both purposes: proving the appointment
+    // belongs here, and supplying the contact details below.
+    const appointment = dto.appointmentId
+      ? await this.assertAppointmentInClinic(clinicId, dto.appointmentId)
+      : null;
+
     if (dto.appointmentId) {
-      await this.assertAppointmentInClinic(clinicId, dto.appointmentId);
       await this.assertNoExistingRecord(dto.appointmentId);
     }
 
@@ -105,16 +110,10 @@ export class ClinicalRecordsService {
     let patientEmail = dto.patientEmail;
     let patientPhone = dto.patientPhone;
 
-    if (dto.appointmentId && !dto.patientEmail && !dto.patientPhone) {
-      const appt = await this.prisma.appointment.findUnique({
-        where: { id: dto.appointmentId },
-        select: { patientName: true, patientEmail: true, patientPhone: true },
-      });
-      if (appt) {
-        patientName = patientName || appt.patientName;
-        patientEmail = patientEmail ?? appt.patientEmail ?? undefined;
-        patientPhone = patientPhone ?? appt.patientPhone ?? undefined;
-      }
+    if (appointment && !dto.patientEmail && !dto.patientPhone) {
+      patientName = patientName || appointment.patientName;
+      patientEmail = patientEmail ?? appointment.patientEmail ?? undefined;
+      patientPhone = patientPhone ?? appointment.patientPhone ?? undefined;
     }
 
     const record = await this.prisma.clinicalRecord.create({
@@ -715,7 +714,15 @@ export class ClinicalRecordsService {
   ) {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, clinicId },
-      select: { id: true },
+      // The patient columns come along so `createRecord` can inherit the
+      // contact details without a second round trip — and, more importantly,
+      // without a second lookup that forgets the clinic scope.
+      select: {
+        id: true,
+        patientName: true,
+        patientEmail: true,
+        patientPhone: true,
+      },
     });
     if (!appt) throw new NotFoundException('Consulta não encontrada');
     return appt;

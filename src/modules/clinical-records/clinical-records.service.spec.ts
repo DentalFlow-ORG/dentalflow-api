@@ -746,5 +746,66 @@ describe('ClinicalRecordsService', () => {
         CLINIC,
       );
     });
+
+    // ── Contact details inherited from the appointment ──────────────────────
+    //
+    // A record booked against an appointment should not make the dentist
+    // retype the patient's email and phone; they come off the appointment.
+
+    const APPOINTMENT_CONTACT = {
+      id: 'appointment-1',
+      patientName: 'Maria Silva',
+      patientEmail: 'maria@example.test',
+      patientPhone: '11999999999',
+    };
+
+    it('fills the contact details in from the appointment when the caller omits them', async () => {
+      prisma.appointment.findFirst.mockResolvedValue(APPOINTMENT_CONTACT);
+
+      await service.createRecord(CLINIC, 'owner-1', 'OWNER', {
+        ...(dto as object),
+        appointmentId: 'appointment-1',
+      } as never);
+
+      expect(prisma.clinicalRecord.create.mock.calls[0][0].data).toMatchObject({
+        patientEmail: 'maria@example.test',
+        patientPhone: '11999999999',
+      });
+    });
+
+    it('keeps the details the caller supplied rather than the appointment’s', async () => {
+      prisma.appointment.findFirst.mockResolvedValue(APPOINTMENT_CONTACT);
+
+      await service.createRecord(CLINIC, 'owner-1', 'OWNER', {
+        ...(dto as object),
+        appointmentId: 'appointment-1',
+        patientEmail: 'typed@example.test',
+        patientPhone: '11888888888',
+      } as never);
+
+      expect(prisma.clinicalRecord.create.mock.calls[0][0].data).toMatchObject({
+        patientEmail: 'typed@example.test',
+        patientPhone: '11888888888',
+      });
+    });
+
+    it('reads the appointment once, and always scoped to the clinic', async () => {
+      // Both facts matter. The second read used to be an unscoped
+      // `findUnique({ where: { id } })` — correct only because the scoped
+      // check happened to run first, which is the kind of coupling that
+      // survives right up until someone reorders the two.
+      prisma.appointment.findFirst.mockResolvedValue(APPOINTMENT_CONTACT);
+
+      await service.createRecord(CLINIC, 'owner-1', 'OWNER', {
+        ...(dto as object),
+        appointmentId: 'appointment-1',
+      } as never);
+
+      expect(prisma.appointment.findFirst).toHaveBeenCalledTimes(1);
+      expect(prisma.appointment.findUnique).not.toHaveBeenCalled();
+      expect(prisma.appointment.findFirst.mock.calls[0][0].where).toMatchObject(
+        { id: 'appointment-1', clinicId: CLINIC },
+      );
+    });
   });
 });
