@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { validateReportDateRange } from '../../common/utils/date-range.utils';
 import {
+  BRAZIL_TIME_ZONE,
   brazilTodayIso,
 } from '../../common/utils/brazil-timezone';
 import {
@@ -24,15 +25,33 @@ export const EXPORT_LIMIT = 5000;
 function csvValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '';
   const str = String(value);
-  // Prevent formula injection (Excel/Sheets interpret these as formulas)
-  if (/^[=+\-@\t\r]/.test(str)) return `'${str}`;
-  if (str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
+
+  // Prevent formula injection: Excel and Sheets execute a cell beginning with
+  // any of these, and the value may be attacker-supplied (a patient chooses
+  // their own name when booking). Prefixing with an apostrophe makes the cell
+  // literal text.
+  const guarded = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+
+  // Quote *after* guarding, never instead of it. Returning early on the guard
+  // used to skip this branch, so a hostile value carrying the separator split
+  // into two cells and only the first was neutralised — the second reached the
+  // spreadsheet as a live formula.
+  if (
+    guarded.includes(';') ||
+    guarded.includes('"') ||
+    guarded.includes('\n') ||
+    guarded.includes('\r')
+  ) {
+    return `"${guarded.replace(/"/g, '""')}"`;
   }
-  return str;
+
+  return guarded;
 }
 
-function buildCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
+function buildCsv(
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+): string {
   const BOM = '﻿';
   const sep = ';';
   const lines = [
@@ -42,11 +61,32 @@ function buildCsv(headers: string[], rows: (string | number | null | undefined)[
   return BOM + lines.join('\r\n');
 }
 
+/**
+ * Formats a **calendar date** — a `@db.Date` column, which Prisma returns as
+ * UTC midnight.
+ *
+ * Read in UTC, deliberately. Rendering UTC midnight in America/Sao_Paulo
+ * (UTC-3) lands on 21:00 the previous evening, which showed every exported
+ * date a day earlier than the one stored.
+ */
 function formatDateBR(date: Date | string | null | undefined): string {
   if (!date) return '';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+
+/**
+ * Formats a **timestamp** — an instant, rather than a calendar date.
+ *
+ * Here the clinic's timezone genuinely applies: the reader wants the moment as
+ * it happened locally.
+ */
+function formatTimestampBR(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('pt-BR', { timeZone: BRAZIL_TIME_ZONE });
 }
 
 function formatTime(date: Date | string | null | undefined): string {
@@ -90,7 +130,8 @@ function isoToBR(iso: string): string {
 }
 
 function buildPeriodLabel(startDate?: string, endDate?: string): string {
-  if (startDate && endDate) return `${isoToBR(startDate)} até ${isoToBR(endDate)}`;
+  if (startDate && endDate)
+    return `${isoToBR(startDate)} até ${isoToBR(endDate)}`;
   if (startDate) return `A partir de ${isoToBR(startDate)}`;
   if (endDate) return `Até ${isoToBR(endDate)}`;
   return 'Sem filtro de período';
@@ -166,8 +207,13 @@ export class ReportsService {
 
   // ── Finance export ─────────────────────────────────────────────────────────
 
-  async exportFinance(clinicId: string, query: FinanceReportQueryDto): Promise<string> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+  async exportFinance(
+    clinicId: string,
+    query: FinanceReportQueryDto,
+  ): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: false,
+    });
     const where = this.buildFinanceWhere(clinicId, query);
 
     const rows = await this.prisma.financialTransaction.findMany({
@@ -212,20 +258,31 @@ export class ReportsService {
     clinicId: string,
     query: FinanceReportQueryDto,
   ): Promise<ReportPreviewResponse> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: false,
+    });
     const where = this.buildFinanceWhere(clinicId, query);
 
     const [recordCount, clinic] = await Promise.all([
       this.prisma.financialTransaction.count({ where }),
-      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+      this.prisma.clinic.findUniqueOrThrow({
+        where: { id: clinicId },
+        select: { name: true },
+      }),
     ]);
 
     const filters: ReportPreviewFilter[] = [];
     if (query.type) {
-      filters.push({ label: 'Tipo', value: FINANCE_TYPE_LABELS[query.type] ?? query.type });
+      filters.push({
+        label: 'Tipo',
+        value: FINANCE_TYPE_LABELS[query.type] ?? query.type,
+      });
     }
     if (query.status) {
-      filters.push({ label: 'Status', value: FINANCE_STATUS_LABELS[query.status] ?? query.status });
+      filters.push({
+        label: 'Status',
+        value: FINANCE_STATUS_LABELS[query.status] ?? query.status,
+      });
     }
     if (query.categoryId) {
       filters.push({ label: 'Categoria', value: query.categoryId });
@@ -256,7 +313,9 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             transactionDate: {
-              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.startDate
+                ? { gte: parseDateOnly(query.startDate) }
+                : {}),
               ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
@@ -269,8 +328,13 @@ export class ReportsService {
 
   // ── Appointments export ──────────────────────────────────────────────────
 
-  async exportAppointments(clinicId: string, query: AppointmentsReportQueryDto): Promise<string> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
+  async exportAppointments(
+    clinicId: string,
+    query: AppointmentsReportQueryDto,
+  ): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: true,
+    });
     const where = this.buildAppointmentsWhere(clinicId, query);
 
     const rows = await this.prisma.appointment.findMany({
@@ -328,7 +392,9 @@ export class ReportsService {
       a.service?.name ?? '',
       STATUS_LABELS[a.status] ?? a.status,
       PAY_STATUS_LABELS[a.paymentStatus] ?? a.paymentStatus,
-      a.paymentMethod ? (PAYMENT_METHOD_LABELS[a.paymentMethod] ?? a.paymentMethod) : '',
+      a.paymentMethod
+        ? (PAYMENT_METHOD_LABELS[a.paymentMethod] ?? a.paymentMethod)
+        : '',
       centsToDecimal(a.estimatedAmountCents),
       centsToDecimal(a.paidAmountCents),
     ]);
@@ -342,7 +408,9 @@ export class ReportsService {
     clinicId: string,
     query: AppointmentsReportQueryDto,
   ): Promise<ReportPreviewResponse> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: true });
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: true,
+    });
     const where = this.buildAppointmentsWhere(clinicId, query);
 
     const APPT_STATUS_LABELS: Record<string, string> = {
@@ -355,12 +423,18 @@ export class ReportsService {
 
     const [recordCount, clinic] = await Promise.all([
       this.prisma.appointment.count({ where }),
-      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+      this.prisma.clinic.findUniqueOrThrow({
+        where: { id: clinicId },
+        select: { name: true },
+      }),
     ]);
 
     const filters: ReportPreviewFilter[] = [];
     if (query.status) {
-      filters.push({ label: 'Status', value: APPT_STATUS_LABELS[query.status] ?? query.status });
+      filters.push({
+        label: 'Status',
+        value: APPT_STATUS_LABELS[query.status] ?? query.status,
+      });
     }
     if (query.profileId) {
       filters.push({ label: 'Profissional (ID)', value: query.profileId });
@@ -391,7 +465,9 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             appointmentDate: {
-              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.startDate
+                ? { gte: parseDateOnly(query.startDate) }
+                : {}),
               ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
@@ -403,7 +479,10 @@ export class ReportsService {
 
   // ── Inventory export ─────────────────────────────────────────────────────
 
-  async exportInventory(clinicId: string, query: InventoryReportQueryDto): Promise<string> {
+  async exportInventory(
+    clinicId: string,
+    query: InventoryReportQueryDto,
+  ): Promise<string> {
     const where: Prisma.StockProductWhereInput = {
       clinicId,
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
@@ -486,7 +565,10 @@ export class ReportsService {
           expiresAt: true,
         },
       }),
-      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+      this.prisma.clinic.findUniqueOrThrow({
+        where: { id: clinicId },
+        select: { name: true },
+      }),
     ]);
 
     const filtered = products.filter((p) => {
@@ -501,7 +583,10 @@ export class ReportsService {
       filters.push({ label: 'Categoria (ID)', value: query.categoryId });
     }
     if (query.status) {
-      filters.push({ label: 'Status', value: STATUS_PT[query.status] ?? query.status });
+      filters.push({
+        label: 'Status',
+        value: STATUS_PT[query.status] ?? query.status,
+      });
     }
 
     return {
@@ -522,8 +607,13 @@ export class ReportsService {
 
   // ── Invoices export ──────────────────────────────────────────────────────
 
-  async exportInvoices(clinicId: string, query: InvoicesReportQueryDto): Promise<string> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+  async exportInvoices(
+    clinicId: string,
+    query: InvoicesReportQueryDto,
+  ): Promise<string> {
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: false,
+    });
     const STATUS_LABELS: Record<string, string> = {
       DRAFT: 'Rascunho',
       READY_TO_ISSUE: 'Pronto para emitir',
@@ -575,7 +665,7 @@ export class ReportsService {
       centsToDecimal(i.amountCents),
       STATUS_LABELS[i.status] ?? i.status,
       formatDateBR(i.competenceDate),
-      formatDateBR(i.simulatedIssueDate),
+      formatTimestampBR(i.simulatedIssueDate),
       i.serviceDescription ?? '',
       i.appointmentId ?? '',
       i.isLegalDocument ? '' : 'Registro interno — não substitui NF-e oficial',
@@ -590,7 +680,9 @@ export class ReportsService {
     clinicId: string,
     query: InvoicesReportQueryDto,
   ): Promise<ReportPreviewResponse> {
-    validateReportDateRange(query.startDate, query.endDate, { allowFuture: false });
+    validateReportDateRange(query.startDate, query.endDate, {
+      allowFuture: false,
+    });
     const where = this.buildInvoicesWhere(clinicId, query);
 
     const INVOICE_STATUS_LABELS: Record<string, string> = {
@@ -605,7 +697,10 @@ export class ReportsService {
 
     const [recordCount, clinic] = await Promise.all([
       this.prisma.serviceInvoice.count({ where }),
-      this.prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true } }),
+      this.prisma.clinic.findUniqueOrThrow({
+        where: { id: clinicId },
+        select: { name: true },
+      }),
     ]);
 
     const filters: ReportPreviewFilter[] = [];
@@ -642,7 +737,9 @@ export class ReportsService {
       ...(query.startDate || query.endDate
         ? {
             competenceDate: {
-              ...(query.startDate ? { gte: parseDateOnly(query.startDate) } : {}),
+              ...(query.startDate
+                ? { gte: parseDateOnly(query.startDate) }
+                : {}),
               ...(query.endDate ? { lt: parseDateOnlyEnd(query.endDate) } : {}),
             },
           }
@@ -650,4 +747,3 @@ export class ReportsService {
     };
   }
 }
-
