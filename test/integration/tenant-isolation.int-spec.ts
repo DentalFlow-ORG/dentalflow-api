@@ -445,10 +445,13 @@ describe('Tenant isolation (real database)', () => {
     });
 
     it('rejects a token for a user that no longer exists', async () => {
+      // Not an OWNER: the real schema carries a partial unique index allowing
+      // one active owner per clinic, and clinic-a already has one. The role is
+      // irrelevant here -- the point is a token for a row that is gone.
       const ghost = await createUser(h.prisma, {
         id: 'ghost',
         clinicId: 'clinic-a',
-        role: 'OWNER',
+        role: 'DENTIST',
       });
       const ghostToken = h.tokenFor(ghost);
       await h.prisma.user.delete({ where: { id: 'ghost' } });
