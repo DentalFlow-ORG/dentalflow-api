@@ -27,15 +27,15 @@ export class MetricsService {
     // appointmentDate and transactionDate are stored as UTC midnight, so use UTC midnight
     // boundaries derived from the correct Brazil calendar date.
     const todayStart = new Date(Date.UTC(y, m - 1, d));
-    const todayEnd   = new Date(Date.UTC(y, m - 1, d + 1));
+    const todayEnd = new Date(Date.UTC(y, m - 1, d + 1));
 
     const brazilMonth = brazilCurrentIsoMonth(now);
     const [by, bm] = brazilMonth.split('-').map(Number);
     const monthStart = new Date(Date.UTC(by, bm - 1, 1));
-    const monthEnd   = new Date(Date.UTC(by, bm,     1));
+    const monthEnd = new Date(Date.UTC(by, bm, 1));
 
-    const sevenDaysAgo   = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo   = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
     const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const [
@@ -259,9 +259,7 @@ export class MetricsService {
 
     // ── Patients without return ────────────────────────────────────────────────
     const patientsWithFutureSet = new Set(
-      patientsWithFuture.map(
-        (p) => `${p.patientName}|${p.patientPhone ?? ''}`,
-      ),
+      patientsWithFuture.map((p) => `${p.patientName}|${p.patientPhone ?? ''}`),
     );
 
     const noReturnAll = patientsLastVisit.filter((p) => {

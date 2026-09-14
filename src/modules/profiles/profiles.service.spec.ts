@@ -15,7 +15,13 @@ const mockPrisma = {
 };
 
 function profileRecord() {
-  return { id: PROFILE_ID, clinicId: CLINIC_ID, userId: null, slug: 'test', isPublished: false };
+  return {
+    id: PROFILE_ID,
+    clinicId: CLINIC_ID,
+    userId: null,
+    slug: 'test',
+    isPublished: false,
+  };
 }
 
 function serviceRecord() {

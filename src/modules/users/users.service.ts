@@ -289,7 +289,13 @@ export class UsersService {
   async adminListClinics() {
     return this.prisma.clinic.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+      },
       orderBy: { name: 'asc' },
     });
   }
@@ -304,7 +310,13 @@ export class UsersService {
   async adminGetClinicsHealth() {
     const clinics = await this.prisma.clinic.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -344,7 +356,10 @@ export class UsersService {
       }),
       this.prisma.appointment.groupBy({
         by: ['clinicId'],
-        where: { clinicId: { in: clinicIds }, appointmentDate: { gte: thirtyDaysAgo } },
+        where: {
+          clinicId: { in: clinicIds },
+          appointmentDate: { gte: thirtyDaysAgo },
+        },
         _count: { _all: true },
       }),
       this.prisma.user.groupBy({
@@ -363,7 +378,9 @@ export class UsersService {
       }),
     ]);
 
-    const subscriptionByClinic = new Map(subscriptions.map((s) => [s.clinicId, s]));
+    const subscriptionByClinic = new Map(
+      subscriptions.map((s) => [s.clinicId, s]),
+    );
     const dentistCountByClinic = new Map(
       dentistCounts.map((row) => [row.clinicId, row._count._all]),
     );
@@ -382,14 +399,19 @@ export class UsersService {
     const lastAuditMap = new Map(
       lastAuditByClinic.map((row) => [row.clinicId, row._max.createdAt]),
     );
-    const fiscalProfileByClinic = new Map(fiscalProfiles.map((f) => [f.clinicId, f]));
+    const fiscalProfileByClinic = new Map(
+      fiscalProfiles.map((f) => [f.clinicId, f]),
+    );
 
     return clinics.map((clinic) => {
       const subscription = subscriptionByClinic.get(clinic.id) ?? null;
       const lastLoginAt = lastLoginMap.get(clinic.id) ?? null;
       const lastAuditAt = lastAuditMap.get(clinic.id) ?? null;
 
-      let lastActivity: { timestamp: Date | null; source: 'USER_LOGIN' | 'AUDIT_LOG' | null };
+      let lastActivity: {
+        timestamp: Date | null;
+        source: 'USER_LOGIN' | 'AUDIT_LOG' | null;
+      };
       if (lastLoginAt && (!lastAuditAt || lastLoginAt >= lastAuditAt)) {
         lastActivity = { timestamp: lastLoginAt, source: 'USER_LOGIN' };
       } else if (lastAuditAt) {
@@ -422,11 +444,14 @@ export class UsersService {
           dentists: dentistCountByClinic.get(clinic.id) ?? 0,
           activeUsers: activeUserCountByClinic.get(clinic.id) ?? 0,
           totalAppointments: totalAppointmentCountByClinic.get(clinic.id) ?? 0,
-          recentAppointments: recentAppointmentCountByClinic.get(clinic.id) ?? 0,
+          recentAppointments:
+            recentAppointmentCountByClinic.get(clinic.id) ?? 0,
         },
         lastActivity,
         compliance: {
-          fiscalSetupComplete: fiscalProfile ? fiscalProfile.isConfigured : null,
+          fiscalSetupComplete: fiscalProfile
+            ? fiscalProfile.isConfigured
+            : null,
         },
       };
     });
@@ -559,7 +584,9 @@ export class UsersService {
         clinicMemberRoles.includes(current.role);
 
       if (!currentlyCountsForThisClinic) {
-        await this.planCapabilities.assertUserLimitAvailable(effectiveClinicId!);
+        await this.planCapabilities.assertUserLimitAvailable(
+          effectiveClinicId!,
+        );
       }
     }
 

@@ -37,7 +37,9 @@ describe('CalendarIntegrationsController.callback', () => {
   });
 
   it('redirects OWNER to /app/agendamentos on success', async () => {
-    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue('OWNER');
+    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue(
+      'OWNER',
+    );
     mockIntegrationsService.handleCallback.mockResolvedValue(undefined);
     const { res, redirectFn } = buildRes();
 
@@ -49,7 +51,9 @@ describe('CalendarIntegrationsController.callback', () => {
   });
 
   it('redirects DENTIST to /app/agenda on success', async () => {
-    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue('DENTIST');
+    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue(
+      'DENTIST',
+    );
     mockIntegrationsService.handleCallback.mockResolvedValue(undefined);
     const { res, redirectFn } = buildRes();
 
@@ -61,7 +65,9 @@ describe('CalendarIntegrationsController.callback', () => {
   });
 
   it('redirects OWNER to /app/agendamentos with error message on Google error param', async () => {
-    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue('OWNER');
+    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue(
+      'OWNER',
+    );
     const { res, redirectFn } = buildRes();
 
     await controller.callback(undefined, 'state-owner', 'access_denied', res);
@@ -74,7 +80,9 @@ describe('CalendarIntegrationsController.callback', () => {
   });
 
   it('redirects DENTIST to /app/agenda with error message on Google error param', async () => {
-    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue('DENTIST');
+    mockIntegrationsService.resolveCallbackRedirectRole.mockResolvedValue(
+      'DENTIST',
+    );
     const { res, redirectFn } = buildRes();
 
     await controller.callback(undefined, 'state-dentist', 'access_denied', res);

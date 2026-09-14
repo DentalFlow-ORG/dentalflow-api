@@ -4,7 +4,10 @@ import {
   InternalServerErrorException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AiAssistantAnalysisStatus, AiAssistantAnalysisType } from '@prisma/client';
+import {
+  AiAssistantAnalysisStatus,
+  AiAssistantAnalysisType,
+} from '@prisma/client';
 
 import { StockCopilotService } from './stock-copilot.service';
 
@@ -89,10 +92,7 @@ function mockQuota(
   });
 }
 
-function mockOpenAi(
-  service: StockCopilotService,
-  response: object,
-): jest.Mock {
+function mockOpenAi(service: StockCopilotService, response: object): jest.Mock {
   const mockCreate = jest.fn().mockResolvedValue({
     choices: [
       {
@@ -102,7 +102,11 @@ function mockOpenAi(
       },
     ],
   });
-  (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+  (
+    service as unknown as {
+      openai: { chat: { completions: { create: jest.Mock } } };
+    }
+  ).openai = {
     chat: { completions: { create: mockCreate } },
   };
   return mockCreate;
@@ -112,7 +116,10 @@ function mockValidAiResponse() {
   return {
     summary: 'Seu estoque possui 2 itens críticos.',
     highlights: ['2 produtos zerados.', 'Custo estimado R$ 100,00.'],
-    recommendedActions: ['Comprar itens críticos primeiro.', 'Atualizar estoque após a compra.'],
+    recommendedActions: [
+      'Comprar itens críticos primeiro.',
+      'Atualizar estoque após a compra.',
+    ],
   };
 }
 
@@ -158,7 +165,9 @@ describe('StockCopilotService', () => {
   // ── 1. Professional allowed ───────────────────────────────────────────────
 
   it('(1) professional plan: returns AI result when forceRefresh=true', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(2));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(2),
+    );
     mockQuota('professional', true, 10, 10);
     const mockCreate = mockOpenAi(service, mockValidAiResponse());
 
@@ -173,7 +182,9 @@ describe('StockCopilotService', () => {
   // ── 2. Premium allowed ───────────────────────────────────────────────────
 
   it('(2) premium plan: returns AI result with 30-unit quota', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('premium', true, 30, 30);
     mockOpenAi(service, mockValidAiResponse());
 
@@ -190,7 +201,9 @@ describe('StockCopilotService', () => {
   // ── 3. Starter blocked ───────────────────────────────────────────────────
 
   it('(3) starter plan: throws ForbiddenException regardless of forceRefresh', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('starter', false, 0, 0);
 
     await expect(
@@ -205,7 +218,9 @@ describe('StockCopilotService', () => {
   // ── 4. Quota enforcement ─────────────────────────────────────────────────
 
   it('(4) quota exhausted: throws 429 when forceRefresh=true', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 0, 10);
 
     try {
@@ -219,9 +234,13 @@ describe('StockCopilotService', () => {
   });
 
   it('(4) quota exhausted but cache hit: returns cache without throwing', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 0, 10);
-    mockRepository.findLatest.mockResolvedValue(todayRecord(mockValidAiResponse()));
+    mockRepository.findLatest.mockResolvedValue(
+      todayRecord(mockValidAiResponse()),
+    );
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
 
@@ -232,9 +251,13 @@ describe('StockCopilotService', () => {
   // ── 5. Cache hit does not call AI ────────────────────────────────────────
 
   it('(5) same-day cache hit: returns cached result without calling OpenAI', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
-    mockRepository.findLatest.mockResolvedValue(todayRecord(mockValidAiResponse()));
+    mockRepository.findLatest.mockResolvedValue(
+      todayRecord(mockValidAiResponse()),
+    );
     const mockCreate = mockOpenAi(service, mockValidAiResponse());
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
@@ -245,9 +268,13 @@ describe('StockCopilotService', () => {
   });
 
   it('(5) any-date cache: returns cached result even when generated on a previous day', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
-    mockRepository.findLatest.mockResolvedValue(yesterdayRecord(mockValidAiResponse()));
+    mockRepository.findLatest.mockResolvedValue(
+      yesterdayRecord(mockValidAiResponse()),
+    );
     const mockCreate = mockOpenAi(service, mockValidAiResponse());
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, false);
@@ -261,9 +288,13 @@ describe('StockCopilotService', () => {
   // ── 6. forceRefresh calls AI again ──────────────────────────────────────
 
   it('(6) forceRefresh=true: calls AI even when same-day cache exists', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
-    mockRepository.findLatest.mockResolvedValue(todayRecord(mockValidAiResponse()));
+    mockRepository.findLatest.mockResolvedValue(
+      todayRecord(mockValidAiResponse()),
+    );
     const mockCreate = mockOpenAi(service, mockValidAiResponse());
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, true);
@@ -276,23 +307,33 @@ describe('StockCopilotService', () => {
   // ── 7. AI context max 10 items ──────────────────────────────────────────
 
   it('(7) AI context is capped at 10 items even when purchase list has more', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(15));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(15),
+    );
     mockQuota('professional', true, 10, 10);
 
     let capturedContext: unknown = null;
     const mockCreate = jest.fn().mockImplementation((params: unknown) => {
       capturedContext = params;
       return Promise.resolve({
-        choices: [{ message: { content: JSON.stringify(mockValidAiResponse()) } }],
+        choices: [
+          { message: { content: JSON.stringify(mockValidAiResponse()) } },
+        ],
       });
     });
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: { completions: { create: mockCreate } },
     };
 
     await service.getCopilotSummary(USER_ID, CLINIC_ID, true);
 
-    const messages = (capturedContext as { messages: Array<{ role: string; content: string }> }).messages;
+    const messages = (
+      capturedContext as { messages: Array<{ role: string; content: string }> }
+    ).messages;
     const userContent = JSON.parse(
       messages.find((m) => m.role === 'user')!.content,
     ) as { purchaseList: { items: unknown[] } };
@@ -302,23 +343,33 @@ describe('StockCopilotService', () => {
   // ── 8. AI context excludes sensitive fields ──────────────────────────────
 
   it('(8) AI context excludes supplier, categoryName, productId and unit', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
 
     let capturedContext: unknown = null;
     const mockCreate = jest.fn().mockImplementation((params: unknown) => {
       capturedContext = params;
       return Promise.resolve({
-        choices: [{ message: { content: JSON.stringify(mockValidAiResponse()) } }],
+        choices: [
+          { message: { content: JSON.stringify(mockValidAiResponse()) } },
+        ],
       });
     });
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: { completions: { create: mockCreate } },
     };
 
     await service.getCopilotSummary(USER_ID, CLINIC_ID, true);
 
-    const messages = (capturedContext as { messages: Array<{ role: string; content: string }> }).messages;
+    const messages = (
+      capturedContext as { messages: Array<{ role: string; content: string }> }
+    ).messages;
     const userContent = JSON.parse(
       messages.find((m) => m.role === 'user')!.content,
     ) as { purchaseList: { items: Array<Record<string, unknown>> } };
@@ -339,7 +390,9 @@ describe('StockCopilotService', () => {
   // ── 9. Empty purchase list skips AI ─────────────────────────────────────
 
   it('(9) empty purchase list: returns null without calling quota or AI', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(0));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(0),
+    );
     const mockCreate = mockOpenAi(service, mockValidAiResponse());
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, true);
@@ -352,11 +405,17 @@ describe('StockCopilotService', () => {
   // ── 10. AI provider error returns friendly error ─────────────────────────
 
   it('(10) OpenAI network error: throws InternalServerErrorException', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
 
     const mockCreate = jest.fn().mockRejectedValue(new Error('network error'));
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: { completions: { create: mockCreate } },
     };
 
@@ -366,12 +425,20 @@ describe('StockCopilotService', () => {
   });
 
   it('(10) OpenAI rate limit (429): throws ServiceUnavailableException', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
 
-    const rateLimitError = Object.assign(new Error('rate limit'), { status: 429 });
+    const rateLimitError = Object.assign(new Error('rate limit'), {
+      status: 429,
+    });
     const mockCreate = jest.fn().mockRejectedValue(rateLimitError);
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: { completions: { create: mockCreate } },
     };
 
@@ -383,7 +450,9 @@ describe('StockCopilotService', () => {
   // ── 11. Tenant isolation ─────────────────────────────────────────────────
 
   it('(11) tenant isolation: findLatest is called with the correct clinicId', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
     mockRepository.findLatest.mockResolvedValue(null);
 
@@ -400,7 +469,9 @@ describe('StockCopilotService', () => {
   });
 
   it('(11) tenant isolation: quota is checked for the correct clinicId', async () => {
-    mockPurchaseListService.getPurchaseList.mockResolvedValue(buildPurchaseList(1));
+    mockPurchaseListService.getPurchaseList.mockResolvedValue(
+      buildPurchaseList(1),
+    );
     mockQuota('professional', true, 10, 10);
 
     await service.getCopilotSummary(USER_ID, OTHER_CLINIC_ID, false);

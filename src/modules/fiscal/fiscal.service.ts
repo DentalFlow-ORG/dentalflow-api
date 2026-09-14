@@ -62,10 +62,7 @@ export class FiscalService {
     };
   }
 
-  async upsertFiscalProfile(
-    clinicId: string,
-    dto: UpsertFiscalProfileDto,
-  ) {
+  async upsertFiscalProfile(clinicId: string, dto: UpsertFiscalProfileDto) {
     const fiscalProvider = dto.fiscalProvider ?? FiscalProvider.LOCAL;
     const fiscalProviderMode =
       dto.fiscalProviderMode ?? FiscalProviderMode.LOCAL;
@@ -120,11 +117,14 @@ export class FiscalService {
 
     const counts = Object.values(ServiceInvoiceStatus).reduce<
       Record<ServiceInvoiceStatus, number>
-    >((result, status) => {
-      result[status] =
-        statusRows.find((row) => row.status === status)?._count._all ?? 0;
-      return result;
-    }, {} as Record<ServiceInvoiceStatus, number>);
+    >(
+      (result, status) => {
+        result[status] =
+          statusRows.find((row) => row.status === status)?._count._all ?? 0;
+        return result;
+      },
+      {} as Record<ServiceInvoiceStatus, number>,
+    );
 
     return {
       counts,
@@ -140,7 +140,8 @@ export class FiscalService {
 
   async listInvoices(clinicId: string, query: ListInvoicesDto) {
     const page = query.page && query.page > 0 ? query.page : 1;
-    const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 100) : 20;
+    const limit =
+      query.limit && query.limit > 0 ? Math.min(query.limit, 100) : 20;
     const where: Prisma.ServiceInvoiceWhereInput = {
       clinicId,
       ...(query.status ? { status: query.status } : {}),
@@ -243,10 +244,17 @@ export class FiscalService {
       },
     });
 
-    await this.createEvent(invoice.id, 'DRAFT_CREATED', null, invoice.status, user.id, {
-      mode: 'LOCAL',
-      legalValidity: false,
-    });
+    await this.createEvent(
+      invoice.id,
+      'DRAFT_CREATED',
+      null,
+      invoice.status,
+      user.id,
+      {
+        mode: 'LOCAL',
+        legalValidity: false,
+      },
+    );
 
     return invoice;
   }
@@ -259,7 +267,10 @@ export class FiscalService {
   ) {
     const invoice = await this.assertInvoiceAccess(clinicId, invoiceId);
     this.assertEditable(invoice.status);
-    if (user.role === UserRole.ASSISTANT && invoice.status !== ServiceInvoiceStatus.DRAFT) {
+    if (
+      user.role === UserRole.ASSISTANT &&
+      invoice.status !== ServiceInvoiceStatus.DRAFT
+    ) {
       throw new ForbiddenException(
         'Assistentes podem editar apenas rascunhos fiscais.',
       );
@@ -268,8 +279,20 @@ export class FiscalService {
     await this.assertLinksBelongToClinic(clinicId, dto);
     const data: Prisma.ServiceInvoiceUpdateInput = {
       updatedByUser: { connect: { id: user.id } },
-      ...(dto.patientId !== undefined ? { patient: dto.patientId ? { connect: { id: dto.patientId } } : { disconnect: true } } : {}),
-      ...(dto.appointmentId !== undefined ? { appointment: dto.appointmentId ? { connect: { id: dto.appointmentId } } : { disconnect: true } } : {}),
+      ...(dto.patientId !== undefined
+        ? {
+            patient: dto.patientId
+              ? { connect: { id: dto.patientId } }
+              : { disconnect: true },
+          }
+        : {}),
+      ...(dto.appointmentId !== undefined
+        ? {
+            appointment: dto.appointmentId
+              ? { connect: { id: dto.appointmentId } }
+              : { disconnect: true },
+          }
+        : {}),
       ...(dto.customerName !== undefined
         ? { customerName: dto.customerName.trim() }
         : {}),
@@ -280,13 +303,21 @@ export class FiscalService {
               : null,
           }
         : {}),
-      ...(dto.customerEmail !== undefined ? { customerEmail: dto.customerEmail } : {}),
-      ...(dto.customerPhone !== undefined ? { customerPhone: dto.customerPhone } : {}),
+      ...(dto.customerEmail !== undefined
+        ? { customerEmail: dto.customerEmail }
+        : {}),
+      ...(dto.customerPhone !== undefined
+        ? { customerPhone: dto.customerPhone }
+        : {}),
       ...(dto.serviceDescription !== undefined
         ? { serviceDescription: dto.serviceDescription.trim() }
         : {}),
-      ...(dto.serviceCode !== undefined ? { serviceCode: dto.serviceCode } : {}),
-      ...(dto.amountCents !== undefined ? { amountCents: dto.amountCents } : {}),
+      ...(dto.serviceCode !== undefined
+        ? { serviceCode: dto.serviceCode }
+        : {}),
+      ...(dto.amountCents !== undefined
+        ? { amountCents: dto.amountCents }
+        : {}),
       ...(dto.deductionsCents !== undefined
         ? { deductionsCents: dto.deductionsCents }
         : {}),
@@ -299,7 +330,8 @@ export class FiscalService {
 
     const amount = dto.amountCents ?? invoice.amountCents;
     const issRate =
-      dto.issRate ?? (invoice.issRate === null ? undefined : Number(invoice.issRate));
+      dto.issRate ??
+      (invoice.issRate === null ? undefined : Number(invoice.issRate));
     data.issAmountCents = this.calculateIssCents(amount, issRate);
 
     const updated = await this.prisma.serviceInvoice.update({
@@ -432,15 +464,24 @@ export class FiscalService {
     return updated;
   }
 
-  async listAppointmentsForInvoice(clinicId: string, query: ListAppointmentsForInvoiceDto) {
+  async listAppointmentsForInvoice(
+    clinicId: string,
+    query: ListAppointmentsForInvoiceDto,
+  ) {
     const page = query.page && query.page > 0 ? query.page : 1;
-    const limit = query.limit && query.limit > 0 ? Math.min(query.limit, 50) : 20;
+    const limit =
+      query.limit && query.limit > 0 ? Math.min(query.limit, 50) : 20;
 
     const where: Prisma.AppointmentWhereInput = {
       clinicId,
       status: { not: AppointmentStatus.CANCELED },
       ...(query.patient?.trim()
-        ? { patientName: { contains: query.patient.trim(), mode: 'insensitive' } }
+        ? {
+            patientName: {
+              contains: query.patient.trim(),
+              mode: 'insensitive',
+            },
+          }
         : {}),
       ...(query.profileId ? { profileId: query.profileId } : {}),
       ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
@@ -747,7 +788,10 @@ export class FiscalService {
       return rest < 2 ? 0 : 11 - rest;
     };
     const first = calc(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-    const second = calc(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const second = calc(
+      cnpj.slice(0, 13),
+      [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+    );
     return first === Number(cnpj[12]) && second === Number(cnpj[13]);
   }
 }

@@ -1,4 +1,8 @@
-export type ReportPreviewReportType = 'finance' | 'appointments' | 'inventory' | 'invoices';
+export type ReportPreviewReportType =
+  | 'finance'
+  | 'appointments'
+  | 'inventory'
+  | 'invoices';
 
 export interface ReportPreviewClinic {
   name: string;

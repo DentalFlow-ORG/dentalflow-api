@@ -65,9 +65,7 @@ describe('StockAbnormalConsumptionService', () => {
 
   it('returns empty anomalies and correct summary when no movements exist', async () => {
     prismaMock.stockMovement.findMany.mockResolvedValue([]);
-    prismaMock.stockProduct.findMany.mockResolvedValue([
-      makeProduct({}),
-    ]);
+    prismaMock.stockProduct.findMany.mockResolvedValue([makeProduct({})]);
 
     const result = await service.getAbnormalConsumption(CLINIC_ID, DEFAULT_DTO);
 
@@ -136,7 +134,9 @@ describe('StockAbnormalConsumptionService', () => {
 
     const result = await service.getAbnormalConsumption(CLINIC_ID, DEFAULT_DTO);
 
-    const spikes = result.items.filter((i) => i.anomalyType === 'CONSUMPTION_SPIKE');
+    const spikes = result.items.filter(
+      (i) => i.anomalyType === 'CONSUMPTION_SPIKE',
+    );
     expect(spikes).toHaveLength(0);
   });
 
@@ -152,7 +152,9 @@ describe('StockAbnormalConsumptionService', () => {
 
     const result = await service.getAbnormalConsumption(CLINIC_ID, DEFAULT_DTO);
 
-    const spikes = result.items.filter((i) => i.anomalyType === 'CONSUMPTION_SPIKE');
+    const spikes = result.items.filter(
+      (i) => i.anomalyType === 'CONSUMPTION_SPIKE',
+    );
     expect(spikes).toHaveLength(0);
   });
 
@@ -210,9 +212,21 @@ describe('StockAbnormalConsumptionService', () => {
 
   it('detects FREQUENT_ADJUSTMENTS HIGH when recentAdjCount ≥ 3', async () => {
     prismaMock.stockMovement.findMany.mockResolvedValue([
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 5, daysAgo: 2 }),
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 3, daysAgo: 6 }),
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 4, daysAgo: 11 }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 5,
+        daysAgo: 2,
+      }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 3,
+        daysAgo: 6,
+      }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 4,
+        daysAgo: 11,
+      }),
     ]);
     prismaMock.stockProduct.findMany.mockResolvedValue([makeProduct({})]);
 
@@ -228,8 +242,16 @@ describe('StockAbnormalConsumptionService', () => {
 
   it('detects FREQUENT_ADJUSTMENTS MEDIUM when recentAdjCount == 2', async () => {
     prismaMock.stockMovement.findMany.mockResolvedValue([
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 5, daysAgo: 3 }),
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 3, daysAgo: 9 }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 5,
+        daysAgo: 3,
+      }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 3,
+        daysAgo: 9,
+      }),
     ]);
     prismaMock.stockProduct.findMany.mockResolvedValue([makeProduct({})]);
 
@@ -244,13 +266,19 @@ describe('StockAbnormalConsumptionService', () => {
 
   it('does not flag FREQUENT_ADJUSTMENTS when recentAdjCount < 2', async () => {
     prismaMock.stockMovement.findMany.mockResolvedValue([
-      makeMovement({ type: StockMovementType.ADJUSTMENT, quantity: 5, daysAgo: 4 }),
+      makeMovement({
+        type: StockMovementType.ADJUSTMENT,
+        quantity: 5,
+        daysAgo: 4,
+      }),
     ]);
     prismaMock.stockProduct.findMany.mockResolvedValue([makeProduct({})]);
 
     const result = await service.getAbnormalConsumption(CLINIC_ID, DEFAULT_DTO);
 
-    expect(result.items.filter((i) => i.anomalyType === 'FREQUENT_ADJUSTMENTS')).toHaveLength(0);
+    expect(
+      result.items.filter((i) => i.anomalyType === 'FREQUENT_ADJUSTMENTS'),
+    ).toHaveLength(0);
   });
 
   // ── 12. NEW_UNUSUAL_CONSUMPTION ──────────────────────────────────────────────
@@ -280,15 +308,50 @@ describe('StockAbnormalConsumptionService', () => {
     // Product C → CONSUMPTION_SPIKE MEDIUM (ratio 2×)
     prismaMock.stockMovement.findMany.mockResolvedValue([
       // Product A: 1 recent LOSS, no history → LOSS_SPIKE LOW
-      makeMovement({ productId: 'product-a', type: StockMovementType.LOSS, quantity: 1, daysAgo: 5 }),
+      makeMovement({
+        productId: 'product-a',
+        type: StockMovementType.LOSS,
+        quantity: 1,
+        daysAgo: 5,
+      }),
       // Product B: historical 2 OUT (46 units total / 46 days = 1/day), recent OUT 3/day → HIGH
-      makeMovement({ productId: 'product-b', type: StockMovementType.OUT, quantity: 23, daysAgo: 30 }),
-      makeMovement({ productId: 'product-b', type: StockMovementType.OUT, quantity: 23, daysAgo: 45 }),
-      makeMovement({ productId: 'product-b', type: StockMovementType.OUT, quantity: 42, daysAgo: 7 }),
+      makeMovement({
+        productId: 'product-b',
+        type: StockMovementType.OUT,
+        quantity: 23,
+        daysAgo: 30,
+      }),
+      makeMovement({
+        productId: 'product-b',
+        type: StockMovementType.OUT,
+        quantity: 23,
+        daysAgo: 45,
+      }),
+      makeMovement({
+        productId: 'product-b',
+        type: StockMovementType.OUT,
+        quantity: 42,
+        daysAgo: 7,
+      }),
       // Product C: historical 2 OUT (46 units), recent 2/day → MEDIUM
-      makeMovement({ productId: 'product-c', type: StockMovementType.OUT, quantity: 23, daysAgo: 30 }),
-      makeMovement({ productId: 'product-c', type: StockMovementType.OUT, quantity: 23, daysAgo: 45 }),
-      makeMovement({ productId: 'product-c', type: StockMovementType.OUT, quantity: 28, daysAgo: 7 }),
+      makeMovement({
+        productId: 'product-c',
+        type: StockMovementType.OUT,
+        quantity: 23,
+        daysAgo: 30,
+      }),
+      makeMovement({
+        productId: 'product-c',
+        type: StockMovementType.OUT,
+        quantity: 23,
+        daysAgo: 45,
+      }),
+      makeMovement({
+        productId: 'product-c',
+        type: StockMovementType.OUT,
+        quantity: 28,
+        daysAgo: 7,
+      }),
     ]);
     prismaMock.stockProduct.findMany.mockResolvedValue([
       makeProduct({ id: 'product-a', name: 'A' }),
@@ -339,8 +402,12 @@ describe('StockAbnormalConsumptionService', () => {
 
     const result = await service.getAbnormalConsumption(CLINIC_ID, DEFAULT_DTO);
 
-    expect(result.items.filter((i) => i.anomalyType === 'CONSUMPTION_SPIKE')).toHaveLength(0);
-    expect(result.items.filter((i) => i.anomalyType === 'NEW_UNUSUAL_CONSUMPTION')).toHaveLength(0);
+    expect(
+      result.items.filter((i) => i.anomalyType === 'CONSUMPTION_SPIKE'),
+    ).toHaveLength(0);
+    expect(
+      result.items.filter((i) => i.anomalyType === 'NEW_UNUSUAL_CONSUMPTION'),
+    ).toHaveLength(0);
   });
 
   // ── 16. Inactive products are excluded (Prisma filter) ──────────────────────
@@ -362,11 +429,17 @@ describe('StockAbnormalConsumptionService', () => {
 
   it('throws BadRequestException when recentDays >= baselineDays', async () => {
     await expect(
-      service.getAbnormalConsumption(CLINIC_ID, { recentDays: 60, baselineDays: 60 }),
+      service.getAbnormalConsumption(CLINIC_ID, {
+        recentDays: 60,
+        baselineDays: 60,
+      }),
     ).rejects.toThrow(BadRequestException);
 
     await expect(
-      service.getAbnormalConsumption(CLINIC_ID, { recentDays: 90, baselineDays: 30 }),
+      service.getAbnormalConsumption(CLINIC_ID, {
+        recentDays: 90,
+        baselineDays: 30,
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 });

@@ -55,13 +55,14 @@ const DEFAULT_BUSINESS_HOURS = {
 
 // Defines which status transitions are allowed by the business rules.
 // Both the service and the frontend must follow the same machine.
-const APPOINTMENT_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
-  PENDING:   ['CONFIRMED', 'CANCELED'],
-  CONFIRMED: ['COMPLETED', 'NO_SHOW', 'CANCELED'],
-  COMPLETED: [],
-  NO_SHOW:   [],
-  CANCELED:  [],
-};
+const APPOINTMENT_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> =
+  {
+    PENDING: ['CONFIRMED', 'CANCELED'],
+    CONFIRMED: ['COMPLETED', 'NO_SHOW', 'CANCELED'],
+    COMPLETED: [],
+    NO_SHOW: [],
+    CANCELED: [],
+  };
 
 type AppointmentDbClient = PrismaService | Prisma.TransactionClient;
 
@@ -230,7 +231,11 @@ export class AppointmentsService {
         },
       });
       if (!existing) throw new NotFoundException('Consulta não encontrada');
-      this.assertDentistAppointmentAccess(role, userId, existing.profile.userId);
+      this.assertDentistAppointmentAccess(
+        role,
+        userId,
+        existing.profile.userId,
+      );
 
       if (dto.patientUserId) {
         await this.assertPatientUser(dto.patientUserId, tx);
@@ -262,7 +267,12 @@ export class AppointmentsService {
         tx,
       );
 
-      await this.acquireScheduleLock(tx, clinicId, existing.profileId, appointmentDate);
+      await this.acquireScheduleLock(
+        tx,
+        clinicId,
+        existing.profileId,
+        appointmentDate,
+      );
       await this.assertProfileAvailability(
         clinicId,
         existing.profileId,
@@ -400,7 +410,10 @@ export class AppointmentsService {
       appointment.profile.userId,
     );
 
-    if (appointment.status !== 'PENDING' && appointment.status !== 'CONFIRMED') {
+    if (
+      appointment.status !== 'PENDING' &&
+      appointment.status !== 'CONFIRMED'
+    ) {
       throw new UnprocessableEntityException(
         'Este agendamento não pode ser cancelado no status atual.',
       );
@@ -503,7 +516,9 @@ export class AppointmentsService {
 
         const amountCents = dto.paidAmountCents!;
         // FinancialTransaction.amount is stored as Decimal (BRL value, not centavos)
-        const amount = new Prisma.Decimal(amountCents).div(100).toDecimalPlaces(2);
+        const amount = new Prisma.Decimal(amountCents)
+          .div(100)
+          .toDecimalPlaces(2);
 
         const isPaid = dto.paymentStatus === AppointmentPaymentStatus.PAID;
         // PARTIALLY_PAID: register as PENDING (partial amount) — documented decision:
@@ -562,7 +577,9 @@ export class AppointmentsService {
             profileId: appointment.profileId,
           },
         });
-      } else if (dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING) {
+      } else if (
+        dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING
+      ) {
         // Set existing transaction to PENDING if it exists; do not create one
         const existing = await tx.financialTransaction.findFirst({
           where: {

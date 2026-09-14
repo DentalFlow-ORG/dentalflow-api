@@ -10,7 +10,11 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsEmail } from 'class-validator';
-import { normalizeEmail, normalizePhone, trimValue } from '../../../common/utils/transform.helpers';
+import {
+  normalizeEmail,
+  normalizePhone,
+  trimValue,
+} from '../../../common/utils/transform.helpers';
 import { MAX_ID_LENGTH } from '../../../common/validators/input-validation.decorators';
 
 const personNamePattern = /^[\p{L}\s.'-]+$/u;
@@ -23,7 +27,10 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, { message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
+  @Matches(personNamePattern, {
+    message:
+      'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  })
   firstName!: string;
 
   @Transform(({ value }: { value: unknown }) => trimValue(value))
@@ -31,7 +38,10 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, { message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens' })
+  @Matches(personNamePattern, {
+    message:
+      'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  })
   lastName!: string;
 
   @Transform(({ value }: { value: unknown }) => normalizeEmail(value))
@@ -50,7 +60,10 @@ export class CreateMemberDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, { message: 'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos' })
+  @Matches(brPhonePattern, {
+    message:
+      'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos',
+  })
   phone?: string;
 
   // Profile fields — only used when role === 'DENTIST'

@@ -31,7 +31,7 @@ const mockRepository = {
 };
 
 const CLINIC_ID = 'clinic-1';
-const USER_ID   = 'user-1';
+const USER_ID = 'user-1';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -46,13 +46,19 @@ type MockOpenAiShape = {
 
 const VALID_AUDIO_BASE64 = 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA';
 const VALID_MIME = 'audio/webm';
-const SAMPLE_TRANSCRIPT = 'Paciente relata dor no dente 36 há três dias, sensibilidade ao frio.';
+const SAMPLE_TRANSCRIPT =
+  'Paciente relata dor no dente 36 há três dias, sensibilidade ao frio.';
 
 function buildService(): ClinicalDictationService {
-  return new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+  return new ClinicalDictationService(
+    mockQuotaService as never,
+    mockRepository as never,
+  );
 }
 
-function buildDto(overrides: Partial<{ audioBase64: string; mimeType: string }> = {}) {
+function buildDto(
+  overrides: Partial<{ audioBase64: string; mimeType: string }> = {},
+) {
   return {
     audioBase64: VALID_AUDIO_BASE64,
     mimeType: VALID_MIME,
@@ -86,16 +92,20 @@ function mockOpenAi(
 }
 
 function getTranscriptionMock(service: ClinicalDictationService): jest.Mock {
-  return (service as unknown as { openai: MockOpenAiShape }).openai.audio.transcriptions
-    .create;
+  return (service as unknown as { openai: MockOpenAiShape }).openai.audio
+    .transcriptions.create;
 }
 
 function getClassificationMock(service: ClinicalDictationService): jest.Mock {
-  return (service as unknown as { openai: MockOpenAiShape }).openai.chat.completions.create;
+  return (service as unknown as { openai: MockOpenAiShape }).openai.chat
+    .completions.create;
 }
 
 /** Injects a mock that only covers transcription (chat is never expected to be called). */
-function mockTranscriptionOnly(service: ClinicalDictationService, error: Error): void {
+function mockTranscriptionOnly(
+  service: ClinicalDictationService,
+  error: Error,
+): void {
   (service as unknown as { openai: MockOpenAiShape }).openai = {
     audio: {
       transcriptions: { create: jest.fn().mockRejectedValue(error) },
@@ -107,7 +117,10 @@ function mockTranscriptionOnly(service: ClinicalDictationService, error: Error):
 }
 
 /** Injects a mock where transcription succeeds and chat throws. */
-function mockClassificationError(service: ClinicalDictationService, error: Error): void {
+function mockClassificationError(
+  service: ClinicalDictationService,
+  error: Error,
+): void {
   (service as unknown as { openai: MockOpenAiShape }).openai = {
     audio: {
       transcriptions: {
@@ -146,7 +159,11 @@ describe('ClinicalDictationService', () => {
     });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
 
-    const result: DictationResult = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+    const result: DictationResult = await service.dictate(
+      CLINIC_ID,
+      USER_ID,
+      buildDto(),
+    );
 
     expect(result.transcript).toBe(SAMPLE_TRANSCRIPT);
     expect(result.fields.chiefComplaint).toBe('Dor no dente 36');
@@ -161,12 +178,13 @@ describe('ClinicalDictationService', () => {
     delete process.env.OPENAI_API_KEY;
     const svcWithoutKey = buildService();
 
-    await expect(svcWithoutKey.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      svcWithoutKey.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
 
     // openai property is null — no SDK call can have been made
-    const openaiProp = (svcWithoutKey as unknown as { openai: OpenAI | null }).openai;
+    const openaiProp = (svcWithoutKey as unknown as { openai: OpenAI | null })
+      .openai;
     expect(openaiProp).toBeNull();
   });
 
@@ -175,9 +193,9 @@ describe('ClinicalDictationService', () => {
   it('throws InternalServerErrorException on a generic Whisper error', async () => {
     mockTranscriptionOnly(service, new Error('Network error'));
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      InternalServerErrorException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(InternalServerErrorException);
     // Classification is never reached
     expect(getClassificationMock(service)).not.toHaveBeenCalled();
   });
@@ -185,12 +203,14 @@ describe('ClinicalDictationService', () => {
   // ── 4. Whisper rate limit ─────────────────────────────────────────────────
 
   it('throws ServiceUnavailableException on a Whisper 429 rate-limit error', async () => {
-    const rateLimitErr = Object.assign(new Error('Rate limited'), { status: 429 });
+    const rateLimitErr = Object.assign(new Error('Rate limited'), {
+      status: 429,
+    });
     mockTranscriptionOnly(service, rateLimitErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   // ── 5. GPT generic failure ────────────────────────────────────────────────
@@ -198,21 +218,23 @@ describe('ClinicalDictationService', () => {
   it('throws InternalServerErrorException on a generic GPT classification error', async () => {
     mockClassificationError(service, new Error('GPT internal error'));
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      InternalServerErrorException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(InternalServerErrorException);
     expect(getTranscriptionMock(service)).toHaveBeenCalledTimes(1);
   });
 
   // ── 6. GPT rate limit ─────────────────────────────────────────────────────
 
   it('throws ServiceUnavailableException on a GPT 429 rate-limit error', async () => {
-    const rateLimitErr = Object.assign(new Error('Rate limited'), { status: 429 });
+    const rateLimitErr = Object.assign(new Error('Rate limited'), {
+      status: 429,
+    });
     mockClassificationError(service, rateLimitErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
     expect(getTranscriptionMock(service)).toHaveBeenCalledTimes(1);
   });
 
@@ -224,9 +246,9 @@ describe('ClinicalDictationService', () => {
   it('throws ServiceUnavailableException when GPT returns malformed JSON', async () => {
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, 'NOT VALID JSON {{{');
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   // ── 8. Unknown GPT fields are stripped ───────────────────────────────────
@@ -260,11 +282,11 @@ describe('ClinicalDictationService', () => {
   it('ignores empty strings, whitespace-only strings, and non-string field values', async () => {
     const classificationJson = JSON.stringify({
       fields: {
-        chiefComplaint: '',           // empty — must be excluded
-        anamnesis: '   ',            // whitespace only — must be excluded
-        clinicalEvolution: 42,        // number — must be excluded
-        diagnosis: null,              // null — must be excluded
-        prescription: false,          // boolean — must be excluded
+        chiefComplaint: '', // empty — must be excluded
+        anamnesis: '   ', // whitespace only — must be excluded
+        clinicalEvolution: 42, // number — must be excluded
+        diagnosis: null, // null — must be excluded
+        prescription: false, // boolean — must be excluded
         treatmentPlan: 'Tratamento válido',
       },
     });
@@ -283,7 +305,11 @@ describe('ClinicalDictationService', () => {
   // ── 10. No fields detected ────────────────────────────────────────────────
 
   it('returns transcript with empty fields object when GPT classifies no content', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -298,7 +324,9 @@ describe('ClinicalDictationService', () => {
     mockOpenAi(
       service,
       { text: SAMPLE_TRANSCRIPT },
-      JSON.stringify({ fields: { chiefComplaint: longText, diagnosis: longText } }),
+      JSON.stringify({
+        fields: { chiefComplaint: longText, diagnosis: longText },
+      }),
     );
 
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
@@ -314,11 +342,15 @@ describe('ClinicalDictationService', () => {
   it('throws ServiceUnavailableException and never calls quota or OpenAI when OPENAI_AI_ASSISTANT_ENABLED is "false"', async () => {
     process.env.OPENAI_AI_ASSISTANT_ENABLED = 'false';
     // Mock so we can verify neither quota nor OpenAI were called
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
-
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
     );
+
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
 
     // Kill-switch fires before quota check — no quota consumption
     expect(mockQuotaService.assertQuota).not.toHaveBeenCalled();
@@ -332,8 +364,15 @@ describe('ClinicalDictationService', () => {
 
   it('passes OPENAI_MODEL env var as the GPT model for classification', async () => {
     process.env.OPENAI_MODEL = 'gpt-4o';
-    const svc = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
-    mockOpenAi(svc, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    const svc = new ClinicalDictationService(
+      mockQuotaService as never,
+      mockRepository as never,
+    );
+    mockOpenAi(
+      svc,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     await svc.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -363,7 +402,8 @@ describe('ClinicalDictationService', () => {
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
     expect(logSuccessSpy).toHaveBeenCalledTimes(1);
-    const [transcriptLength, fieldNames, durationMs] = logSuccessSpy.mock.calls[0];
+    const [transcriptLength, fieldNames, durationMs] =
+      logSuccessSpy.mock.calls[0];
 
     // Only the length is logged — not the transcript text itself
     expect(transcriptLength).toBe(SAMPLE_TRANSCRIPT.length);
@@ -379,7 +419,11 @@ describe('ClinicalDictationService', () => {
   // ── 15. Quota enforcement ─────────────────────────────────────────────────
 
   it('calls assertQuota with the correct clinic and CLINICAL_DICTATION type before OpenAI', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -388,20 +432,28 @@ describe('ClinicalDictationService', () => {
       AiAssistantAnalysisType.CLINICAL_DICTATION,
     );
     // assertQuota must be called before any OpenAI call
-    const quotaCallOrder = mockQuotaService.assertQuota.mock.invocationCallOrder[0];
-    const whisperCallOrder = getTranscriptionMock(service).mock.invocationCallOrder[0];
+    const quotaCallOrder =
+      mockQuotaService.assertQuota.mock.invocationCallOrder[0];
+    const whisperCallOrder =
+      getTranscriptionMock(service).mock.invocationCallOrder[0];
     expect(quotaCallOrder).toBeLessThan(whisperCallOrder);
   });
 
   it('throws ForbiddenException and never calls OpenAI when the plan does not allow dictation', async () => {
     mockQuotaService.assertQuota.mockRejectedValueOnce(
-      new ForbiddenException('O assistente de IA não está disponível no seu plano atual.'),
+      new ForbiddenException(
+        'O assistente de IA não está disponível no seu plano atual.',
+      ),
     );
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ForbiddenException);
 
     expect(getTranscriptionMock(service)).not.toHaveBeenCalled();
     expect(getClassificationMock(service)).not.toHaveBeenCalled();
@@ -409,11 +461,20 @@ describe('ClinicalDictationService', () => {
 
   it('throws 429 and never calls OpenAI when the monthly quota is exhausted', async () => {
     mockQuotaService.assertQuota.mockRejectedValueOnce(
-      new HttpException('Limite mensal de análises atingido.', HttpStatus.TOO_MANY_REQUESTS),
+      new HttpException(
+        'Limite mensal de análises atingido.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      ),
     );
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toMatchObject({
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
     });
 
@@ -422,7 +483,9 @@ describe('ClinicalDictationService', () => {
   });
 
   it('calls repository.saveSuccess with safe metadata after a successful dictation', async () => {
-    const classificationJson = JSON.stringify({ fields: { chiefComplaint: 'Dor' } });
+    const classificationJson = JSON.stringify({
+      fields: { chiefComplaint: 'Dor' },
+    });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
 
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
@@ -432,33 +495,42 @@ describe('ClinicalDictationService', () => {
 
     expect(mockRepository.saveSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
-        clinicId:  CLINIC_ID,
-        userId:    USER_ID,
-        type:      AiAssistantAnalysisType.CLINICAL_DICTATION,
+        clinicId: CLINIC_ID,
+        userId: USER_ID,
+        type: AiAssistantAnalysisType.CLINICAL_DICTATION,
         content: {
           transcriptLength: SAMPLE_TRANSCRIPT.length,
           fieldsClassified: ['chiefComplaint'],
           odontogramSuggestionsCount: 0,
         },
-        model:       expect.any(String),
+        model: expect.any(String),
         generatedAt: expect.any(Date),
         periodStart: null,
-        periodEnd:   null,
+        periodEnd: null,
       }),
     );
 
     // Confirm content does NOT include transcript text or field values
-    const savedContent = mockRepository.saveSuccess.mock.calls[0][0].content as Record<string, unknown>;
+    const savedContent = mockRepository.saveSuccess.mock.calls[0][0]
+      .content as Record<string, unknown>;
     expect(Object.keys(savedContent)).not.toContain('transcript');
     expect(Object.keys(savedContent)).not.toContain('fields');
   });
 
   it('does not block the response when repository.saveSuccess fails', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
-    mockRepository.saveSuccess.mockRejectedValueOnce(new Error('DB unavailable'));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
+    mockRepository.saveSuccess.mockRejectedValueOnce(
+      new Error('DB unavailable'),
+    );
 
     // Must resolve normally even when persistence fails
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).resolves.toMatchObject({
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).resolves.toMatchObject({
       transcript: SAMPLE_TRANSCRIPT,
     });
   });
@@ -468,41 +540,49 @@ describe('ClinicalDictationService', () => {
   // every non-429 OpenAI error from becoming a generic HTTP 500.
 
   it('throws BadRequestException when Whisper returns HTTP 400 (invalid/short audio)', async () => {
-    const invalidAudioErr = Object.assign(new Error('invalid_request_error'), { status: 400 });
+    const invalidAudioErr = Object.assign(new Error('invalid_request_error'), {
+      status: 400,
+    });
     mockTranscriptionOnly(service, invalidAudioErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(BadRequestException);
     // Classification must never be reached
     expect(getClassificationMock(service)).not.toHaveBeenCalled();
   });
 
   it('throws ServiceUnavailableException when Whisper returns HTTP 401 (bad API key)', async () => {
-    const authErr = Object.assign(new Error('Incorrect API key provided'), { status: 401 });
+    const authErr = Object.assign(new Error('Incorrect API key provided'), {
+      status: 401,
+    });
     mockTranscriptionOnly(service, authErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   it('throws ServiceUnavailableException when Whisper returns HTTP 500 (OpenAI server error)', async () => {
-    const serverErr = Object.assign(new Error('Internal server error'), { status: 500 });
+    const serverErr = Object.assign(new Error('Internal server error'), {
+      status: 500,
+    });
     mockTranscriptionOnly(service, serverErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   it('throws ServiceUnavailableException when Whisper returns HTTP 503 (OpenAI outage)', async () => {
-    const outageErr = Object.assign(new Error('Service unavailable'), { status: 503 });
+    const outageErr = Object.assign(new Error('Service unavailable'), {
+      status: 503,
+    });
     mockTranscriptionOnly(service, outageErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   // ── 17. OpenAI HTTP error classification (classification phase) ───────────
@@ -513,24 +593,28 @@ describe('ClinicalDictationService', () => {
     const badReqErr = Object.assign(new Error('Bad request'), { status: 400 });
     mockClassificationError(service, badReqErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      InternalServerErrorException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(InternalServerErrorException);
   });
 
   it('throws ServiceUnavailableException when GPT returns HTTP 503 (OpenAI outage)', async () => {
-    const outageErr = Object.assign(new Error('Service unavailable'), { status: 503 });
+    const outageErr = Object.assign(new Error('Service unavailable'), {
+      status: 503,
+    });
     mockClassificationError(service, outageErr);
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   // ── 18. Logging safety for new error paths ────────────────────────────────
 
   it('does not log the transcript or audio data on a Whisper 400 error', async () => {
-    const invalidAudioErr = Object.assign(new Error('audio_too_short'), { status: 400 });
+    const invalidAudioErr = Object.assign(new Error('audio_too_short'), {
+      status: 400,
+    });
     mockTranscriptionOnly(service, invalidAudioErr);
 
     const logSpy = jest.spyOn(
@@ -538,12 +622,14 @@ describe('ClinicalDictationService', () => {
       'error',
     );
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, buildDto())).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, buildDto()),
+    ).rejects.toThrow(BadRequestException);
 
     expect(logSpy).toHaveBeenCalledTimes(1);
-    const loggedPayload = JSON.parse(logSpy.mock.calls[0][0] as string) as Record<string, unknown>;
+    const loggedPayload = JSON.parse(
+      logSpy.mock.calls[0][0] as string,
+    ) as Record<string, unknown>;
 
     // Logged payload must not contain transcript text or audio data
     expect(loggedPayload).not.toHaveProperty('transcript');
@@ -621,7 +707,9 @@ describe('normalizeAudioMime', () => {
 
   it('throws BadRequestException for an unsupported MIME type', () => {
     expect(() => normalizeAudioMime('video/mp4')).toThrow(BadRequestException);
-    expect(() => normalizeAudioMime('application/octet-stream')).toThrow(BadRequestException);
+    expect(() => normalizeAudioMime('application/octet-stream')).toThrow(
+      BadRequestException,
+    );
   });
 });
 
@@ -635,7 +723,10 @@ describe('audio normalization in transcription flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.OPENAI_API_KEY = 'sk-test';
-    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+    service = new ClinicalDictationService(
+      mockQuotaService as never,
+      mockRepository as never,
+    );
   });
 
   afterEach(() => {
@@ -644,22 +735,32 @@ describe('audio normalization in transcription flow', () => {
 
   it('passes a file with name "dictation.webm" when MIME is audio/webm;codecs=opus', async () => {
     mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
-    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'audio/webm;codecs=opus' };
+    const dto = {
+      audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA',
+      mimeType: 'audio/webm;codecs=opus',
+    };
 
     await service.dictate(CLINIC_ID, USER_ID, dto);
 
-    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as { file: File };
+    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as {
+      file: File;
+    };
     expect(callArgs.file.name).toBe('dictation.webm');
     expect(callArgs.file.type).toBe('audio/webm');
   });
 
   it('passes a file with name "dictation.ogg" when MIME is audio/ogg;codecs=opus', async () => {
     mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
-    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'audio/ogg;codecs=opus' };
+    const dto = {
+      audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA',
+      mimeType: 'audio/ogg;codecs=opus',
+    };
 
     await service.dictate(CLINIC_ID, USER_ID, dto);
 
-    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as { file: File };
+    const callArgs = getTranscriptionMock(service).mock.calls[0][0] as {
+      file: File;
+    };
     expect(callArgs.file.name).toBe('dictation.ogg');
     expect(callArgs.file.type).toBe('audio/ogg');
   });
@@ -671,27 +772,37 @@ describe('audio normalization in transcription flow', () => {
     const dto = { audioBase64: base64WithWhitespace, mimeType: 'audio/webm' };
 
     // Must succeed (no TypeError from Buffer.from with whitespace)
-    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).resolves.toMatchObject({
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, dto),
+    ).resolves.toMatchObject({
       transcript: 'hello',
     });
   });
 
   it('strips an accidental data-URL prefix from audioBase64', async () => {
     mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
-    const dataUrlBase64 = 'data:audio/webm;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';
+    const dataUrlBase64 =
+      'data:audio/webm;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEA';
     const dto = { audioBase64: dataUrlBase64, mimeType: 'audio/webm' };
 
     // Must succeed without throwing a base64 parse error
-    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).resolves.toMatchObject({
+    await expect(
+      service.dictate(CLINIC_ID, USER_ID, dto),
+    ).resolves.toMatchObject({
       transcript: 'hello',
     });
   });
 
   it('throws BadRequestException before calling OpenAI for an unsupported MIME type', async () => {
     mockOpenAi(service, { text: 'hello' }, JSON.stringify({ fields: {} }));
-    const dto = { audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA', mimeType: 'video/mp4' };
+    const dto = {
+      audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEA',
+      mimeType: 'video/mp4',
+    };
 
-    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).rejects.toThrow(BadRequestException);
+    await expect(service.dictate(CLINIC_ID, USER_ID, dto)).rejects.toThrow(
+      BadRequestException,
+    );
 
     // OpenAI must not have been called at all
     expect(getTranscriptionMock(service)).not.toHaveBeenCalled();
@@ -708,7 +819,10 @@ describe('strict JSON mode for classification', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.OPENAI_API_KEY = 'sk-test';
-    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+    service = new ClinicalDictationService(
+      mockQuotaService as never,
+      mockRepository as never,
+    );
   });
 
   afterEach(() => {
@@ -716,7 +830,11 @@ describe('strict JSON mode for classification', () => {
   });
 
   it('calls chat.completions.create with response_format: json_object', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -728,19 +846,29 @@ describe('strict JSON mode for classification', () => {
   });
 
   it('calls chat.completions.create with a low temperature for deterministic output', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
     expect(getClassificationMock(service)).toHaveBeenCalledWith(
       expect.objectContaining({ temperature: expect.any(Number) }),
     );
-    const { temperature } = getClassificationMock(service).mock.calls[0][0] as { temperature: number };
+    const { temperature } = getClassificationMock(service).mock.calls[0][0] as {
+      temperature: number;
+    };
     expect(temperature).toBeLessThanOrEqual(0.2);
   });
 
   it('sends the transcript as the user message to the chat API', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -805,7 +933,9 @@ describe('CLASSIFICATION_SYSTEM_PROMPT behavioral properties', () => {
   it('does not contain the sample transcript used in tests (static template only)', () => {
     // SAMPLE_TRANSCRIPT = 'Paciente relata dor no dente 36 há três dias, sensibilidade ao frio.'
     // The prompt must not accidentally embed any specific transcript content.
-    expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Paciente relata dor no dente 36');
+    expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain(
+      'Paciente relata dor no dente 36',
+    );
     expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('Sensibilidade ao frio');
     expect(CLASSIFICATION_SYSTEM_PROMPT).not.toContain('sensibilidade ao frio');
   });
@@ -826,7 +956,10 @@ describe('odontogram suggestions extraction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.OPENAI_API_KEY = 'sk-test';
-    service = new ClinicalDictationService(mockQuotaService as never, mockRepository as never);
+    service = new ClinicalDictationService(
+      mockQuotaService as never,
+      mockRepository as never,
+    );
   });
 
   afterEach(() => {
@@ -839,12 +972,22 @@ describe('odontogram suggestions extraction', () => {
     const classificationJson = JSON.stringify({
       fields: { chiefComplaint: 'Dor no dente 36' },
       odontogramSuggestions: [
-        { toothNumber: '36', condition: 'caries', notes: 'Cárie relatada no ditado.', confidence: 'high', sourceText: 'dente 36 com cárie' },
+        {
+          toothNumber: '36',
+          condition: 'caries',
+          notes: 'Cárie relatada no ditado.',
+          confidence: 'high',
+          sourceText: 'dente 36 com cárie',
+        },
       ],
     });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
 
-    const result: DictationResult = await service.dictate(CLINIC_ID, USER_ID, buildDto());
+    const result: DictationResult = await service.dictate(
+      CLINIC_ID,
+      USER_ID,
+      buildDto(),
+    );
 
     expect(result.odontogramSuggestions).toHaveLength(1);
     const s = result.odontogramSuggestions[0];
@@ -856,7 +999,11 @@ describe('odontogram suggestions extraction', () => {
   });
 
   it('returns an empty odontogramSuggestions array when none are in the GPT response', async () => {
-    mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, JSON.stringify({ fields: {} }));
+    mockOpenAi(
+      service,
+      { text: SAMPLE_TRANSCRIPT },
+      JSON.stringify({ fields: {} }),
+    );
 
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
@@ -898,7 +1045,7 @@ describe('odontogram suggestions extraction', () => {
       fields: {},
       odontogramSuggestions: [
         { toothNumber: '36', condition: 'unknown_condition' }, // invalid
-        { toothNumber: '11', condition: 'crown' },             // valid
+        { toothNumber: '11', condition: 'crown' }, // valid
       ],
     });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
@@ -914,8 +1061,8 @@ describe('odontogram suggestions extraction', () => {
     const classificationJson = JSON.stringify({
       fields: {},
       odontogramSuggestions: [
-        { condition: 'caries' },          // missing toothNumber
-        { toothNumber: '36' },             // missing condition
+        { condition: 'caries' }, // missing toothNumber
+        { toothNumber: '36' }, // missing condition
         { toothNumber: '11', condition: 'healthy' }, // valid
       ],
     });
@@ -930,7 +1077,21 @@ describe('odontogram suggestions extraction', () => {
   it('accepts all 13 valid odontogram conditions', async () => {
     const validConditions = [...VALID_ODONTOGRAM_CONDITIONS];
     // Use 13 valid FDI permanent tooth numbers (11-18 = 8, 21-25 = 5) to pair with each condition.
-    const teethForTest = ['11','12','13','14','15','16','17','18','21','22','23','24','25'];
+    const teethForTest = [
+      '11',
+      '12',
+      '13',
+      '14',
+      '15',
+      '16',
+      '17',
+      '18',
+      '21',
+      '22',
+      '23',
+      '24',
+      '25',
+    ];
     const suggestions = validConditions.map((condition, i) => ({
       toothNumber: teethForTest[i],
       condition,
@@ -949,7 +1110,10 @@ describe('odontogram suggestions extraction', () => {
 
   it('accepts valid FDI permanent and deciduous tooth numbers', async () => {
     const samples = ['11', '36', '48', '51', '75', '85']; // permanent + deciduous
-    const suggestions = samples.map((toothNumber) => ({ toothNumber, condition: 'caries' }));
+    const suggestions = samples.map((toothNumber) => ({
+      toothNumber,
+      condition: 'caries',
+    }));
 
     mockOpenAi(
       service,
@@ -960,7 +1124,9 @@ describe('odontogram suggestions extraction', () => {
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
     expect(result.odontogramSuggestions).toHaveLength(samples.length);
-    const returnedTeeth = result.odontogramSuggestions.map((s) => s.toothNumber);
+    const returnedTeeth = result.odontogramSuggestions.map(
+      (s) => s.toothNumber,
+    );
     for (const t of samples) expect(returnedTeeth).toContain(t);
   });
 
@@ -983,31 +1149,46 @@ describe('odontogram suggestions extraction', () => {
     const classificationJson = JSON.stringify({
       fields: {},
       odontogramSuggestions: [
-        { toothNumber: '36', condition: 'caries', notes: 'cárie profunda observada' },
+        {
+          toothNumber: '36',
+          condition: 'caries',
+          notes: 'cárie profunda observada',
+        },
       ],
     });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
 
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
-    expect(result.odontogramSuggestions[0].notes).toBe('Cárie profunda observada');
+    expect(result.odontogramSuggestions[0].notes).toBe(
+      'Cárie profunda observada',
+    );
   });
 
   it('truncates notes and sourceText to their respective length limits', async () => {
-    const longNotes = 'N'.repeat(600);       // exceeds MAX_NOTES_LENGTH (500)
-    const longSource = 'S'.repeat(250);      // exceeds MAX_SOURCE_TEXT_LENGTH (200)
+    const longNotes = 'N'.repeat(600); // exceeds MAX_NOTES_LENGTH (500)
+    const longSource = 'S'.repeat(250); // exceeds MAX_SOURCE_TEXT_LENGTH (200)
     const classificationJson = JSON.stringify({
       fields: {},
       odontogramSuggestions: [
-        { toothNumber: '36', condition: 'caries', notes: longNotes, sourceText: longSource },
+        {
+          toothNumber: '36',
+          condition: 'caries',
+          notes: longNotes,
+          sourceText: longSource,
+        },
       ],
     });
     mockOpenAi(service, { text: SAMPLE_TRANSCRIPT }, classificationJson);
 
     const result = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
-    expect((result.odontogramSuggestions[0].notes ?? '').length).toBeLessThanOrEqual(500);
-    expect((result.odontogramSuggestions[0].sourceText ?? '').length).toBeLessThanOrEqual(200);
+    expect(
+      (result.odontogramSuggestions[0].notes ?? '').length,
+    ).toBeLessThanOrEqual(500);
+    expect(
+      (result.odontogramSuggestions[0].sourceText ?? '').length,
+    ).toBeLessThanOrEqual(200);
   });
 
   // ── Field capitalization ──────────────────────────────────────────────────
@@ -1015,7 +1196,7 @@ describe('odontogram suggestions extraction', () => {
   it('capitalizes the first letter of each clinical field value', async () => {
     const classificationJson = JSON.stringify({
       fields: {
-        chiefComplaint: 'dor no dente 36',         // lowercase start
+        chiefComplaint: 'dor no dente 36', // lowercase start
         clinicalEvolution: 'sensibilidade ao frio', // lowercase start
       },
     });
@@ -1054,7 +1235,8 @@ describe('odontogram suggestions extraction', () => {
     await service.dictate(CLINIC_ID, USER_ID, buildDto());
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    const savedContent = mockRepository.saveSuccess.mock.calls[0][0].content as Record<string, unknown>;
+    const savedContent = mockRepository.saveSuccess.mock.calls[0][0]
+      .content as Record<string, unknown>;
     expect(savedContent.odontogramSuggestionsCount).toBe(2);
     // Patient data must still not be present
     expect(Object.keys(savedContent)).not.toContain('transcript');
@@ -1085,9 +1267,19 @@ describe('validation constant exports', () => {
 
   it('VALID_ODONTOGRAM_CONDITIONS contains all 13 expected condition values', () => {
     const expected = [
-      'healthy', 'caries', 'restored', 'absent', 'extraction',
-      'fracture', 'mobility', 'crown', 'endodontic', 'implant',
-      'prosthetic', 'sealant', 'watch',
+      'healthy',
+      'caries',
+      'restored',
+      'absent',
+      'extraction',
+      'fracture',
+      'mobility',
+      'crown',
+      'endodontic',
+      'implant',
+      'prosthetic',
+      'sealant',
+      'watch',
     ];
     for (const c of expected) {
       expect(VALID_ODONTOGRAM_CONDITIONS.has(c)).toBe(true);

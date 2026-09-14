@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { INotificationProvider, SendPayload, SendResult } from './notification-provider.interface';
+import type {
+  INotificationProvider,
+  SendPayload,
+  SendResult,
+} from './notification-provider.interface';
 
 @Injectable()
 export class LocalNotificationProvider implements INotificationProvider {

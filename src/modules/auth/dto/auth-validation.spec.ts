@@ -40,25 +40,35 @@ describe('auth DTO password policy', () => {
       expect(errors.some((e) => e.property === 'password')).toBe(false);
     });
 
-    it.each(WEAK_PASSWORDS)('rejects password with $label', async ({ value }) => {
-      const errors = await validateDto(RegisterDto, {
-        ...VALID_REGISTER_BASE,
-        password: value,
-      });
-      expect(errors.some((e) => e.property === 'password')).toBe(true);
-    });
+    it.each(WEAK_PASSWORDS)(
+      'rejects password with $label',
+      async ({ value }) => {
+        const errors = await validateDto(RegisterDto, {
+          ...VALID_REGISTER_BASE,
+          password: value,
+        });
+        expect(errors.some((e) => e.property === 'password')).toBe(true);
+      },
+    );
   });
 
   describe('UpdatePasswordDto', () => {
     it('accepts a valid complex password', async () => {
-      const errors = await validateDto(UpdatePasswordDto, { password: VALID_PASSWORD });
+      const errors = await validateDto(UpdatePasswordDto, {
+        password: VALID_PASSWORD,
+      });
       expect(errors.some((e) => e.property === 'password')).toBe(false);
     });
 
-    it.each(WEAK_PASSWORDS)('rejects password with $label', async ({ value }) => {
-      const errors = await validateDto(UpdatePasswordDto, { password: value });
-      expect(errors.some((e) => e.property === 'password')).toBe(true);
-    });
+    it.each(WEAK_PASSWORDS)(
+      'rejects password with $label',
+      async ({ value }) => {
+        const errors = await validateDto(UpdatePasswordDto, {
+          password: value,
+        });
+        expect(errors.some((e) => e.property === 'password')).toBe(true);
+      },
+    );
   });
 
   describe('ResetPasswordDto', () => {
@@ -70,12 +80,15 @@ describe('auth DTO password policy', () => {
       expect(errors.some((e) => e.property === 'newPassword')).toBe(false);
     });
 
-    it.each(WEAK_PASSWORDS)('rejects newPassword with $label', async ({ value }) => {
-      const errors = await validateDto(ResetPasswordDto, {
-        token: 'some-token',
-        newPassword: value,
-      });
-      expect(errors.some((e) => e.property === 'newPassword')).toBe(true);
-    });
+    it.each(WEAK_PASSWORDS)(
+      'rejects newPassword with $label',
+      async ({ value }) => {
+        const errors = await validateDto(ResetPasswordDto, {
+          token: 'some-token',
+          newPassword: value,
+        });
+        expect(errors.some((e) => e.property === 'newPassword')).toBe(true);
+      },
+    );
   });
 });

@@ -54,10 +54,7 @@ export class PrivacyController {
   @Post('requests')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { ttl: 60_000 * 60, limit: 5 } }) // 5 requests per hour per IP
-  createRequest(
-    @Body() dto: CreatePrivacyRequestDto,
-    @Req() req: Request,
-  ) {
+  createRequest(@Body() dto: CreatePrivacyRequestDto, @Req() req: Request) {
     return this.privacyService.createRequest(dto, extractMeta(req));
   }
 
@@ -79,7 +76,10 @@ export class PrivacyController {
   // See: privacy.service.ts listRequests() for context.
   @Roles('ADMIN')
   @Get('requests')
-  listRequests(@CurrentUser() user: AuthUser, @Query() dto: ListPrivacyRequestsDto) {
+  listRequests(
+    @CurrentUser() user: AuthUser,
+    @Query() dto: ListPrivacyRequestsDto,
+  ) {
     return this.privacyService.listRequests(user, dto);
   }
 
@@ -116,7 +116,12 @@ export class PrivacyController {
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
   ) {
-    return this.privacyService.respondToRequest(id, dto.responseNotes, user, extractMeta(req));
+    return this.privacyService.respondToRequest(
+      id,
+      dto.responseNotes,
+      user,
+      extractMeta(req),
+    );
   }
 
   // ── Authenticated cookie consent (with userId) ───────────────────────────

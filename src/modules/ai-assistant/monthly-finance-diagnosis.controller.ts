@@ -22,7 +22,10 @@ export class MonthlyFinanceDiagnosisController {
 
   @Post('monthly-diagnosis')
   @HttpCode(HttpStatus.OK)
-  diagnose(@CurrentUser() user: AuthUser, @Body() dto: MonthlyFinanceDiagnosisDto) {
+  diagnose(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: MonthlyFinanceDiagnosisDto,
+  ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.diagnosisService.diagnose(user.id, clinicId, dto);
   }

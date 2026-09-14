@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { AiAssistantAnalysisStatus, AiAssistantAnalysisType } from '@prisma/client';
+import {
+  AiAssistantAnalysisStatus,
+  AiAssistantAnalysisType,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()

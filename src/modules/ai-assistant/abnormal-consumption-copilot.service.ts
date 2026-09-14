@@ -115,8 +115,7 @@ REGRAS DE CONTEÚDO:
 // ── Empty anomaly deterministic response ───────────────────────────────────────
 
 const EMPTY_ANOMALY_CONTENT: CopilotContent = {
-  summary:
-    'Nenhum consumo fora do padrão foi encontrado no período analisado.',
+  summary: 'Nenhum consumo fora do padrão foi encontrado no período analisado.',
   highlights: [
     'Não há produtos com variações relevantes de consumo, perda ou ajustes.',
     'A análise foi baseada nos movimentos registrados no estoque.',

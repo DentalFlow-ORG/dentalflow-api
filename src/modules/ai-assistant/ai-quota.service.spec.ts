@@ -49,7 +49,12 @@ describe('AiQuotaService', () => {
 
       const result = await service.getQuota(CLINIC_ID, ANALYSIS_TYPE);
 
-      expect(result).toMatchObject({ allowed: false, limit: 0, remaining: 0, planKey: 'starter' });
+      expect(result).toMatchObject({
+        allowed: false,
+        limit: 0,
+        remaining: 0,
+        planKey: 'starter',
+      });
       expect(result.blockedReason).not.toBeNull();
     });
 
@@ -59,7 +64,12 @@ describe('AiQuotaService', () => {
 
       const result = await service.getQuota(CLINIC_ID, ANALYSIS_TYPE);
 
-      expect(result).toMatchObject({ allowed: true, limit: 1, used: 0, remaining: 1 });
+      expect(result).toMatchObject({
+        allowed: true,
+        limit: 1,
+        used: 0,
+        remaining: 1,
+      });
       expect(result.blockedReason).toBeNull();
     });
 
@@ -79,7 +89,12 @@ describe('AiQuotaService', () => {
 
       const result = await service.getQuota(CLINIC_ID, ANALYSIS_TYPE);
 
-      expect(result).toMatchObject({ allowed: true, limit: 10, used: 5, remaining: 5 });
+      expect(result).toMatchObject({
+        allowed: true,
+        limit: 10,
+        used: 5,
+        remaining: 5,
+      });
     });
 
     it('returns allowed:false when no active subscription exists', async () => {
@@ -108,7 +123,9 @@ describe('AiQuotaService', () => {
       expect(prismaMock.subscription.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
+            status: {
+              in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING],
+            },
           }),
         }),
       );
@@ -124,7 +141,9 @@ describe('AiQuotaService', () => {
       const resetDate = new Date(result.nextResetAt);
       // Uses Brazil month boundaries: next reset = first day of next Brazil month
       // at Brazil midnight = UTC 03:00 of that date.
-      const { end: expectedReset } = getBrazilMonthRange(brazilCurrentIsoMonth());
+      const { end: expectedReset } = getBrazilMonthRange(
+        brazilCurrentIsoMonth(),
+      );
 
       expect(resetDate.toISOString()).toBe(expectedReset.toISOString());
     });
@@ -132,7 +151,9 @@ describe('AiQuotaService', () => {
     it('returns lastGeneratedAt from the most recent success record', async () => {
       mockPlan('professional');
       const ts = new Date('2026-05-10T14:00:00.000Z');
-      prismaMock.aiAssistantAnalysis.findFirst.mockResolvedValue({ generatedAt: ts });
+      prismaMock.aiAssistantAnalysis.findFirst.mockResolvedValue({
+        generatedAt: ts,
+      });
 
       const result = await service.getQuota(CLINIC_ID, ANALYSIS_TYPE);
 
@@ -154,15 +175,17 @@ describe('AiQuotaService', () => {
       mockPlan('professional');
       prismaMock.aiAssistantAnalysis.count.mockResolvedValue(0);
 
-      await expect(service.assertQuota(CLINIC_ID, ANALYSIS_TYPE)).resolves.toBeUndefined();
+      await expect(
+        service.assertQuota(CLINIC_ID, ANALYSIS_TYPE),
+      ).resolves.toBeUndefined();
     });
 
     it('throws ForbiddenException when plan does not allow AI (starter)', async () => {
       mockPlan('starter');
 
-      await expect(service.assertQuota(CLINIC_ID, ANALYSIS_TYPE)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.assertQuota(CLINIC_ID, ANALYSIS_TYPE),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('throws HTTP 429 when monthly quota is exhausted', async () => {
@@ -182,9 +205,9 @@ describe('AiQuotaService', () => {
     it('throws ForbiddenException when no active subscription exists', async () => {
       mockPlan(null);
 
-      await expect(service.assertQuota(CLINIC_ID, ANALYSIS_TYPE)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.assertQuota(CLINIC_ID, ANALYSIS_TYPE),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

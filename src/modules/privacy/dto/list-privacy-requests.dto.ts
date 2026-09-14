@@ -8,7 +8,11 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { PrivacyRequestStatus, PrivacyRequestType, RequesterType } from '@prisma/client';
+import {
+  PrivacyRequestStatus,
+  PrivacyRequestType,
+  RequesterType,
+} from '@prisma/client';
 
 export class ListPrivacyRequestsDto {
   @IsOptional()
@@ -30,13 +34,17 @@ export class ListPrivacyRequestsDto {
   search?: string;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => (value !== undefined ? Number(value) : undefined))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== undefined ? Number(value) : undefined,
+  )
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => (value !== undefined ? Number(value) : undefined))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== undefined ? Number(value) : undefined,
+  )
   @IsInt()
   @Min(1)
   @Max(100)

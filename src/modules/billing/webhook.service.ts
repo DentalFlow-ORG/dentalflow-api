@@ -183,7 +183,9 @@ export class WebhookService {
     }
 
     if (expectedClinicId && clinicId !== expectedClinicId) {
-      throw new Error('Checkout session does not belong to the authenticated clinic.');
+      throw new Error(
+        'Checkout session does not belong to the authenticated clinic.',
+      );
     }
 
     const stripeSubscription = await this.stripe
@@ -195,20 +197,25 @@ export class WebhookService {
     // Cancel the previous Stripe subscription if the clinic had one with a different ID.
     // This prevents billing the customer for two active subscriptions simultaneously.
     // We do this before the upsert so if cancel fails we still activate the new sub.
-    const prevSub = await this.prisma.subscription.findUnique({ where: { clinicId } });
+    const prevSub = await this.prisma.subscription.findUnique({
+      where: { clinicId },
+    });
     if (
       prevSub?.stripeSubscriptionId &&
       prevSub.stripeSubscriptionId !== stripeSubscriptionId &&
       prevSub.status !== SubscriptionStatus.CANCELED
     ) {
       try {
-        await this.stripe.getClient().subscriptions.cancel(prevSub.stripeSubscriptionId);
+        await this.stripe
+          .getClient()
+          .subscriptions.cancel(prevSub.stripeSubscriptionId);
         this.logger.log(
           `Canceled previous Stripe subscription ${prevSub.stripeSubscriptionId} for clinic ${clinicId} — replaced by ${stripeSubscriptionId}`,
         );
       } catch (cancelErr) {
         // Already canceled in Stripe or not found — safe to ignore.
-        const msg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+        const msg =
+          cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
         this.logger.warn(
           `Could not cancel previous Stripe subscription ${prevSub.stripeSubscriptionId}: ${msg}`,
         );

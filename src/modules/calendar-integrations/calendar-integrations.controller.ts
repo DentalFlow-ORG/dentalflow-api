@@ -36,7 +36,10 @@ export class CalendarIntegrationsController {
   connect(@CurrentUser() user: AuthUser) {
     if (user.role === 'DENTIST') {
       const clinicId = this.accessPolicy.assertClinicMember(user);
-      return this.integrationsService.createDentistConnectUrl(user.id, clinicId);
+      return this.integrationsService.createDentistConnectUrl(
+        user.id,
+        clinicId,
+      );
     }
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.integrationsService.createConnectUrl(clinicId, user.id);
@@ -50,8 +53,10 @@ export class CalendarIntegrationsController {
     @Query('error') error: string | undefined,
     @Res() response: Response,
   ) {
-    const redirectRole = await this.integrationsService.resolveCallbackRedirectRole(state);
-    const redirectPath = redirectRole === 'DENTIST' ? '/app/agenda' : '/app/agendamentos';
+    const redirectRole =
+      await this.integrationsService.resolveCallbackRedirectRole(state);
+    const redirectPath =
+      redirectRole === 'DENTIST' ? '/app/agenda' : '/app/agendamentos';
     const redirectUrl = new URL(redirectPath, appConfig.frontendOrigin);
 
     if (error) {

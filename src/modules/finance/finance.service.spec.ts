@@ -1,8 +1,5 @@
 import 'reflect-metadata';
-import {
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   FinancialTransactionSource,
@@ -183,7 +180,10 @@ describe('FinanceService — backend-owned fields', () => {
         makeCategory({ name: 'Materiais renomeado', color: '#FF0000' }),
       );
 
-      const dto: UpdateFinancialCategoryDto = { name: 'Materiais renomeado', color: '#FF0000' };
+      const dto: UpdateFinancialCategoryDto = {
+        name: 'Materiais renomeado',
+        color: '#FF0000',
+      };
       await service.updateCategory(CLINIC_ID, CATEGORY_ID, dto);
 
       const call = mockPrisma.financialCategory.update.mock.calls[0][0];
@@ -282,7 +282,9 @@ describe('FinanceService — backend-owned fields', () => {
   describe('createTransaction', () => {
     it('always writes source: MANUAL for the manual endpoint flow', async () => {
       mockPrisma.financialCategory.findFirst.mockResolvedValue(makeCategory());
-      mockPrisma.financialTransaction.create.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.create.mockResolvedValue(
+        makeTransaction(),
+      );
 
       const dto: CreateFinancialTransactionDto = {
         type: FinancialTransactionType.EXPENSE,
@@ -300,7 +302,9 @@ describe('FinanceService — backend-owned fields', () => {
 
     it('keeps source: MANUAL even when attacker injects SERVICE_PAYMENT via the DTO', async () => {
       mockPrisma.financialCategory.findFirst.mockResolvedValue(makeCategory());
-      mockPrisma.financialTransaction.create.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.create.mockResolvedValue(
+        makeTransaction(),
+      );
 
       const dto = {
         type: FinancialTransactionType.INCOME,
@@ -319,7 +323,9 @@ describe('FinanceService — backend-owned fields', () => {
 
     it('keeps source: MANUAL when attacker injects FIXED_EXPENSE via the DTO', async () => {
       mockPrisma.financialCategory.findFirst.mockResolvedValue(makeCategory());
-      mockPrisma.financialTransaction.create.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.create.mockResolvedValue(
+        makeTransaction(),
+      );
 
       const dto = {
         type: FinancialTransactionType.EXPENSE,
@@ -341,7 +347,9 @@ describe('FinanceService — backend-owned fields', () => {
 
   describe('updateTransaction', () => {
     it('never includes source in the Prisma update data object', async () => {
-      mockPrisma.financialTransaction.findFirst.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.findFirst.mockResolvedValue(
+        makeTransaction(),
+      );
       mockPrisma.financialTransaction.update.mockResolvedValue(
         makeTransaction({ description: 'Atualizado' }),
       );
@@ -354,8 +362,12 @@ describe('FinanceService — backend-owned fields', () => {
     });
 
     it('never writes source even when attacker injects SERVICE_PAYMENT into the DTO', async () => {
-      mockPrisma.financialTransaction.findFirst.mockResolvedValue(makeTransaction());
-      mockPrisma.financialTransaction.update.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.findFirst.mockResolvedValue(
+        makeTransaction(),
+      );
+      mockPrisma.financialTransaction.update.mockResolvedValue(
+        makeTransaction(),
+      );
 
       const dto = {
         description: 'Injecao',
@@ -372,7 +384,9 @@ describe('FinanceService — backend-owned fields', () => {
       mockPrisma.financialTransaction.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.updateTransaction(OTHER_CLINIC, TRANSACTION_ID, { description: 'X' }),
+        service.updateTransaction(OTHER_CLINIC, TRANSACTION_ID, {
+          description: 'X',
+        }),
       ).rejects.toThrow(NotFoundException);
 
       expect(mockPrisma.financialTransaction.update).not.toHaveBeenCalled();
@@ -384,7 +398,9 @@ describe('FinanceService — backend-owned fields', () => {
   describe('generateFixedExpenseOccurrence', () => {
     it('writes source: FIXED_EXPENSE in the upsert create block (backend-owned)', async () => {
       mockPrisma.fixedExpense.findFirst.mockResolvedValue(makeFixedExpense());
-      mockPrisma.financialTransaction.upsert.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.upsert.mockResolvedValue(
+        makeTransaction(),
+      );
 
       await service.generateFixedExpenseOccurrence(
         CLINIC_ID,
@@ -436,7 +452,9 @@ describe('FinanceService — backend-owned fields', () => {
       mockPrisma.financialCategory.findFirst.mockResolvedValue(
         makeCategory({ type: FinancialTransactionType.INCOME }),
       );
-      mockPrisma.financialTransaction.upsert.mockResolvedValue(makeTransaction());
+      mockPrisma.financialTransaction.upsert.mockResolvedValue(
+        makeTransaction(),
+      );
 
       const dto: AppointmentPaymentDto = {
         appointmentId: APPOINTMENT_ID,
@@ -447,7 +465,9 @@ describe('FinanceService — backend-owned fields', () => {
       await service.createOrUpdateAppointmentPayment(CLINIC_ID, USER_ID, dto);
 
       const call = mockPrisma.financialTransaction.upsert.mock.calls[0][0];
-      expect(call.create.source).toBe(FinancialTransactionSource.SERVICE_PAYMENT);
+      expect(call.create.source).toBe(
+        FinancialTransactionSource.SERVICE_PAYMENT,
+      );
     });
 
     it('throws NotFoundException when appointment does not belong to the clinic', async () => {

@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Res,
-} from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuditAction } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -142,7 +137,11 @@ export class ReportsController {
       clinicId,
       action: AuditAction.REPORT_EXPORTED,
       entityType: 'Report',
-      metadata: { report: 'inventory', categoryId: query.categoryId, status: query.status },
+      metadata: {
+        report: 'inventory',
+        categoryId: query.categoryId,
+        status: query.status,
+      },
     });
 
     sendCsv(res, csv, safeFilename('relatorio_estoque'));

@@ -40,15 +40,22 @@ const OTHER_CLINIC_ID = 'clinic-2';
 const USER_ID = 'user-1';
 const MONTH = '2026-05';
 
-function makeTransaction(overrides: Partial<{
-  id: string;
-  clinicId: string;
-  type: FinancialTransactionType;
-  amount: string;
-  transactionDate: Date;
-  status: FinancialTransactionStatus;
-  category: { id: string; name: string; type: FinancialTransactionType; isDefault: boolean };
-}> = {}) {
+function makeTransaction(
+  overrides: Partial<{
+    id: string;
+    clinicId: string;
+    type: FinancialTransactionType;
+    amount: string;
+    transactionDate: Date;
+    status: FinancialTransactionStatus;
+    category: {
+      id: string;
+      name: string;
+      type: FinancialTransactionType;
+      isDefault: boolean;
+    };
+  }> = {},
+) {
   return {
     id: 'tx-1',
     clinicId: CLINIC_ID,
@@ -56,7 +63,12 @@ function makeTransaction(overrides: Partial<{
     amount: '1000.00',
     transactionDate: new Date('2026-05-10T00:00:00Z'),
     status: FinancialTransactionStatus.PAID,
-    category: { id: 'cat-1', name: 'Servicos odontologicos', type: FinancialTransactionType.INCOME, isDefault: true },
+    category: {
+      id: 'cat-1',
+      name: 'Servicos odontologicos',
+      type: FinancialTransactionType.INCOME,
+      isDefault: true,
+    },
     ...overrides,
   };
 }
@@ -72,7 +84,12 @@ const PROFESSIONAL_QUOTA = {
   blockedReason: null,
 };
 
-const PREMIUM_QUOTA = { ...PROFESSIONAL_QUOTA, planKey: 'premium', remaining: 20, limit: 20 };
+const PREMIUM_QUOTA = {
+  ...PROFESSIONAL_QUOTA,
+  planKey: 'premium',
+  remaining: 20,
+  limit: 20,
+};
 
 const STARTER_QUOTA = {
   allowed: false,
@@ -128,11 +145,31 @@ describe('MonthlyFinanceDiagnosisService', () => {
     const { firstDay, nextMonth } = svc.monthBounds(MONTH);
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
-      makeTransaction({ type: FinancialTransactionType.INCOME, amount: '3000.00', transactionDate: new Date('2026-05-05T00:00:00Z') }),
-      makeTransaction({ id: 'tx-2', type: FinancialTransactionType.EXPENSE, amount: '1200.00', transactionDate: new Date('2026-05-10T00:00:00Z'), category: { id: 'cat-e', name: 'Aluguel', type: FinancialTransactionType.EXPENSE, isDefault: true } }),
+      makeTransaction({
+        type: FinancialTransactionType.INCOME,
+        amount: '3000.00',
+        transactionDate: new Date('2026-05-05T00:00:00Z'),
+      }),
+      makeTransaction({
+        id: 'tx-2',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '1200.00',
+        transactionDate: new Date('2026-05-10T00:00:00Z'),
+        category: {
+          id: 'cat-e',
+          name: 'Aluguel',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: true,
+        },
+      }),
     ]);
 
-    const snapshot = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshot = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
 
     expect(snapshot.revenueCents).toBe(300000);
     expect(snapshot.expenseCents).toBe(120000);
@@ -146,14 +183,39 @@ describe('MonthlyFinanceDiagnosisService', () => {
     const { firstDay, nextMonth } = svc.monthBounds(MONTH);
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
-      makeTransaction({ type: FinancialTransactionType.INCOME, amount: '2000.00', transactionDate: new Date('2026-05-03T00:00:00Z') }),
-      makeTransaction({ id: 'tx-2', type: FinancialTransactionType.EXPENSE, amount: '500.00', transactionDate: new Date('2026-05-03T00:00:00Z'), category: { id: 'cat-e', name: 'Materiais', type: FinancialTransactionType.EXPENSE, isDefault: true } }),
+      makeTransaction({
+        type: FinancialTransactionType.INCOME,
+        amount: '2000.00',
+        transactionDate: new Date('2026-05-03T00:00:00Z'),
+      }),
+      makeTransaction({
+        id: 'tx-2',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '500.00',
+        transactionDate: new Date('2026-05-03T00:00:00Z'),
+        category: {
+          id: 'cat-e',
+          name: 'Materiais',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: true,
+        },
+      }),
     ]);
-    const snapshotWithRevenue = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshotWithRevenue = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
     expect(snapshotWithRevenue.profitMarginPercent).toBeCloseTo(75, 1);
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([]);
-    const snapshotNoRevenue = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshotNoRevenue = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
     expect(snapshotNoRevenue.profitMarginPercent).toBeNull();
   });
 
@@ -169,7 +231,12 @@ describe('MonthlyFinanceDiagnosisService', () => {
         type: FinancialTransactionType.EXPENSE,
         amount,
         transactionDate: new Date('2026-05-10T00:00:00Z'),
-        category: { id: `cat-${id}`, name: catName, type: FinancialTransactionType.EXPENSE, isDefault: false },
+        category: {
+          id: `cat-${id}`,
+          name: catName,
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: false,
+        },
       });
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
@@ -181,12 +248,19 @@ describe('MonthlyFinanceDiagnosisService', () => {
       makeExpense('e6', 'Marketing', '100.00'),
     ]);
 
-    const snapshot = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshot = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
 
     expect(snapshot.topExpenseCategories).toHaveLength(5);
     expect(snapshot.topExpenseCategories[0].categoryName).toBe('Salarios');
     expect(snapshot.topExpenseCategories[0].amountCents).toBe(400000);
-    expect(snapshot.topExpenseCategories[4].categoryName).toBe('Software e ferramentas');
+    expect(snapshot.topExpenseCategories[4].categoryName).toBe(
+      'Software e ferramentas',
+    );
   });
 
   // ── 4. Uncategorized expense count ────────────────────────────────────────
@@ -196,12 +270,50 @@ describe('MonthlyFinanceDiagnosisService', () => {
     const { firstDay, nextMonth } = svc.monthBounds(MONTH);
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
-      makeTransaction({ id: 'e1', type: FinancialTransactionType.EXPENSE, amount: '500.00', transactionDate: new Date('2026-05-10T00:00:00Z'), category: { id: 'cat-manual', name: 'Despesas manuais', type: FinancialTransactionType.EXPENSE, isDefault: true } }),
-      makeTransaction({ id: 'e2', type: FinancialTransactionType.EXPENSE, amount: '800.00', transactionDate: new Date('2026-05-10T00:00:00Z'), category: { id: 'cat-manual', name: 'Despesas manuais', type: FinancialTransactionType.EXPENSE, isDefault: true } }),
-      makeTransaction({ id: 'e3', type: FinancialTransactionType.EXPENSE, amount: '200.00', transactionDate: new Date('2026-05-10T00:00:00Z'), category: { id: 'cat-aluguel', name: 'Aluguel', type: FinancialTransactionType.EXPENSE, isDefault: true } }),
+      makeTransaction({
+        id: 'e1',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '500.00',
+        transactionDate: new Date('2026-05-10T00:00:00Z'),
+        category: {
+          id: 'cat-manual',
+          name: 'Despesas manuais',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: true,
+        },
+      }),
+      makeTransaction({
+        id: 'e2',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '800.00',
+        transactionDate: new Date('2026-05-10T00:00:00Z'),
+        category: {
+          id: 'cat-manual',
+          name: 'Despesas manuais',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: true,
+        },
+      }),
+      makeTransaction({
+        id: 'e3',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '200.00',
+        transactionDate: new Date('2026-05-10T00:00:00Z'),
+        category: {
+          id: 'cat-aluguel',
+          name: 'Aluguel',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: true,
+        },
+      }),
     ]);
 
-    const snapshot = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshot = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
     expect(snapshot.uncategorizedExpenseCount).toBe(2);
   });
 
@@ -212,19 +324,50 @@ describe('MonthlyFinanceDiagnosisService', () => {
     const { firstDay, nextMonth } = svc.monthBounds(MONTH);
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
-      makeTransaction({ id: 't1', type: FinancialTransactionType.INCOME, amount: '1000.00', transactionDate: new Date('2026-05-03T00:00:00Z') }),
-      makeTransaction({ id: 't2', type: FinancialTransactionType.INCOME, amount: '2000.00', transactionDate: new Date('2026-05-12T00:00:00Z') }),
-      makeTransaction({ id: 't3', type: FinancialTransactionType.EXPENSE, amount: '500.00', transactionDate: new Date('2026-05-20T00:00:00Z'), category: { id: 'cat-e', name: 'Materiais', type: FinancialTransactionType.EXPENSE, isDefault: false } }),
-      makeTransaction({ id: 't4', type: FinancialTransactionType.INCOME, amount: '3000.00', transactionDate: new Date('2026-05-25T00:00:00Z') }),
+      makeTransaction({
+        id: 't1',
+        type: FinancialTransactionType.INCOME,
+        amount: '1000.00',
+        transactionDate: new Date('2026-05-03T00:00:00Z'),
+      }),
+      makeTransaction({
+        id: 't2',
+        type: FinancialTransactionType.INCOME,
+        amount: '2000.00',
+        transactionDate: new Date('2026-05-12T00:00:00Z'),
+      }),
+      makeTransaction({
+        id: 't3',
+        type: FinancialTransactionType.EXPENSE,
+        amount: '500.00',
+        transactionDate: new Date('2026-05-20T00:00:00Z'),
+        category: {
+          id: 'cat-e',
+          name: 'Materiais',
+          type: FinancialTransactionType.EXPENSE,
+          isDefault: false,
+        },
+      }),
+      makeTransaction({
+        id: 't4',
+        type: FinancialTransactionType.INCOME,
+        amount: '3000.00',
+        transactionDate: new Date('2026-05-25T00:00:00Z'),
+      }),
     ]);
 
-    const snapshot = await svc.buildFinanceSnapshot(CLINIC_ID, MONTH, firstDay, nextMonth);
+    const snapshot = await svc.buildFinanceSnapshot(
+      CLINIC_ID,
+      MONTH,
+      firstDay,
+      nextMonth,
+    );
 
     expect(snapshot.cashflowByWeek).toHaveLength(4);
-    expect(snapshot.cashflowByWeek[0].incomeCents).toBe(100000);   // week 1: day 3
-    expect(snapshot.cashflowByWeek[1].incomeCents).toBe(200000);   // week 2: day 12
-    expect(snapshot.cashflowByWeek[2].expenseCents).toBe(50000);   // week 3: day 20
-    expect(snapshot.cashflowByWeek[3].incomeCents).toBe(300000);   // week 4: day 25
+    expect(snapshot.cashflowByWeek[0].incomeCents).toBe(100000); // week 1: day 3
+    expect(snapshot.cashflowByWeek[1].incomeCents).toBe(200000); // week 2: day 12
+    expect(snapshot.cashflowByWeek[2].expenseCents).toBe(50000); // week 3: day 20
+    expect(snapshot.cashflowByWeek[3].incomeCents).toBe(300000); // week 4: day 25
     expect(snapshot.cashflowByWeek[2].netCents).toBe(-50000);
   });
 
@@ -238,7 +381,9 @@ describe('MonthlyFinanceDiagnosisService', () => {
 
     const result = await svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH });
 
-    expect(result.financeSnapshot.alerts.some((a) => a.type === 'LOW_DATA')).toBe(true);
+    expect(
+      result.financeSnapshot.alerts.some((a) => a.type === 'LOW_DATA'),
+    ).toBe(true);
     expect((svc.openai as any).chat.completions.create).not.toHaveBeenCalled();
     expect(mockQuotaService.getQuota).not.toHaveBeenCalled();
     expect(mockRepository.saveSuccess).not.toHaveBeenCalled();
@@ -256,9 +401,9 @@ describe('MonthlyFinanceDiagnosisService', () => {
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockQuotaService.getQuota.mockResolvedValue(STARTER_QUOTA);
 
-    await expect(svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH })).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH }),
+    ).rejects.toThrow(ForbiddenException);
     expect((svc.openai as any).chat.completions.create).not.toHaveBeenCalled();
   });
 
@@ -317,7 +462,9 @@ describe('MonthlyFinanceDiagnosisService', () => {
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockQuotaService.getQuota.mockResolvedValue(EXHAUSTED_QUOTA);
 
-    await expect(svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH })).rejects.toMatchObject({
+    await expect(
+      svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH }),
+    ).rejects.toMatchObject({
       status: 429,
     });
     expect((svc.openai as any).chat.completions.create).not.toHaveBeenCalled();
@@ -336,7 +483,20 @@ describe('MonthlyFinanceDiagnosisService', () => {
       highlights: ['Ponto positivo.'],
       risks: [],
       recommendedActions: ['Ação recomendada.'],
-      financeSnapshot: { month: MONTH, revenueCents: 100000, expenseCents: 50000, profitCents: 50000, profitMarginPercent: 50, transactionCount: 5, incomeTransactionCount: 3, expenseTransactionCount: 2, uncategorizedExpenseCount: 0, topExpenseCategories: [], cashflowByWeek: [], alerts: [] },
+      financeSnapshot: {
+        month: MONTH,
+        revenueCents: 100000,
+        expenseCents: 50000,
+        profitCents: 50000,
+        profitMarginPercent: 50,
+        transactionCount: 5,
+        incomeTransactionCount: 3,
+        expenseTransactionCount: 2,
+        uncategorizedExpenseCount: 0,
+        topExpenseCategories: [],
+        cashflowByWeek: [],
+        alerts: [],
+      },
     };
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
@@ -384,7 +544,10 @@ describe('MonthlyFinanceDiagnosisService', () => {
     });
     mockQuotaService.getQuota.mockResolvedValue(PROFESSIONAL_QUOTA);
 
-    const result = await svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH, forceRefresh: true });
+    const result = await svc.diagnose(USER_ID, CLINIC_ID, {
+      month: MONTH,
+      forceRefresh: true,
+    });
 
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(result.cached).toBe(false);
@@ -405,7 +568,9 @@ describe('MonthlyFinanceDiagnosisService', () => {
 
     expect((svc.openai as any).chat.completions.create).not.toHaveBeenCalled();
     expect(result.financeSnapshot.transactionCount).toBe(0);
-    expect(result.recommendedActions).toContain('Registre as receitas recebidas no mês.');
+    expect(result.recommendedActions).toContain(
+      'Registre as receitas recebidas no mês.',
+    );
   });
 
   // ── 14. AI context excludes sensitive data ────────────────────────────────
@@ -454,7 +619,11 @@ describe('MonthlyFinanceDiagnosisService', () => {
   it('15. AI provider generic error throws InternalServerErrorException', async () => {
     const svc = buildService();
     svc.openai = {
-      chat: { completions: { create: jest.fn().mockRejectedValue(new Error('OpenAI failure')) } },
+      chat: {
+        completions: {
+          create: jest.fn().mockRejectedValue(new Error('OpenAI failure')),
+        },
+      },
     } as any;
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
@@ -463,17 +632,21 @@ describe('MonthlyFinanceDiagnosisService', () => {
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockQuotaService.getQuota.mockResolvedValue(PROFESSIONAL_QUOTA);
 
-    await expect(svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH })).rejects.toThrow(
-      InternalServerErrorException,
-    );
+    await expect(
+      svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH }),
+    ).rejects.toThrow(InternalServerErrorException);
     expect(mockRepository.saveError).toHaveBeenCalled();
   });
 
   it('15b. AI rate-limit error throws ServiceUnavailableException', async () => {
     const svc = buildService();
-    const rateLimitError = Object.assign(new Error('Rate limit'), { status: 429 });
+    const rateLimitError = Object.assign(new Error('Rate limit'), {
+      status: 429,
+    });
     svc.openai = {
-      chat: { completions: { create: jest.fn().mockRejectedValue(rateLimitError) } },
+      chat: {
+        completions: { create: jest.fn().mockRejectedValue(rateLimitError) },
+      },
     } as any;
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
@@ -482,9 +655,9 @@ describe('MonthlyFinanceDiagnosisService', () => {
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockQuotaService.getQuota.mockResolvedValue(PROFESSIONAL_QUOTA);
 
-    await expect(svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH })).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await expect(
+      svc.diagnose(USER_ID, CLINIC_ID, { month: MONTH }),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   // ── 16. Cross-clinic isolation ────────────────────────────────────────────
@@ -497,7 +670,10 @@ describe('MonthlyFinanceDiagnosisService', () => {
     svc.openai = { chat: { completions: { create: mockCreate } } } as any;
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
-      makeTransaction({ clinicId: OTHER_CLINIC_ID, transactionDate: new Date('2026-05-10T00:00:00Z') }),
+      makeTransaction({
+        clinicId: OTHER_CLINIC_ID,
+        transactionDate: new Date('2026-05-10T00:00:00Z'),
+      }),
     ]);
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockQuotaService.getQuota.mockResolvedValue(PROFESSIONAL_QUOTA);

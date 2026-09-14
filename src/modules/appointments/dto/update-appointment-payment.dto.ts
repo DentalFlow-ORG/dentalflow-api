@@ -57,7 +57,9 @@ export class UpdateAppointmentPaymentDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MaxLength(500, { message: 'Observacao financeira muito longa (max. 500 caracteres).' })
+  @MaxLength(500, {
+    message: 'Observacao financeira muito longa (max. 500 caracteres).',
+  })
   paymentNotes?: string;
 
   @IsOptional()

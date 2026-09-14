@@ -78,7 +78,9 @@ describe('ReportsService', () => {
 
     it('returns clinic name from database', async () => {
       mockPrisma.financialTransaction.count.mockResolvedValue(0);
-      mockPrisma.clinic.findUniqueOrThrow.mockResolvedValue({ name: 'Odonto Center' });
+      mockPrisma.clinic.findUniqueOrThrow.mockResolvedValue({
+        name: 'Odonto Center',
+      });
       const result = await service.previewFinance(CLINIC_ID, {});
       expect(result.clinic.name).toBe('Odonto Center');
     });
@@ -133,13 +135,20 @@ describe('ReportsService', () => {
 
     it('includes type filter label when type is provided', async () => {
       mockPrisma.financialTransaction.count.mockResolvedValue(0);
-      const result = await service.previewFinance(CLINIC_ID, { type: 'INCOME' } as any);
-      expect(result.filters).toContainEqual({ label: 'Tipo', value: 'Receita' });
+      const result = await service.previewFinance(CLINIC_ID, {
+        type: 'INCOME',
+      } as any);
+      expect(result.filters).toContainEqual({
+        label: 'Tipo',
+        value: 'Receita',
+      });
     });
 
     it('includes status filter label when status is provided', async () => {
       mockPrisma.financialTransaction.count.mockResolvedValue(0);
-      const result = await service.previewFinance(CLINIC_ID, { status: 'PAID' } as any);
+      const result = await service.previewFinance(CLINIC_ID, {
+        status: 'PAID',
+      } as any);
       expect(result.filters).toContainEqual({ label: 'Status', value: 'Pago' });
     });
 
@@ -165,7 +174,9 @@ describe('ReportsService', () => {
       mockPrisma.financialTransaction.count.mockResolvedValue(0);
       await service.previewFinance(CLINIC_ID, {});
       expect(mockPrisma.financialTransaction.count).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ clinicId: CLINIC_ID }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ clinicId: CLINIC_ID }),
+        }),
       );
     });
 
@@ -189,7 +200,9 @@ describe('ReportsService', () => {
     it('generates a generatedAt ISO timestamp', async () => {
       mockPrisma.financialTransaction.count.mockResolvedValue(0);
       const result = await service.previewFinance(CLINIC_ID, {});
-      expect(result.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(result.generatedAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+      );
     });
   });
 
@@ -223,15 +236,22 @@ describe('ReportsService', () => {
 
     it('includes status filter label', async () => {
       mockPrisma.appointment.count.mockResolvedValue(0);
-      const result = await service.previewAppointments(CLINIC_ID, { status: 'CONFIRMED' } as any);
-      expect(result.filters).toContainEqual({ label: 'Status', value: 'Confirmado' });
+      const result = await service.previewAppointments(CLINIC_ID, {
+        status: 'CONFIRMED',
+      } as any);
+      expect(result.filters).toContainEqual({
+        label: 'Status',
+        value: 'Confirmado',
+      });
     });
 
     it('scopes count to clinicId', async () => {
       mockPrisma.appointment.count.mockResolvedValue(0);
       await service.previewAppointments(CLINIC_ID, {});
       expect(mockPrisma.appointment.count).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ clinicId: CLINIC_ID }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ clinicId: CLINIC_ID }),
+        }),
       );
     });
 
@@ -255,9 +275,15 @@ describe('ReportsService', () => {
 
     it('returns exact recordCount after in-memory status filter', async () => {
       mockPrisma.stockProduct.findMany.mockResolvedValue([
-        makeStockProduct({ isActive: true, currentQuantity: new Prisma.Decimal(0) }),  // EMPTY
-        makeStockProduct({ isActive: true, currentQuantity: new Prisma.Decimal(5) }), // ACTIVE
-        makeStockProduct({ isActive: false }),                                          // INACTIVE
+        makeStockProduct({
+          isActive: true,
+          currentQuantity: new Prisma.Decimal(0),
+        }), // EMPTY
+        makeStockProduct({
+          isActive: true,
+          currentQuantity: new Prisma.Decimal(5),
+        }), // ACTIVE
+        makeStockProduct({ isActive: false }), // INACTIVE
       ]);
       // No status filter — all 3 count
       const result = await service.previewInventory(CLINIC_ID, {});
@@ -266,11 +292,19 @@ describe('ReportsService', () => {
 
     it('filters count by status when status is provided', async () => {
       mockPrisma.stockProduct.findMany.mockResolvedValue([
-        makeStockProduct({ isActive: true, currentQuantity: new Prisma.Decimal(0) }),  // EMPTY
-        makeStockProduct({ isActive: true, currentQuantity: new Prisma.Decimal(5) }), // ACTIVE
-        makeStockProduct({ isActive: false }),                                          // INACTIVE
+        makeStockProduct({
+          isActive: true,
+          currentQuantity: new Prisma.Decimal(0),
+        }), // EMPTY
+        makeStockProduct({
+          isActive: true,
+          currentQuantity: new Prisma.Decimal(5),
+        }), // ACTIVE
+        makeStockProduct({ isActive: false }), // INACTIVE
       ]);
-      const result = await service.previewInventory(CLINIC_ID, { status: 'EMPTY' });
+      const result = await service.previewInventory(CLINIC_ID, {
+        status: 'EMPTY',
+      });
       expect(result.recordCount).toBe(1);
     });
 
@@ -300,7 +334,9 @@ describe('ReportsService', () => {
       mockPrisma.stockProduct.findMany.mockResolvedValue([]);
       await service.previewInventory(CLINIC_ID, {});
       expect(mockPrisma.stockProduct.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ clinicId: CLINIC_ID }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ clinicId: CLINIC_ID }),
+        }),
       );
     });
 
@@ -348,8 +384,13 @@ describe('ReportsService', () => {
 
     it('includes status filter label for ISSUED', async () => {
       mockPrisma.serviceInvoice.count.mockResolvedValue(0);
-      const result = await service.previewInvoices(CLINIC_ID, { status: 'ISSUED' } as any);
-      expect(result.filters).toContainEqual({ label: 'Status', value: 'Emitido' });
+      const result = await service.previewInvoices(CLINIC_ID, {
+        status: 'ISSUED',
+      } as any);
+      expect(result.filters).toContainEqual({
+        label: 'Status',
+        value: 'Emitido',
+      });
     });
 
     it('includes period when dates are provided', async () => {
@@ -365,7 +406,9 @@ describe('ReportsService', () => {
       mockPrisma.serviceInvoice.count.mockResolvedValue(0);
       await service.previewInvoices(CLINIC_ID, {});
       expect(mockPrisma.serviceInvoice.count).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ clinicId: CLINIC_ID }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ clinicId: CLINIC_ID }),
+        }),
       );
     });
 

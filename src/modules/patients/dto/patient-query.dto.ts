@@ -1,10 +1,5 @@
 import { Transform } from 'class-transformer';
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { trimValue } from '../../../common/utils/transform.helpers';
 
 export class ListPatientsQueryDto {

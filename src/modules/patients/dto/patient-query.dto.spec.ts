@@ -1,7 +1,10 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 
-import { ListPatientsQueryDto, PatientHistoryQueryDto } from './patient-query.dto';
+import {
+  ListPatientsQueryDto,
+  PatientHistoryQueryDto,
+} from './patient-query.dto';
 
 async function validateDto<T extends object>(
   cls: new () => T,

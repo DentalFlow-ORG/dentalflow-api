@@ -34,13 +34,17 @@ export class ListCookieConsentsDto {
   dateTo?: string;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => (value !== undefined ? Number(value) : undefined))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== undefined ? Number(value) : undefined,
+  )
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => (value !== undefined ? Number(value) : undefined))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== undefined ? Number(value) : undefined,
+  )
   @IsInt()
   @Min(1)
   @Max(100)

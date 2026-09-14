@@ -53,7 +53,8 @@ export class AdminFinanceController {
     return this.adminFinanceService.listStripeEvents({
       page: query.page ?? 1,
       limit: query.limit ?? 20,
-      processed: query.processed === undefined ? undefined : String(query.processed),
+      processed:
+        query.processed === undefined ? undefined : String(query.processed),
       type: query.type,
       from: query.from,
       to: query.to,

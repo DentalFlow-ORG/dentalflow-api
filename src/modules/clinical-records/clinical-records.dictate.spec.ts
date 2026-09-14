@@ -21,7 +21,9 @@ const mockAccessPolicy = {
 
 const mockClinicalRecordsService = {
   validateRecordForDictation: jest.fn(),
-} as unknown as jest.Mocked<Pick<ClinicalRecordsService, 'validateRecordForDictation'>>;
+} as unknown as jest.Mocked<
+  Pick<ClinicalRecordsService, 'validateRecordForDictation'>
+>;
 
 const mockClinicalDictationService = {
   dictate: jest.fn(),
@@ -29,7 +31,10 @@ const mockClinicalDictationService = {
 
 const SAMPLE_RESULT: DictationResult = {
   transcript: 'Paciente relata dor no dente 36.',
-  fields: { chiefComplaint: 'Dor no dente 36', clinicalEvolution: 'Sensibilidade ao frio.' },
+  fields: {
+    chiefComplaint: 'Dor no dente 36',
+    clinicalEvolution: 'Sensibilidade ao frio.',
+  },
   odontogramSuggestions: [],
 };
 
@@ -57,8 +62,12 @@ describe('ClinicalRecordsController — POST :id/dictate', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockClinicalRecordsService.validateRecordForDictation = jest.fn().mockResolvedValue(undefined);
-    mockClinicalDictationService.dictate = jest.fn().mockResolvedValue(SAMPLE_RESULT);
+    mockClinicalRecordsService.validateRecordForDictation = jest
+      .fn()
+      .mockResolvedValue(undefined);
+    mockClinicalDictationService.dictate = jest
+      .fn()
+      .mockResolvedValue(SAMPLE_RESULT);
     controller = buildController();
   });
 
@@ -69,14 +78,17 @@ describe('ClinicalRecordsController — POST :id/dictate', () => {
 
     const result = await controller.dictate(user, RECORD_ID, VALID_DTO);
 
-    expect(mockAccessPolicy.assertClinicOperationsAccess).toHaveBeenCalledWith(user);
-    expect(mockClinicalRecordsService.validateRecordForDictation).toHaveBeenCalledWith(
+    expect(mockAccessPolicy.assertClinicOperationsAccess).toHaveBeenCalledWith(
+      user,
+    );
+    expect(
+      mockClinicalRecordsService.validateRecordForDictation,
+    ).toHaveBeenCalledWith(CLINIC_ID, USER_ID, 'OWNER', RECORD_ID);
+    expect(mockClinicalDictationService.dictate).toHaveBeenCalledWith(
       CLINIC_ID,
       USER_ID,
-      'OWNER',
-      RECORD_ID,
+      VALID_DTO,
     );
-    expect(mockClinicalDictationService.dictate).toHaveBeenCalledWith(CLINIC_ID, USER_ID, VALID_DTO);
     expect(result).toEqual(SAMPLE_RESULT);
   });
 
@@ -85,11 +97,15 @@ describe('ClinicalRecordsController — POST :id/dictate', () => {
   it('does not call ClinicalDictationService when validation throws', async () => {
     mockClinicalRecordsService.validateRecordForDictation = jest
       .fn()
-      .mockRejectedValue(new ForbiddenException('Este prontuário não pode ser editado no status atual.'));
+      .mockRejectedValue(
+        new ForbiddenException(
+          'Este prontuário não pode ser editado no status atual.',
+        ),
+      );
 
-    await expect(controller.dictate(buildUser(), RECORD_ID, VALID_DTO)).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      controller.dictate(buildUser(), RECORD_ID, VALID_DTO),
+    ).rejects.toThrow(ForbiddenException);
 
     expect(mockClinicalDictationService.dictate).not.toHaveBeenCalled();
   });
@@ -100,12 +116,14 @@ describe('ClinicalRecordsController — POST :id/dictate', () => {
     mockClinicalRecordsService.validateRecordForDictation = jest
       .fn()
       .mockRejectedValue(
-        new ForbiddenException('Profissionais podem acessar apenas os próprios prontuários'),
+        new ForbiddenException(
+          'Profissionais podem acessar apenas os próprios prontuários',
+        ),
       );
 
-    await expect(controller.dictate(buildUser('DENTIST'), RECORD_ID, VALID_DTO)).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      controller.dictate(buildUser('DENTIST'), RECORD_ID, VALID_DTO),
+    ).rejects.toThrow(ForbiddenException);
 
     expect(mockClinicalDictationService.dictate).not.toHaveBeenCalled();
   });
@@ -131,9 +149,10 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
   function buildService() {
     // Dynamically import to avoid circular issues; use direct instantiation.
     /* eslint-disable @typescript-eslint/no-require-imports -- loaded per call, after the mocks are in place */
-    const { ClinicalRecordsService: Svc } = require('./clinical-records.service') as {
-      ClinicalRecordsService: typeof ClinicalRecordsService;
-    };
+    const { ClinicalRecordsService: Svc } =
+      require('./clinical-records.service') as {
+        ClinicalRecordsService: typeof ClinicalRecordsService;
+      };
     /* eslint-enable @typescript-eslint/no-require-imports */
     return new Svc(mockPrisma as never);
   }
@@ -156,7 +175,12 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
     const service = buildService();
 
     await expect(
-      service.validateRecordForDictation(CLINIC_ID, USER_ID, 'OWNER', RECORD_ID),
+      service.validateRecordForDictation(
+        CLINIC_ID,
+        USER_ID,
+        'OWNER',
+        RECORD_ID,
+      ),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -170,7 +194,12 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
     const service = buildService();
 
     await expect(
-      service.validateRecordForDictation(CLINIC_ID, USER_ID, 'DENTIST', RECORD_ID),
+      service.validateRecordForDictation(
+        CLINIC_ID,
+        USER_ID,
+        'DENTIST',
+        RECORD_ID,
+      ),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -181,7 +210,12 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
     const service = buildService();
 
     await expect(
-      service.validateRecordForDictation(CLINIC_ID, USER_ID, 'DENTIST', RECORD_ID),
+      service.validateRecordForDictation(
+        CLINIC_ID,
+        USER_ID,
+        'DENTIST',
+        RECORD_ID,
+      ),
     ).resolves.toBeUndefined();
   });
 });

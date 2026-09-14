@@ -84,11 +84,11 @@ export class AuditLogService {
           action: input.action,
           entityType: input.entityType ?? null,
           entityId: input.entityId ?? null,
-          metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : undefined,
+          metadata: input.metadata
+            ? (input.metadata as Prisma.InputJsonValue)
+            : undefined,
           ipHash: hashIp(input.ipAddress),
-          userAgent: input.userAgent
-            ? input.userAgent.slice(0, 512)
-            : null,
+          userAgent: input.userAgent ? input.userAgent.slice(0, 512) : null,
         },
       });
     } catch (err) {

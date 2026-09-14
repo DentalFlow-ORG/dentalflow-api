@@ -11,7 +11,10 @@ const mockUsersService = {
   adminListClinics: jest.fn(),
 };
 
-function user(role: AuthUser['role'], clinicId: string | null = 'clinic-1'): AuthUser {
+function user(
+  role: AuthUser['role'],
+  clinicId: string | null = 'clinic-1',
+): AuthUser {
   return { id: 'user-1', clinicId, role };
 }
 
@@ -24,7 +27,10 @@ describe('AdminUsersController.getClinicsHealth', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new AdminUsersController(mockUsersService as never, accessPolicy);
+    controller = new AdminUsersController(
+      mockUsersService as never,
+      accessPolicy,
+    );
   });
 
   it('allows ADMIN and returns the health rows', () => {
@@ -40,7 +46,9 @@ describe('AdminUsersController.getClinicsHealth', () => {
   it.each(['OWNER', 'DENTIST', 'ASSISTANT'] as const)(
     'throws ForbiddenException for %s and does not call the service',
     (role) => {
-      expect(() => controller.getClinicsHealth(user(role))).toThrow(ForbiddenException);
+      expect(() => controller.getClinicsHealth(user(role))).toThrow(
+        ForbiddenException,
+      );
       expect(mockUsersService.adminGetClinicsHealth).not.toHaveBeenCalled();
     },
   );

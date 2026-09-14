@@ -1,11 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import {
-  IsNotEmpty,
-  IsString,
-  MaxLength,
-  ValidateBy,
-} from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength, ValidateBy } from 'class-validator';
 import { trimValue } from '../../../common/utils/transform.helpers';
 
 const MAX_ODONTOGRAM_JSON_DEPTH = 8;
@@ -49,7 +44,9 @@ function IsPlainJsonObject() {
     name: 'isPlainJsonObject',
     validator: {
       validate(value: unknown) {
-        return value !== null && typeof value === 'object' && !Array.isArray(value);
+        return (
+          value !== null && typeof value === 'object' && !Array.isArray(value)
+        );
       },
       defaultMessage() {
         return 'Dados do odontograma devem ser um objeto JSON.';

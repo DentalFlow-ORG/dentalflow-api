@@ -111,8 +111,9 @@ export class StockPurchaseListService {
     return 'Estoque abaixo do mínimo definido.';
   }
 
-
-  private buildSummary(items: PurchaseListItem[]): PurchaseListResult['summary'] {
+  private buildSummary(
+    items: PurchaseListItem[],
+  ): PurchaseListResult['summary'] {
     let criticalItems = 0;
     let highPriorityItems = 0;
     let mediumPriorityItems = 0;

@@ -5,7 +5,11 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AppointmentPaymentStatus, AppointmentStatus, UserRole } from '@prisma/client';
+import {
+  AppointmentPaymentStatus,
+  AppointmentStatus,
+  UserRole,
+} from '@prisma/client';
 
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -76,7 +80,9 @@ const auditLogMock = {
   log: jest.fn(),
 };
 
-function createDto(overrides: Partial<CreateAppointmentDto> = {}): CreateAppointmentDto {
+function createDto(
+  overrides: Partial<CreateAppointmentDto> = {},
+): CreateAppointmentDto {
   return {
     profileId: PROFILE_ID,
     patientName: 'Paciente Teste',
@@ -118,8 +124,13 @@ describe('AppointmentsService scheduling concurrency', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    txMock.profile.findFirst.mockResolvedValue({ id: PROFILE_ID, userId: USER_ID });
-    txMock.clinic.findUnique.mockResolvedValue({ timezone: 'America/Sao_Paulo' });
+    txMock.profile.findFirst.mockResolvedValue({
+      id: PROFILE_ID,
+      userId: USER_ID,
+    });
+    txMock.clinic.findUnique.mockResolvedValue({
+      timezone: 'America/Sao_Paulo',
+    });
     txMock.availabilityException.findFirst.mockResolvedValue(null);
     txMock.availability.findMany.mockResolvedValue([availabilityRange]);
     txMock.service.findFirst.mockResolvedValue({
@@ -164,7 +175,9 @@ describe('AppointmentsService scheduling concurrency', () => {
   });
 
   it('create rejects overlapping conflict and does not create appointment', async () => {
-    txMock.appointment.findFirst.mockResolvedValueOnce({ id: 'other-appointment' });
+    txMock.appointment.findFirst.mockResolvedValueOnce({
+      id: 'other-appointment',
+    });
 
     await expect(
       service.createAppointment(
@@ -345,8 +358,12 @@ describe('AppointmentsService status and payment guards', () => {
       ...pendingAppointment,
       status: AppointmentStatus.CONFIRMED,
     });
-    prismaMock.clinic.findUnique.mockResolvedValue({ timezone: 'America/Sao_Paulo' });
-    calendarIntegrationsMock.deleteAppointmentEvent.mockResolvedValue(undefined);
+    prismaMock.clinic.findUnique.mockResolvedValue({
+      timezone: 'America/Sao_Paulo',
+    });
+    calendarIntegrationsMock.deleteAppointmentEvent.mockResolvedValue(
+      undefined,
+    );
 
     service = new AppointmentsService(
       prismaMock as never,
@@ -363,7 +380,12 @@ describe('AppointmentsService status and payment guards', () => {
       });
 
       await expect(
-        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+        service.cancelAppointment(
+          CLINIC_ID,
+          USER_ID,
+          UserRole.OWNER,
+          APPOINTMENT_ID,
+        ),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -374,7 +396,12 @@ describe('AppointmentsService status and payment guards', () => {
       });
 
       await expect(
-        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+        service.cancelAppointment(
+          CLINIC_ID,
+          USER_ID,
+          UserRole.OWNER,
+          APPOINTMENT_ID,
+        ),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -382,7 +409,12 @@ describe('AppointmentsService status and payment guards', () => {
       prismaMock.appointment.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.cancelAppointment(CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID),
+        service.cancelAppointment(
+          CLINIC_ID,
+          USER_ID,
+          UserRole.OWNER,
+          APPOINTMENT_ID,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -396,7 +428,10 @@ describe('AppointmentsService status and payment guards', () => {
 
       await expect(
         service.updateAppointmentStatus(
-          CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+          CLINIC_ID,
+          USER_ID,
+          UserRole.OWNER,
+          APPOINTMENT_ID,
           { status: AppointmentStatus.CANCELED },
         ),
       ).rejects.toThrow(UnprocessableEntityException);
@@ -405,7 +440,10 @@ describe('AppointmentsService status and payment guards', () => {
     it('throws UnprocessableEntityException for PENDING → NO_SHOW transition', async () => {
       await expect(
         service.updateAppointmentStatus(
-          CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+          CLINIC_ID,
+          USER_ID,
+          UserRole.OWNER,
+          APPOINTMENT_ID,
           { status: AppointmentStatus.NO_SHOW },
         ),
       ).rejects.toThrow(UnprocessableEntityException);
@@ -414,25 +452,36 @@ describe('AppointmentsService status and payment guards', () => {
     it('throws ForbiddenException when DENTIST attempts to CONFIRM', async () => {
       await expect(
         service.updateAppointmentStatus(
-          CLINIC_ID, USER_ID, UserRole.DENTIST, APPOINTMENT_ID,
+          CLINIC_ID,
+          USER_ID,
+          UserRole.DENTIST,
+          APPOINTMENT_ID,
           { status: AppointmentStatus.CONFIRMED },
         ),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('transitions PENDING → CONFIRMED successfully', async () => {
-      const confirmed = { ...pendingAppointment, status: AppointmentStatus.CONFIRMED };
+      const confirmed = {
+        ...pendingAppointment,
+        status: AppointmentStatus.CONFIRMED,
+      };
       prismaMock.appointment.update.mockResolvedValue(confirmed);
 
       const result = await service.updateAppointmentStatus(
-        CLINIC_ID, USER_ID, UserRole.OWNER, APPOINTMENT_ID,
+        CLINIC_ID,
+        USER_ID,
+        UserRole.OWNER,
+        APPOINTMENT_ID,
         { status: AppointmentStatus.CONFIRMED },
       );
 
       expect(prismaMock.appointment.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: APPOINTMENT_ID },
-          data: expect.objectContaining({ status: AppointmentStatus.CONFIRMED }),
+          data: expect.objectContaining({
+            status: AppointmentStatus.CONFIRMED,
+          }),
         }),
       );
       expect(result).toMatchObject({ status: AppointmentStatus.CONFIRMED });

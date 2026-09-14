@@ -75,13 +75,17 @@ export class CreateServiceInvoiceDto {
   serviceCode?: string;
 
   @Type(() => Number)
-  @IsInt({ message: 'Valor deve ser informado em centavos como número inteiro.' })
+  @IsInt({
+    message: 'Valor deve ser informado em centavos como número inteiro.',
+  })
   @Min(1, { message: 'Valor da nota fiscal deve ser maior que zero.' })
   amountCents!: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'Deduções devem ser informadas em centavos como número inteiro.' })
+  @IsInt({
+    message: 'Deduções devem ser informadas em centavos como número inteiro.',
+  })
   @Min(0, { message: 'Deduções não podem ser negativas.' })
   deductionsCents?: number;
 
@@ -135,13 +139,17 @@ export class UpdateServiceInvoiceDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'Valor deve ser informado em centavos como número inteiro.' })
+  @IsInt({
+    message: 'Valor deve ser informado em centavos como número inteiro.',
+  })
   @Min(1, { message: 'Valor da nota fiscal deve ser maior que zero.' })
   amountCents?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'Deduções devem ser informadas em centavos como número inteiro.' })
+  @IsInt({
+    message: 'Deduções devem ser informadas em centavos como número inteiro.',
+  })
   @Min(0, { message: 'Deduções não podem ser negativas.' })
   deductionsCents?: number;
 
@@ -184,7 +192,9 @@ export class ListAppointmentsForInvoiceDto {
   profileId?: string;
 
   @IsOptional()
-  @IsEnum(AppointmentPaymentStatus, { message: 'Status de pagamento inválido.' })
+  @IsEnum(AppointmentPaymentStatus, {
+    message: 'Status de pagamento inválido.',
+  })
   paymentStatus?: AppointmentPaymentStatus;
 
   @IsOptional()

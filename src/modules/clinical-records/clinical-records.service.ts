@@ -229,7 +229,9 @@ export class ClinicalRecordsService {
         status: 'COMPLETED',
         completedAt: now,
         updatedByUserId: userId,
-        ...(snapshotData !== undefined ? { odontogramSnapshot: snapshotData } : {}),
+        ...(snapshotData !== undefined
+          ? { odontogramSnapshot: snapshotData }
+          : {}),
       },
       include: RECORD_INCLUDE,
     });

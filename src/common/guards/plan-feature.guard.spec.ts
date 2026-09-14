@@ -52,16 +52,23 @@ describe('PlanFeatureGuard', () => {
         planCapsMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
     });
 
     it('returns true for routes without @RequirePlanFeature() (guard is opt-in)', async () => {
       const guard = new PlanFeatureGuard(
-        makeReflector({ [IS_PUBLIC_KEY]: undefined, [REQUIRES_PLAN_FEATURE_KEY]: undefined }),
+        makeReflector({
+          [IS_PUBLIC_KEY]: undefined,
+          [REQUIRES_PLAN_FEATURE_KEY]: undefined,
+        }),
         planCapsMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
       expect(planCapsMock.assertFeature).not.toHaveBeenCalled();
     });
   });
@@ -73,7 +80,9 @@ describe('PlanFeatureGuard', () => {
         planCapsMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(adminUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(adminUser))).resolves.toBe(
+        true,
+      );
       expect(planCapsMock.assertFeature).not.toHaveBeenCalled();
     });
   });
@@ -85,7 +94,9 @@ describe('PlanFeatureGuard', () => {
         planCapsMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
     });
 
     it('calls assertFeature with the correct clinicId and feature', async () => {
@@ -96,7 +107,10 @@ describe('PlanFeatureGuard', () => {
 
       await guard.canActivate(makeContext(ownerUser));
 
-      expect(planCapsMock.assertFeature).toHaveBeenCalledWith('clinic-1', PlanFeature.INVENTORY);
+      expect(planCapsMock.assertFeature).toHaveBeenCalledWith(
+        'clinic-1',
+        PlanFeature.INVENTORY,
+      );
     });
 
     it('propagates ForbiddenException when assertFeature throws (feature not in plan)', async () => {

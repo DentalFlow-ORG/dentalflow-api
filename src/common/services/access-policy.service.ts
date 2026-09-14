@@ -38,7 +38,9 @@ export class AccessPolicyService {
     this.assertValidRoleTenantShape(user);
 
     if (user.role !== 'ADMIN') {
-      throw new ForbiddenException('Acesso de administrador da plataforma obrigatório');
+      throw new ForbiddenException(
+        'Acesso de administrador da plataforma obrigatório',
+      );
     }
   }
 
@@ -68,7 +70,9 @@ export class AccessPolicyService {
     this.assertValidRoleTenantShape(user);
 
     if (!user.clinicId || !this.includesRole(OWNER_LEVEL_ROLES, user.role)) {
-      throw new ForbiddenException('Acesso de proprietário da clínica obrigatório');
+      throw new ForbiddenException(
+        'Acesso de proprietário da clínica obrigatório',
+      );
     }
 
     return user.clinicId;
@@ -90,8 +94,13 @@ export class AccessPolicyService {
   assertOwnerOrAssistantAccess(user: AuthUser): string {
     this.assertValidRoleTenantShape(user);
 
-    if (!user.clinicId || !this.includesRole(OWNER_OR_ASSISTANT_ROLES, user.role)) {
-      throw new ForbiddenException('Acesso de proprietário ou assistente obrigatório');
+    if (
+      !user.clinicId ||
+      !this.includesRole(OWNER_OR_ASSISTANT_ROLES, user.role)
+    ) {
+      throw new ForbiddenException(
+        'Acesso de proprietário ou assistente obrigatório',
+      );
     }
 
     return user.clinicId;

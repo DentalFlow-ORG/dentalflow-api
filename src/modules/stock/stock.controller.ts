@@ -174,10 +174,7 @@ export class StockController {
   }
 
   @Get('products/:id')
-  getProduct(
-    @CurrentUser() user: AuthUser,
-    @Param('id') productId: string,
-  ) {
+  getProduct(@CurrentUser() user: AuthUser, @Param('id') productId: string) {
     return this.stockService.getProduct(
       this.accessPolicy.assertOwnerOrAssistantAccess(user),
       productId,

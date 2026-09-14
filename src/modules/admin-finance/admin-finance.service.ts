@@ -60,11 +60,23 @@ export class AdminFinanceService {
       (item) => item.currency === primaryCurrency,
     );
     const subscriptionsByPlan = plans.map((plan) => {
-      const planSubscriptions = subscriptions.filter((item) => item.planId === plan.id);
-      const planRevenueRows = activeRevenueRows.filter((item) => item.planId === plan.id);
-      const estimatedMrr = planRevenueRows.reduce((total, item) => total + item.mrr, 0);
-      const estimatedArr = planRevenueRows.reduce((total, item) => total + item.arr, 0);
-      const currencies = [...new Set(planRevenueRows.map((item) => item.currency))];
+      const planSubscriptions = subscriptions.filter(
+        (item) => item.planId === plan.id,
+      );
+      const planRevenueRows = activeRevenueRows.filter(
+        (item) => item.planId === plan.id,
+      );
+      const estimatedMrr = planRevenueRows.reduce(
+        (total, item) => total + item.mrr,
+        0,
+      );
+      const estimatedArr = planRevenueRows.reduce(
+        (total, item) => total + item.arr,
+        0,
+      );
+      const currencies = [
+        ...new Set(planRevenueRows.map((item) => item.currency)),
+      ];
 
       return {
         planId: plan.id,
@@ -78,12 +90,15 @@ export class AdminFinanceService {
         canceledSubscriptions: planSubscriptions.filter(
           (item) => item.status === SubscriptionStatus.CANCELED,
         ).length,
-        pastDueSubscriptions: planSubscriptions.filter((item) =>
-          item.status === SubscriptionStatus.PAST_DUE ||
-          item.status === SubscriptionStatus.UNPAID,
+        pastDueSubscriptions: planSubscriptions.filter(
+          (item) =>
+            item.status === SubscriptionStatus.PAST_DUE ||
+            item.status === SubscriptionStatus.UNPAID,
         ).length,
         totalSubscriptions: planSubscriptions.length,
-        subscriberCount: new Set(planRevenueRows.map((item) => item.subscriptionId)).size,
+        subscriberCount: new Set(
+          planRevenueRows.map((item) => item.subscriptionId),
+        ).size,
         estimatedMrr,
         estimatedArr,
         currency: currencies.length === 1 ? currencies[0] : primaryCurrency,
@@ -107,19 +122,17 @@ export class AdminFinanceService {
         >
       >((groups, row) => {
         const key = `${row.stripePriceId}:${row.currency}`;
-        const current =
-          groups[key] ??
-          {
-            stripePriceId: row.stripePriceId,
-            priceNickname: row.priceNickname,
-            planId: row.planId,
-            planName: row.planName,
-            currency: row.currency,
-            billingInterval: row.billingInterval,
-            subscriberIds: new Set<string>(),
-            estimatedMrr: 0,
-            estimatedArr: 0,
-          };
+        const current = groups[key] ?? {
+          stripePriceId: row.stripePriceId,
+          priceNickname: row.priceNickname,
+          planId: row.planId,
+          planName: row.planName,
+          currency: row.currency,
+          billingInterval: row.billingInterval,
+          subscriberIds: new Set<string>(),
+          estimatedMrr: 0,
+          estimatedArr: 0,
+        };
 
         current.subscriberIds.add(row.subscriptionId);
         current.estimatedMrr += row.mrr;
@@ -155,7 +168,8 @@ export class AdminFinanceService {
         activeSubscriptions: statusCounts.ACTIVE ?? 0,
         trialSubscriptions: statusCounts.TRIALING ?? 0,
         canceledSubscriptions: statusCounts.CANCELED ?? 0,
-        pastDueSubscriptions: (statusCounts.PAST_DUE ?? 0) + (statusCounts.UNPAID ?? 0),
+        pastDueSubscriptions:
+          (statusCounts.PAST_DUE ?? 0) + (statusCounts.UNPAID ?? 0),
         estimatedMrr,
         estimatedArr,
         currency: primaryCurrency,
@@ -179,10 +193,16 @@ export class AdminFinanceService {
     const page = this.normalizePage(query.page);
     const limit = this.normalizeLimit(query.limit);
     const where: Prisma.SubscriptionWhereInput = {
-      ...(this.isSubscriptionStatus(query.status) ? { status: query.status } : {}),
+      ...(this.isSubscriptionStatus(query.status)
+        ? { status: query.status }
+        : {}),
       ...(query.planId ? { planId: query.planId } : {}),
       ...(query.search?.trim()
-        ? { clinic: { name: { contains: query.search.trim(), mode: 'insensitive' } } }
+        ? {
+            clinic: {
+              name: { contains: query.search.trim(), mode: 'insensitive' },
+            },
+          }
         : {}),
       ...this.createdAtRange(query.from, query.to),
     };
@@ -281,7 +301,9 @@ export class AdminFinanceService {
     const where: Prisma.StripeEventWhereInput = {
       ...(query.processed === 'true' ? { processed: true } : {}),
       ...(query.processed === 'false' ? { processed: false } : {}),
-      ...(query.type?.trim() ? { type: { contains: query.type.trim(), mode: 'insensitive' } } : {}),
+      ...(query.type?.trim()
+        ? { type: { contains: query.type.trim(), mode: 'insensitive' } }
+        : {}),
       ...this.receivedAtRange(query.from, query.to),
     };
 
@@ -329,7 +351,8 @@ export class AdminFinanceService {
         ? subscription.items.map((item) => ({
             stripePriceId: item.stripePriceId,
             priceNickname: item.priceNickname,
-            billingInterval: item.billingInterval ?? subscription.billingInterval,
+            billingInterval:
+              item.billingInterval ?? subscription.billingInterval,
             unitAmount: item.unitAmount,
             unitAmountDecimal: item.unitAmountDecimal,
             currency: item.currency,
@@ -339,8 +362,10 @@ export class AdminFinanceService {
             {
               stripePriceId:
                 subscription.billingInterval === 'YEARLY'
-                  ? (subscription.plan.stripePriceIdYearly ?? subscription.plan.id)
-                  : (subscription.plan.stripePriceIdMonthly ?? subscription.plan.id),
+                  ? (subscription.plan.stripePriceIdYearly ??
+                    subscription.plan.id)
+                  : (subscription.plan.stripePriceIdMonthly ??
+                    subscription.plan.id),
               priceNickname: subscription.plan.name,
               billingInterval: subscription.billingInterval,
               unitAmount:
@@ -354,7 +379,10 @@ export class AdminFinanceService {
           ];
 
     return items.map((item) => {
-      const amount = this.resolveAmount(item.unitAmount, item.unitAmountDecimal);
+      const amount = this.resolveAmount(
+        item.unitAmount,
+        item.unitAmountDecimal,
+      );
       const quantity = item.quantity || 1;
       const totalAmount = amount * quantity;
       const isYearly = item.billingInterval === 'YEARLY';
@@ -374,7 +402,10 @@ export class AdminFinanceService {
     });
   }
 
-  private resolveAmount(unitAmount: number | null, unitAmountDecimal: string | null) {
+  private resolveAmount(
+    unitAmount: number | null,
+    unitAmountDecimal: string | null,
+  ) {
     if (unitAmount !== null) return unitAmount;
 
     const parsed = unitAmountDecimal ? Number(unitAmountDecimal) : 0;
@@ -385,21 +416,23 @@ export class AdminFinanceService {
     rows: Array<{ currency: string; mrr: number; arr: number }>,
   ) {
     return Object.values(
-      rows.reduce<Record<string, { currency: string; estimatedMrr: number; estimatedArr: number }>>(
-        (groups, row) => {
-          const currency = row.currency || DEFAULT_CURRENCY;
-          const current = groups[currency] ?? {
-            currency,
-            estimatedMrr: 0,
-            estimatedArr: 0,
-          };
-          current.estimatedMrr += row.mrr;
-          current.estimatedArr += row.arr;
-          groups[currency] = current;
-          return groups;
-        },
-        {},
-      ),
+      rows.reduce<
+        Record<
+          string,
+          { currency: string; estimatedMrr: number; estimatedArr: number }
+        >
+      >((groups, row) => {
+        const currency = row.currency || DEFAULT_CURRENCY;
+        const current = groups[currency] ?? {
+          currency,
+          estimatedMrr: 0,
+          estimatedArr: 0,
+        };
+        current.estimatedMrr += row.mrr;
+        current.estimatedArr += row.arr;
+        groups[currency] = current;
+        return groups;
+      }, {}),
     ).sort((a, b) => b.estimatedMrr - a.estimatedMrr);
   }
 
@@ -440,15 +473,23 @@ export class AdminFinanceService {
   }
 
   private isSubscriptionStatus(value?: string): value is SubscriptionStatus {
-    return Object.values(SubscriptionStatus).includes(value as SubscriptionStatus);
+    return Object.values(SubscriptionStatus).includes(
+      value as SubscriptionStatus,
+    );
   }
 
-  private createdAtRange(from?: string, to?: string): Prisma.SubscriptionWhereInput {
+  private createdAtRange(
+    from?: string,
+    to?: string,
+  ): Prisma.SubscriptionWhereInput {
     const range = this.dateRange(from, to);
     return range ? { createdAt: range } : {};
   }
 
-  private receivedAtRange(from?: string, to?: string): Prisma.StripeEventWhereInput {
+  private receivedAtRange(
+    from?: string,
+    to?: string,
+  ): Prisma.StripeEventWhereInput {
     const range = this.dateRange(from, to);
     return range ? { receivedAt: range } : {};
   }

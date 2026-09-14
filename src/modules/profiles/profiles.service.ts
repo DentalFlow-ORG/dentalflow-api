@@ -85,7 +85,8 @@ export class ProfilesService {
         profileSpecialties: { include: { specialty: true } },
       },
     });
-    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
+    if (!profile)
+      throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 
@@ -99,7 +100,8 @@ export class ProfilesService {
       where: { id, clinicId },
       include: PROFILE_DETAIL_INCLUDE,
     });
-    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
+    if (!profile)
+      throw new NotFoundException('Perfil profissional não encontrado');
     if (callerRole === 'DENTIST' && profile.userId !== callerId) {
       throw new ForbiddenException(
         'Profissionais podem acessar apenas o próprio perfil',
@@ -270,7 +272,9 @@ export class ProfilesService {
         select: { id: true },
       });
       if (found.length !== specialtyIds.length) {
-        throw new BadRequestException('Uma ou mais especialidades são inválidas');
+        throw new BadRequestException(
+          'Uma ou mais especialidades são inválidas',
+        );
       }
     }
 
@@ -337,7 +341,8 @@ export class ProfilesService {
       where: { id: profileId, clinicId },
       select: { id: true, userId: true, slug: true, isPublished: true },
     });
-    if (!profile) throw new NotFoundException('Perfil profissional não encontrado');
+    if (!profile)
+      throw new NotFoundException('Perfil profissional não encontrado');
     return profile;
   }
 

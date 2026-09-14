@@ -21,9 +21,11 @@ describe('JwtAuthGuard', () => {
   describe('@Public() bypass', () => {
     it('returns true immediately when the route is marked @Public()', () => {
       const reflector = {
-        getAllAndOverride: jest.fn().mockImplementation((key: string) =>
-          key === IS_PUBLIC_KEY ? true : undefined,
-        ),
+        getAllAndOverride: jest
+          .fn()
+          .mockImplementation((key: string) =>
+            key === IS_PUBLIC_KEY ? true : undefined,
+          ),
       };
       const guard = new JwtAuthGuard(reflector as unknown as Reflector);
 

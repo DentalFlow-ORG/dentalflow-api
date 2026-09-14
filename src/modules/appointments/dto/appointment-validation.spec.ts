@@ -1,10 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import {
-  AppointmentPaymentStatus,
-  CanceledBy,
-} from '@prisma/client';
+import { AppointmentPaymentStatus, CanceledBy } from '@prisma/client';
 
 import {
   AppointmentIdParamDto,
@@ -46,7 +43,9 @@ describe('appointments DTO validation', () => {
     });
 
     expect(invalid.some((error) => error.property === 'id')).toBe(true);
-    expect(overlong.some((error) => error.property === 'availabilityId')).toBe(true);
+    expect(overlong.some((error) => error.property === 'availabilityId')).toBe(
+      true,
+    );
     expect(query.some((error) => error.property === 'serviceId')).toBe(true);
   });
 
@@ -82,8 +81,12 @@ describe('appointments DTO validation', () => {
       paidAmountCents: 1_000_000_000,
     });
 
-    expect(create.some((error) => error.property === 'estimatedAmountCents')).toBe(true);
-    expect(payment.some((error) => error.property === 'paidAmountCents')).toBe(true);
+    expect(
+      create.some((error) => error.property === 'estimatedAmountCents'),
+    ).toBe(true);
+    expect(payment.some((error) => error.property === 'paidAmountCents')).toBe(
+      true,
+    );
   });
 
   it('rejects missing or empty required fields', async () => {
@@ -119,7 +122,9 @@ describe('appointments DTO validation', () => {
     });
 
     expect(appointment.some((error) => error.property === 'notes')).toBe(true);
-    expect(payment.some((error) => error.property === 'paymentNotes')).toBe(true);
+    expect(payment.some((error) => error.property === 'paymentNotes')).toBe(
+      true,
+    );
   });
 
   it('validates cancel origin and cancellation reason length', async () => {
@@ -131,7 +136,11 @@ describe('appointments DTO validation', () => {
       cancellationReason: 'a'.repeat(501),
     });
 
-    expect(invalidOrigin.some((error) => error.property === 'canceledBy')).toBe(true);
-    expect(overlongReason.some((error) => error.property === 'cancellationReason')).toBe(true);
+    expect(invalidOrigin.some((error) => error.property === 'canceledBy')).toBe(
+      true,
+    );
+    expect(
+      overlongReason.some((error) => error.property === 'cancellationReason'),
+    ).toBe(true);
   });
 });

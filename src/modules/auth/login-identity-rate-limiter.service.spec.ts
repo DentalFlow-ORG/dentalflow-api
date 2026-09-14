@@ -41,7 +41,9 @@ describe('LoginIdentityRateLimiterService', () => {
         service.assertCanAttempt(HASH);
         throw new Error('Expected exception not thrown');
       } catch (err) {
-        expect((err as LoginIdentityRateLimitExceededException).getStatus()).toBe(429);
+        expect(
+          (err as LoginIdentityRateLimitExceededException).getStatus(),
+        ).toBe(429);
       }
     });
 

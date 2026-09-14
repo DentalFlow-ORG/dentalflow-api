@@ -19,7 +19,11 @@ function makeAppt(
   return {
     id,
     serviceId,
-    service: { id: serviceId, name: serviceName, estimatedDirectCostCents: serviceDirectCostCents },
+    service: {
+      id: serviceId,
+      name: serviceName,
+      estimatedDirectCostCents: serviceDirectCostCents,
+    },
     status,
     paidAmountCents,
     estimatedAmountCents,
@@ -68,7 +72,7 @@ describe('resolvePeriod', () => {
       year: 'numeric',
       month: '2-digit',
     }).formatToParts(now);
-    const expectedYear  = brazilMonth.find((p) => p.type === 'year')!.value;
+    const expectedYear = brazilMonth.find((p) => p.type === 'year')!.value;
     const expectedMonth = brazilMonth.find((p) => p.type === 'month')!.value;
     const expectedYearMonth = `${expectedYear}-${expectedMonth}`;
     expect(period.from.toISOString().slice(0, 7)).toBe(expectedYearMonth);
@@ -113,25 +117,45 @@ describe('computeAppointmentRevenue', () => {
   const { svc } = buildSvc();
 
   it('uses transaction amount when transaction exists for appointment', () => {
-    const appt = { id: 'a1', status: AppointmentStatus.COMPLETED, paidAmountCents: 5000, estimatedAmountCents: 6000 };
+    const appt = {
+      id: 'a1',
+      status: AppointmentStatus.COMPLETED,
+      paidAmountCents: 5000,
+      estimatedAmountCents: 6000,
+    };
     const txMap = new Map([['a1', 8000]]);
     expect(svc.computeAppointmentRevenue(appt, txMap)).toBe(8000);
   });
 
   it('falls back to paidAmountCents when no transaction', () => {
-    const appt = { id: 'a2', status: AppointmentStatus.COMPLETED, paidAmountCents: 5000, estimatedAmountCents: 6000 };
+    const appt = {
+      id: 'a2',
+      status: AppointmentStatus.COMPLETED,
+      paidAmountCents: 5000,
+      estimatedAmountCents: 6000,
+    };
     const txMap = new Map<string, number>();
     expect(svc.computeAppointmentRevenue(appt, txMap)).toBe(5000);
   });
 
   it('falls back to estimatedAmountCents for COMPLETED when no tx and no paidAmountCents', () => {
-    const appt = { id: 'a3', status: AppointmentStatus.COMPLETED, paidAmountCents: null, estimatedAmountCents: 7000 };
+    const appt = {
+      id: 'a3',
+      status: AppointmentStatus.COMPLETED,
+      paidAmountCents: null,
+      estimatedAmountCents: 7000,
+    };
     const txMap = new Map<string, number>();
     expect(svc.computeAppointmentRevenue(appt, txMap)).toBe(7000);
   });
 
   it('returns 0 for CANCELED appointment regardless of tx/amounts', () => {
-    const appt = { id: 'a4', status: AppointmentStatus.CANCELED, paidAmountCents: 5000, estimatedAmountCents: 6000 };
+    const appt = {
+      id: 'a4',
+      status: AppointmentStatus.CANCELED,
+      paidAmountCents: 5000,
+      estimatedAmountCents: 6000,
+    };
     const txMap = new Map([['a4', 8000]]);
     expect(svc.computeAppointmentRevenue(appt, txMap)).toBe(0);
   });
@@ -200,7 +224,9 @@ describe('getMargins', () => {
     const result = await svc.getMargins(CLINIC_ID, { month: '2026-05' });
 
     const statuses = result.items.map((i) => i.status);
-    expect(statuses.indexOf('HEALTHY')).toBeLessThan(statuses.indexOf('INSUFFICIENT_DATA'));
+    expect(statuses.indexOf('HEALTHY')).toBeLessThan(
+      statuses.indexOf('INSUFFICIENT_DATA'),
+    );
   });
 
   it('calculates avgRevenueCents as round(grossRevenue / completedAppointments)', async () => {
@@ -212,9 +238,9 @@ describe('getMargins', () => {
       makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED),
     ]);
     prisma.financialTransaction.findMany.mockResolvedValue([
-      makeTx('a1', '100.00'),  // 10000 cents
-      makeTx('a2', '80.00'),   // 8000 cents
-      makeTx('a3', '120.00'),  // 12000 cents
+      makeTx('a1', '100.00'), // 10000 cents
+      makeTx('a2', '80.00'), // 8000 cents
+      makeTx('a3', '120.00'), // 12000 cents
     ]);
 
     const result = await svc.getMargins(CLINIC_ID, { month: '2026-05' });
@@ -271,9 +297,33 @@ describe('getMargins', () => {
     const { svc, prisma } = buildSvc();
     // 3 completed, each paid 15000 cents, direct cost = 5000 per appointment
     prisma.appointment.findMany.mockResolvedValue([
-      makeAppt('a1', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 15000, null, 5000),
-      makeAppt('a2', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 15000, null, 5000),
-      makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 15000, null, 5000),
+      makeAppt(
+        'a1',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        15000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a2',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        15000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a3',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        15000,
+        null,
+        5000,
+      ),
     ]);
     prisma.financialTransaction.findMany.mockResolvedValue([]);
 
@@ -293,11 +343,51 @@ describe('getMargins', () => {
     const { svc, prisma } = buildSvc();
     // 5 total: 3 completed + 1 canceled + 1 no-show; direct cost = 2000
     prisma.appointment.findMany.mockResolvedValue([
-      makeAppt('a1', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 2000),
-      makeAppt('a2', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 2000),
-      makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 2000),
-      makeAppt('a4', SVC_A, 'Limpeza', AppointmentStatus.CANCELED, null, null, 2000),
-      makeAppt('a5', SVC_A, 'Limpeza', AppointmentStatus.NO_SHOW, null, null, 2000),
+      makeAppt(
+        'a1',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        2000,
+      ),
+      makeAppt(
+        'a2',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        2000,
+      ),
+      makeAppt(
+        'a3',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        2000,
+      ),
+      makeAppt(
+        'a4',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.CANCELED,
+        null,
+        null,
+        2000,
+      ),
+      makeAppt(
+        'a5',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.NO_SHOW,
+        null,
+        null,
+        2000,
+      ),
     ]);
     prisma.financialTransaction.findMany.mockResolvedValue([]);
 
@@ -315,9 +405,33 @@ describe('getMargins', () => {
     const { svc, prisma } = buildSvc();
     // SVC_A: cost configured; SVC_B: no cost
     prisma.appointment.findMany.mockResolvedValue([
-      makeAppt('a1', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
-      makeAppt('a2', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
-      makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
+      makeAppt(
+        'a1',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a2',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a3',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
       makeAppt('b1', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 20000),
       makeAppt('b2', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 20000),
       makeAppt('b3', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 20000),
@@ -344,12 +458,60 @@ describe('getMargins', () => {
     // SVC_B: 3 completed, cost=3000, paid=8000 each  → gross=24000, cost=9000, profit=15000
     // totals: gross=54000, cost=24000, profit=30000, margin=55.56%
     prisma.appointment.findMany.mockResolvedValue([
-      makeAppt('a1', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
-      makeAppt('a2', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
-      makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.COMPLETED, 10000, null, 5000),
-      makeAppt('b1', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 8000, null, 3000),
-      makeAppt('b2', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 8000, null, 3000),
-      makeAppt('b3', SVC_B, 'Extração', AppointmentStatus.COMPLETED, 8000, null, 3000),
+      makeAppt(
+        'a1',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a2',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a3',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.COMPLETED,
+        10000,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'b1',
+        SVC_B,
+        'Extração',
+        AppointmentStatus.COMPLETED,
+        8000,
+        null,
+        3000,
+      ),
+      makeAppt(
+        'b2',
+        SVC_B,
+        'Extração',
+        AppointmentStatus.COMPLETED,
+        8000,
+        null,
+        3000,
+      ),
+      makeAppt(
+        'b3',
+        SVC_B,
+        'Extração',
+        AppointmentStatus.COMPLETED,
+        8000,
+        null,
+        3000,
+      ),
     ]);
     prisma.financialTransaction.findMany.mockResolvedValue([]);
 
@@ -367,9 +529,33 @@ describe('getMargins', () => {
     const { svc, prisma } = buildSvc();
     // 3 PENDING appointments — revenue = 0, but cost is configured
     prisma.appointment.findMany.mockResolvedValue([
-      makeAppt('a1', SVC_A, 'Limpeza', AppointmentStatus.PENDING, null, null, 5000),
-      makeAppt('a2', SVC_A, 'Limpeza', AppointmentStatus.PENDING, null, null, 5000),
-      makeAppt('a3', SVC_A, 'Limpeza', AppointmentStatus.PENDING, null, null, 5000),
+      makeAppt(
+        'a1',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.PENDING,
+        null,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a2',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.PENDING,
+        null,
+        null,
+        5000,
+      ),
+      makeAppt(
+        'a3',
+        SVC_A,
+        'Limpeza',
+        AppointmentStatus.PENDING,
+        null,
+        null,
+        5000,
+      ),
     ]);
     prisma.financialTransaction.findMany.mockResolvedValue([]);
 

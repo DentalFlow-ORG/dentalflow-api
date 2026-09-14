@@ -72,12 +72,10 @@ function createPrisma() {
       findMany: jest.fn().mockResolvedValue([]),
     },
     clinic: {
-      findUniqueOrThrow: jest
-        .fn()
-        .mockResolvedValue({
-          name: 'Alpha Odonto',
-          email: 'alpha@example.test',
-        }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        name: 'Alpha Odonto',
+        email: 'alpha@example.test',
+      }),
     },
   };
 }

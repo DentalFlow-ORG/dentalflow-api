@@ -51,7 +51,9 @@ describe('UsersService.deleteMember', () => {
       where: { id: USER_ID },
       data: expect.objectContaining({ isActive: false }),
     });
-    const call = txMock.user.update.mock.calls[0][0] as { data: { deletedAt: unknown } };
+    const call = txMock.user.update.mock.calls[0][0] as {
+      data: { deletedAt: unknown };
+    };
     expect(call.data.deletedAt).toBeInstanceOf(Date);
   });
 
@@ -114,7 +116,13 @@ describe('UsersService.adminListClinics', () => {
 
     expect(mockPrisma.clinic.findMany).toHaveBeenCalledWith({
       where: { deletedAt: null },
-      select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+        createdAt: true,
+      },
       orderBy: { name: 'asc' },
     });
   });
@@ -147,8 +155,20 @@ describe('UsersService.adminGetClinicsHealth', () => {
 
   function baseClinics() {
     return [
-      { id: CLINIC_A, name: 'Clínica A', email: 'a@clinic.com', isActive: true, createdAt: new Date('2026-01-01') },
-      { id: CLINIC_B, name: 'Clínica B', email: 'b@clinic.com', isActive: true, createdAt: new Date('2026-02-01') },
+      {
+        id: CLINIC_A,
+        name: 'Clínica A',
+        email: 'a@clinic.com',
+        isActive: true,
+        createdAt: new Date('2026-01-01'),
+      },
+      {
+        id: CLINIC_B,
+        name: 'Clínica B',
+        email: 'b@clinic.com',
+        isActive: true,
+        createdAt: new Date('2026-02-01'),
+      },
     ];
   }
 
@@ -243,14 +263,14 @@ describe('UsersService.adminGetClinicsHealth', () => {
         { clinicId: CLINIC_A, _count: { _all: 5 } },
         { clinicId: CLINIC_B, _count: { _all: 2 } },
       ])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     // appointment.groupBy call #1 = total, call #2 = recent 30 days
     mockPrisma.appointment.groupBy
       .mockResolvedValueOnce([
         { clinicId: CLINIC_A, _count: { _all: 40 } },
         { clinicId: CLINIC_B, _count: { _all: 10 } },
       ])
-      .mockResolvedValueOnce([{ clinicId: CLINIC_A, _count: { _all: 6 } }])
+      .mockResolvedValueOnce([{ clinicId: CLINIC_A, _count: { _all: 6 } }]);
     mockPrisma.auditLog.groupBy.mockResolvedValue([]);
     mockPrisma.clinicFiscalProfile.findMany.mockResolvedValue([]);
 
@@ -294,7 +314,7 @@ describe('UsersService.adminGetClinicsHealth', () => {
       .mockResolvedValueOnce([]) // active users
       .mockResolvedValueOnce([
         { clinicId: CLINIC_A, _max: { lastLoginAt: new Date('2026-06-01') } },
-      ]) // last login
+      ]); // last login
     mockPrisma.auditLog.groupBy.mockResolvedValue([
       { clinicId: CLINIC_A, _max: { createdAt: new Date('2026-06-15') } },
     ]);

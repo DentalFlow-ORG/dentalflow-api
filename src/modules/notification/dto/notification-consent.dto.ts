@@ -7,7 +7,11 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ConsentSource, NotificationChannel, NotificationScope } from '@prisma/client';
+import {
+  ConsentSource,
+  NotificationChannel,
+  NotificationScope,
+} from '@prisma/client';
 
 const phonePattern = /^\d{10,11}$/;
 
@@ -20,7 +24,8 @@ export class CreateConsentDto {
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
   @Matches(phonePattern, {
-    message: 'Telefone deve ser um número brasileiro válido com DDD (10 ou 11 dígitos)',
+    message:
+      'Telefone deve ser um número brasileiro válido com DDD (10 ou 11 dígitos)',
   })
   phone!: string;
 

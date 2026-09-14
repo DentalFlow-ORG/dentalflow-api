@@ -10,7 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { PrivacyRequestType, RequesterType } from '@prisma/client';
-import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
+import {
+  normalizeEmail,
+  trimValue,
+} from '../../../common/utils/transform.helpers';
 
 export class CreatePrivacyRequestDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))

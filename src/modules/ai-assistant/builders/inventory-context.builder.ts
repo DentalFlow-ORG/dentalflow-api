@@ -49,9 +49,7 @@ function computeStatus(product: {
   if (product.expiresAt) {
     const expires = new Date(product.expiresAt);
     if (expires < today) return 'EXPIRED';
-    const days = Math.ceil(
-      (expires.getTime() - today.getTime()) / 86_400_000,
-    );
+    const days = Math.ceil((expires.getTime() - today.getTime()) / 86_400_000);
     if (days <= EXPIRY_WARNING_DAYS) return 'EXPIRING';
   }
   const current = Number(product.currentQuantity);
@@ -108,13 +106,10 @@ export class InventoryContextBuilder {
 
     // Top 10 critical products sorted by priority
     const criticalProducts = withStatus
-      .filter((p) =>
-        ['EMPTY', 'EXPIRED', 'EXPIRING', 'LOW'].includes(p.status),
-      )
+      .filter((p) => ['EMPTY', 'EXPIRED', 'EXPIRING', 'LOW'].includes(p.status))
       .sort(
         (a, b) =>
-          (STATUS_PRIORITY[a.status] ?? 99) -
-          (STATUS_PRIORITY[b.status] ?? 99),
+          (STATUS_PRIORITY[a.status] ?? 99) - (STATUS_PRIORITY[b.status] ?? 99),
       )
       .slice(0, 10);
 

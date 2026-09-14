@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 // Avatar is stored as a compressed base64 JPEG data URL (≤512×512 px).
 // The data-URL prefix is stripped before storage; only the raw base64 is kept.

@@ -71,7 +71,9 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   it('trims leading/trailing whitespace from identifiers', async () => {
     prismaMock.patientAvatar.findMany.mockResolvedValue([]);
 
-    await createService().batchGetPatientAvatars(CLINIC_ID, ['  spaced@test.com  ']);
+    await createService().batchGetPatientAvatars(CLINIC_ID, [
+      '  spaced@test.com  ',
+    ]);
 
     const { where } = prismaMock.patientAvatar.findMany.mock.calls[0][0] as {
       where: { identifier: { in: string[] }; clinicId: string };
@@ -83,7 +85,9 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   it('scopes the query to the provided clinicId (tenant isolation)', async () => {
     prismaMock.patientAvatar.findMany.mockResolvedValue([]);
 
-    await createService().batchGetPatientAvatars('clinic-other', ['x@test.com']);
+    await createService().batchGetPatientAvatars('clinic-other', [
+      'x@test.com',
+    ]);
 
     const { where } = prismaMock.patientAvatar.findMany.mock.calls[0][0] as {
       where: { clinicId: string; identifier: { in: string[] } };
@@ -99,7 +103,10 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   });
 
   it('returns an empty avatars map and skips DB when all identifiers are blank after trim', async () => {
-    const result = await createService().batchGetPatientAvatars(CLINIC_ID, ['  ', '   ']);
+    const result = await createService().batchGetPatientAvatars(CLINIC_ID, [
+      '  ',
+      '   ',
+    ]);
 
     expect(result.avatars).toEqual({});
     expect(prismaMock.patientAvatar.findMany).not.toHaveBeenCalled();
@@ -110,7 +117,9 @@ describe('PatientsService.batchGetPatientAvatars', () => {
       { identifier: 'noimg@test.com', avatarUrl: null },
     ]);
 
-    const result = await createService().batchGetPatientAvatars(CLINIC_ID, ['noimg@test.com']);
+    const result = await createService().batchGetPatientAvatars(CLINIC_ID, [
+      'noimg@test.com',
+    ]);
 
     expect(result.avatars['noimg@test.com']).toBeNull();
   });

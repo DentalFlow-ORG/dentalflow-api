@@ -1,4 +1,12 @@
-import { Body, Controller, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequiresBillingAccess } from '../../common/decorators/requires-billing-access.decorator';
@@ -43,7 +51,12 @@ export class ExpenseClassifierController {
     @Body() dto: ClassifyExpenseDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
-    return this.classifierService.classifyExpense(user.id, clinicId, params.id, dto);
+    return this.classifierService.classifyExpense(
+      user.id,
+      clinicId,
+      params.id,
+      dto,
+    );
   }
 
   @Patch(':id/apply-suggested-category')
@@ -53,6 +66,10 @@ export class ExpenseClassifierController {
     @Body() dto: ApplySuggestedCategoryDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
-    return this.classifierService.applySuggestedCategory(clinicId, params.id, dto);
+    return this.classifierService.applySuggestedCategory(
+      clinicId,
+      params.id,
+      dto,
+    );
   }
 }

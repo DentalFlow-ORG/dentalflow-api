@@ -1,5 +1,8 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { IsSafeId, MAX_ID_LENGTH } from '../../../common/validators/input-validation.decorators';
+import {
+  IsSafeId,
+  MAX_ID_LENGTH,
+} from '../../../common/validators/input-validation.decorators';
 
 export class AppointmentIdParamDto {
   @IsString()

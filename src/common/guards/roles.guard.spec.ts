@@ -74,7 +74,10 @@ describe('RolesGuard', () => {
   describe('@Roles() enforcement', () => {
     it('returns true when user role is in the required roles list', () => {
       const guard = new RolesGuard(
-        makeReflector({ [IS_PUBLIC_KEY]: undefined, [ROLES_KEY]: ['OWNER', 'DENTIST'] }),
+        makeReflector({
+          [IS_PUBLIC_KEY]: undefined,
+          [ROLES_KEY]: ['OWNER', 'DENTIST'],
+        }),
       );
 
       expect(guard.canActivate(makeContext(ownerUser()))).toBe(true);
@@ -82,9 +85,16 @@ describe('RolesGuard', () => {
 
     it('returns true when user is DENTIST and DENTIST is in required roles', () => {
       const guard = new RolesGuard(
-        makeReflector({ [IS_PUBLIC_KEY]: undefined, [ROLES_KEY]: ['OWNER', 'DENTIST'] }),
+        makeReflector({
+          [IS_PUBLIC_KEY]: undefined,
+          [ROLES_KEY]: ['OWNER', 'DENTIST'],
+        }),
       );
-      const context = makeContext({ id: 'u2', clinicId: 'clinic-1', role: 'DENTIST' });
+      const context = makeContext({
+        id: 'u2',
+        clinicId: 'clinic-1',
+        role: 'DENTIST',
+      });
 
       expect(guard.canActivate(context)).toBe(true);
     });
@@ -93,7 +103,11 @@ describe('RolesGuard', () => {
       const guard = new RolesGuard(
         makeReflector({ [IS_PUBLIC_KEY]: undefined, [ROLES_KEY]: ['OWNER'] }),
       );
-      const context = makeContext({ id: 'u2', clinicId: 'clinic-1', role: 'DENTIST' });
+      const context = makeContext({
+        id: 'u2',
+        clinicId: 'clinic-1',
+        role: 'DENTIST',
+      });
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });

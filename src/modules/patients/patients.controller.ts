@@ -45,7 +45,10 @@ export class PatientsController {
     @Body() dto: BatchPatientAvatarsDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
-    return this.patientsService.batchGetPatientAvatars(clinicId, dto.identifiers);
+    return this.patientsService.batchGetPatientAvatars(
+      clinicId,
+      dto.identifiers,
+    );
   }
 
   @Put('avatar')

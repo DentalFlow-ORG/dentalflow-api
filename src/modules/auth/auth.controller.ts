@@ -124,7 +124,10 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.register(dto, this.extractMetadata(req));
+    const result = await this.authService.register(
+      dto,
+      this.extractMetadata(req),
+    );
     this.setRefreshCookie(res, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
@@ -138,7 +141,10 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.signIn(dto, this.extractMetadata(req));
+    const result = await this.authService.signIn(
+      dto,
+      this.extractMetadata(req),
+    );
     this.setRefreshCookie(res, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
@@ -147,13 +153,19 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     this.assertTrustedOrigin(req);
     const rawToken = this.extractRefreshCookie(req);
     if (!rawToken) {
       throw new UnauthorizedException('Sessão inválida');
     }
-    const result = await this.authService.refresh(rawToken, this.extractMetadata(req));
+    const result = await this.authService.refresh(
+      rawToken,
+      this.extractMetadata(req),
+    );
     this.setRefreshCookie(res, result.refreshToken);
     return { accessToken: result.accessToken };
   }
@@ -194,7 +206,11 @@ export class AuthController {
     if (!rawToken) {
       return { success: true };
     }
-    return this.authService.logout(user.id, rawToken, this.extractMetadata(req));
+    return this.authService.logout(
+      user.id,
+      rawToken,
+      this.extractMetadata(req),
+    );
   }
 
   private extractMetadata(req: Request): TokenMetadata {

@@ -4,7 +4,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { googleCalendarConfig } from '../../config/google-calendar.config';
 
@@ -25,7 +31,7 @@ type GoogleCalendarStatus = {
   calendarSummary: string | null;
   connectedAt: Date | null;
   lastSyncedAt: Date | null;
-}
+};
 
 type IntegrationRow = {
   id: string;
@@ -37,7 +43,7 @@ type IntegrationRow = {
   tokenExpiresAt: Date;
   connectedAt: Date;
   lastSyncedAt: Date | null;
-}
+};
 
 type UserIntegrationRow = {
   id: string;
@@ -50,7 +56,7 @@ type UserIntegrationRow = {
   tokenExpiresAt: Date;
   connectedAt: Date;
   lastSyncedAt: Date | null;
-}
+};
 
 type OAuthStateWithRoleRow = {
   id: string;
@@ -58,7 +64,7 @@ type OAuthStateWithRoleRow = {
   userId: string;
   userRole: string;
   expiresAt: Date;
-}
+};
 
 type TokenResponse = {
   access_token?: string;
@@ -66,12 +72,12 @@ type TokenResponse = {
   expires_in?: number;
   error?: string;
   error_description?: string;
-}
+};
 
 type CalendarInfoResponse = {
   id?: string;
   summary?: string;
-}
+};
 
 type AppointmentSyncRow = {
   id: string;
@@ -84,17 +90,17 @@ type AppointmentSyncRow = {
   timezone: string;
   patientName: string | null;
   serviceName: string | null;
-}
+};
 
 type AppointmentGoogleEventRow = {
   id: string;
   googleCalendarEventId: string | null;
-}
+};
 
 type AppointmentDentistGoogleEventRow = {
   id: string;
   dentistGoogleCalendarEventId: string | null;
-}
+};
 
 type GoogleEventResponse = {
   id?: string;
@@ -104,7 +110,7 @@ type GoogleEventResponse = {
     status?: string;
     errors?: Array<{ domain?: string; reason?: string; message?: string }>;
   };
-}
+};
 
 type DeleteEventResult = 'deleted' | 'alreadyMissing' | 'failed';
 
@@ -176,7 +182,9 @@ export class CalendarIntegrationsService {
     `;
 
     if (!storedState || storedState.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Sessão de conexão do Google Agenda expirada.');
+      throw new BadRequestException(
+        'Sessão de conexão do Google Agenda expirada.',
+      );
     }
 
     const token = await this.exchangeCodeForToken(code);
@@ -238,7 +246,9 @@ export class CalendarIntegrationsService {
       try {
         await this.syncDentist(storedState.userId, storedState.clinicId);
       } catch {
-        console.warn('[CalendarIntegrations] Initial dentist sync after connect failed — connection is still active.');
+        console.warn(
+          '[CalendarIntegrations] Initial dentist sync after connect failed — connection is still active.',
+        );
       }
     } else {
       await this.prisma.$executeRaw`
@@ -287,7 +297,9 @@ export class CalendarIntegrationsService {
       try {
         await this.sync(storedState.clinicId);
       } catch {
-        console.warn('[CalendarIntegrations] Initial sync after connect failed — connection is still active.');
+        console.warn(
+          '[CalendarIntegrations] Initial sync after connect failed — connection is still active.',
+        );
       }
     }
   }
@@ -314,7 +326,7 @@ export class CalendarIntegrationsService {
 
     console.warn(
       `[CalendarIntegrations] Disconnect cleanup — deleted: ${cleanup.deleted}, ` +
-      `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
+        `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
     );
 
     if (cleanup.failed > 0) {
@@ -323,7 +335,9 @@ export class CalendarIntegrationsService {
       );
     }
 
-    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+    await this.revokeGoogleToken(
+      this.decrypt(integration.refreshTokenEncrypted),
+    );
 
     await this.prisma.$executeRaw`
       UPDATE "google_calendar_integrations"
@@ -343,7 +357,9 @@ export class CalendarIntegrationsService {
     const integration = await this.findActiveIntegration(clinicId);
     if (!integration) return;
 
-    const [appointment] = await this.prisma.$queryRaw<AppointmentGoogleEventRow[]>`
+    const [appointment] = await this.prisma.$queryRaw<
+      AppointmentGoogleEventRow[]
+    >`
       SELECT "id", "googleCalendarEventId"
       FROM "appointments"
       WHERE "id" = ${appointmentId} AND "clinicId" = ${clinicId}
@@ -423,7 +439,10 @@ export class CalendarIntegrationsService {
 
   // ── DENTIST methods ──────────────────────────────────────────────────────────
 
-  async getDentistStatus(userId: string, clinicId: string): Promise<GoogleCalendarStatus> {
+  async getDentistStatus(
+    userId: string,
+    clinicId: string,
+  ): Promise<GoogleCalendarStatus> {
     const integration = await this.findActiveUserIntegration(userId, clinicId);
 
     return {
@@ -462,7 +481,10 @@ export class CalendarIntegrationsService {
 
     const profile = await this.findDentistProfile(userId, clinicId);
     const accessToken = await this.getValidUserAccessToken(integration);
-    const appointments = await this.findDentistAppointmentsToSync(profile.id, clinicId);
+    const appointments = await this.findDentistAppointmentsToSync(
+      profile.id,
+      clinicId,
+    );
 
     let synced = 0;
     let failed = 0;
@@ -530,7 +552,7 @@ export class CalendarIntegrationsService {
 
     console.warn(
       `[CalendarIntegrations] Dentist disconnect cleanup — deleted: ${cleanup.deleted}, ` +
-      `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
+        `alreadyMissing: ${cleanup.alreadyMissing}, failed: ${cleanup.failed}`,
     );
 
     if (cleanup.failed > 0) {
@@ -539,7 +561,9 @@ export class CalendarIntegrationsService {
       );
     }
 
-    await this.revokeGoogleToken(this.decrypt(integration.refreshTokenEncrypted));
+    await this.revokeGoogleToken(
+      this.decrypt(integration.refreshTokenEncrypted),
+    );
 
     await this.prisma.$executeRaw`
       UPDATE "user_google_calendar_integrations"
@@ -584,7 +608,9 @@ export class CalendarIntegrationsService {
 
     const token = await this.refreshAccessToken(integration);
     if (!token.access_token) {
-      throw new BadRequestException('Não foi possível renovar o acesso ao Google Agenda.');
+      throw new BadRequestException(
+        'Não foi possível renovar o acesso ao Google Agenda.',
+      );
     }
 
     const expiresAt = new Date(Date.now() + (token.expires_in ?? 3600) * 1000);
@@ -725,7 +751,9 @@ export class CalendarIntegrationsService {
 
     const token = await this.refreshAccessToken(integration);
     if (!token.access_token) {
-      throw new BadRequestException('Não foi possível renovar o acesso ao Google Agenda.');
+      throw new BadRequestException(
+        'Não foi possível renovar o acesso ao Google Agenda.',
+      );
     }
 
     const expiresAt = new Date(Date.now() + (token.expires_in ?? 3600) * 1000);
@@ -741,7 +769,10 @@ export class CalendarIntegrationsService {
     return token.access_token;
   }
 
-  private async findDentistAppointmentsToSync(profileId: string, clinicId: string) {
+  private async findDentistAppointmentsToSync(
+    profileId: string,
+    clinicId: string,
+  ) {
     return this.prisma.$queryRaw<AppointmentSyncRow[]>`
       SELECT
         a."id",
@@ -767,7 +798,10 @@ export class CalendarIntegrationsService {
     `;
   }
 
-  private async findProfileAppointmentsWithDentistEvents(profileId: string, clinicId: string) {
+  private async findProfileAppointmentsWithDentistEvents(
+    profileId: string,
+    clinicId: string,
+  ) {
     return this.prisma.$queryRaw<AppointmentDentistGoogleEventRow[]>`
       SELECT "id", "dentistGoogleCalendarEventId"
       FROM "appointments"
@@ -784,7 +818,10 @@ export class CalendarIntegrationsService {
     calendarId: string,
     accessToken: string,
   ): Promise<{ deleted: number; alreadyMissing: number; failed: number }> {
-    const appointments = await this.findProfileAppointmentsWithDentistEvents(profileId, clinicId);
+    const appointments = await this.findProfileAppointmentsWithDentistEvents(
+      profileId,
+      clinicId,
+    );
 
     let deleted = 0;
     let alreadyMissing = 0;
@@ -838,7 +875,9 @@ export class CalendarIntegrationsService {
     return this.postTokenRequest(body);
   }
 
-  private async refreshAccessToken(integration: { refreshTokenEncrypted: string }) {
+  private async refreshAccessToken(integration: {
+    refreshTokenEncrypted: string;
+  }) {
     const body = new URLSearchParams({
       client_id: googleCalendarConfig.clientId,
       client_secret: googleCalendarConfig.clientSecret,
@@ -858,11 +897,15 @@ export class CalendarIntegrationsService {
     });
 
     if (!response.ok) {
-      throw new BadRequestException('Não foi possível revogar o acesso ao Google Agenda.');
+      throw new BadRequestException(
+        'Não foi possível revogar o acesso ao Google Agenda.',
+      );
     }
   }
 
-  private async postTokenRequest(body: URLSearchParams): Promise<TokenResponse> {
+  private async postTokenRequest(
+    body: URLSearchParams,
+  ): Promise<TokenResponse> {
     const response = await fetch(GOOGLE_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -871,19 +914,28 @@ export class CalendarIntegrationsService {
     const token = (await response.json()) as TokenResponse;
 
     if (!response.ok) {
-      throw new BadRequestException('Não foi possível autenticar no Google Agenda.');
+      throw new BadRequestException(
+        'Não foi possível autenticar no Google Agenda.',
+      );
     }
 
     return token;
   }
 
-  private async fetchCalendarInfo(accessToken: string): Promise<CalendarInfoResponse> {
-    const response = await fetch(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList/primary`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  private async fetchCalendarInfo(
+    accessToken: string,
+  ): Promise<CalendarInfoResponse> {
+    const response = await fetch(
+      `${GOOGLE_CALENDAR_API_URL}/users/me/calendarList/primary`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
 
     if (!response.ok) {
-      throw new BadRequestException('Não foi possível acessar o calendário principal.');
+      throw new BadRequestException(
+        'Não foi possível acessar o calendário principal.',
+      );
     }
 
     return response.json() as Promise<CalendarInfoResponse>;
@@ -904,13 +956,21 @@ export class CalendarIntegrationsService {
       );
       if (updated.id) return updated.id;
       if (updated.error?.code !== 404) {
-        throw new BadRequestException('Não foi possível atualizar evento no Google Agenda.');
+        throw new BadRequestException(
+          'Não foi possível atualizar evento no Google Agenda.',
+        );
       }
     }
 
-    const created = await this.sendGoogleEventRequest(accessToken, calendarId, appointment);
+    const created = await this.sendGoogleEventRequest(
+      accessToken,
+      calendarId,
+      appointment,
+    );
     if (!created.id) {
-      throw new BadRequestException('Não foi possível criar evento no Google Agenda.');
+      throw new BadRequestException(
+        'Não foi possível criar evento no Google Agenda.',
+      );
     }
     return created.id;
   }
@@ -927,7 +987,10 @@ export class CalendarIntegrationsService {
     const startTime = formatTimeInputValue(appointment.startTime);
     const endTime = formatTimeInputValue(appointment.endTime);
     const requestBody = JSON.stringify({
-      summary: buildEventTitle(appointment.serviceName, appointment.patientName),
+      summary: buildEventTitle(
+        appointment.serviceName,
+        appointment.patientName,
+      ),
       description: [
         'Evento sincronizado pelo DentalFlow.',
         `Profissional: ${appointment.profileName}`,
@@ -958,11 +1021,14 @@ export class CalendarIntegrationsService {
         return payload;
       }
 
-      if (isRateLimitError(payload, response.status) && attempt < maxAttempts - 1) {
+      if (
+        isRateLimitError(payload, response.status) &&
+        attempt < maxAttempts - 1
+      ) {
         const delay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
         console.warn(
           `[CalendarIntegrations] Rate limited — op: ${op}, appointmentId: ${appointment.id}, ` +
-          `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
+            `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
         );
         await sleep(delay);
         continue;
@@ -971,14 +1037,18 @@ export class CalendarIntegrationsService {
       const reason = payload.error?.errors?.[0]?.reason ?? 'none';
       console.warn(
         `[CalendarIntegrations] Google API error — op: ${op}, appointmentId: ${appointment.id}, ` +
-        `httpStatus: ${response.status}, errorCode: ${payload.error?.code ?? 'none'}, ` +
-        `errorStatus: ${payload.error?.status ?? 'none'}, reason: ${reason}, ` +
-        `message: ${payload.error?.message ?? 'none'}`,
+          `httpStatus: ${response.status}, errorCode: ${payload.error?.code ?? 'none'}, ` +
+          `errorStatus: ${payload.error?.status ?? 'none'}, reason: ${reason}, ` +
+          `message: ${payload.error?.message ?? 'none'}`,
       );
-      throw new BadRequestException('Erro ao sincronizar evento no Google Agenda.');
+      throw new BadRequestException(
+        'Erro ao sincronizar evento no Google Agenda.',
+      );
     }
 
-    throw new BadRequestException('Erro ao sincronizar evento no Google Agenda.');
+    throw new BadRequestException(
+      'Erro ao sincronizar evento no Google Agenda.',
+    );
   }
 
   private async deleteGoogleEvent(
@@ -997,7 +1067,8 @@ export class CalendarIntegrationsService {
       });
 
       if (response.ok || response.status === 204) return 'deleted';
-      if (response.status === 404 || response.status === 410) return 'alreadyMissing';
+      if (response.status === 404 || response.status === 410)
+        return 'alreadyMissing';
 
       let payload: GoogleEventResponse = {};
       try {
@@ -1006,11 +1077,14 @@ export class CalendarIntegrationsService {
         // ignore parse failure — treat as non-retryable
       }
 
-      if (isRateLimitError(payload, response.status) && attempt < maxAttempts - 1) {
+      if (
+        isRateLimitError(payload, response.status) &&
+        attempt < maxAttempts - 1
+      ) {
         const delay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
         console.warn(
           `[CalendarIntegrations] Rate limited during delete — ` +
-          `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
+            `attempt: ${attempt + 1}/${maxAttempts}, retrying in ${delay}ms`,
         );
         await sleep(delay);
         continue;
@@ -1018,8 +1092,8 @@ export class CalendarIntegrationsService {
 
       console.warn(
         `[CalendarIntegrations] Delete event failed — httpStatus: ${response.status}, ` +
-        `errorCode: ${payload.error?.code ?? 'none'}, ` +
-        `reason: ${payload.error?.errors?.[0]?.reason ?? 'none'}`,
+          `errorCode: ${payload.error?.code ?? 'none'}, ` +
+          `reason: ${payload.error?.errors?.[0]?.reason ?? 'none'}`,
       );
       return 'failed';
     }
@@ -1056,35 +1130,58 @@ export class CalendarIntegrationsService {
   private encrypt(value: string): string {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.getEncryptionKey(), iv);
-    const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    const encrypted = Buffer.concat([
+      cipher.update(value, 'utf8'),
+      cipher.final(),
+    ]);
     const tag = cipher.getAuthTag();
 
-    return [iv, tag, encrypted].map((item) => item.toString('base64')).join(':');
+    return [iv, tag, encrypted]
+      .map((item) => item.toString('base64'))
+      .join(':');
   }
 
   private decrypt(value: string): string {
-    const [iv, tag, encrypted] = value.split(':').map((part) => Buffer.from(part, 'base64'));
-    const decipher = createDecipheriv('aes-256-gcm', this.getEncryptionKey(), iv);
+    const [iv, tag, encrypted] = value
+      .split(':')
+      .map((part) => Buffer.from(part, 'base64'));
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.getEncryptionKey(),
+      iv,
+    );
     decipher.setAuthTag(tag);
 
-    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+    return Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]).toString('utf8');
   }
 
   private getEncryptionKey(): Buffer {
-    return createHash('sha256').update(googleCalendarConfig.tokenSecret).digest();
+    return createHash('sha256')
+      .update(googleCalendarConfig.tokenSecret)
+      .digest();
   }
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-function buildEventTitle(serviceName: string | null, patientName: string | null): string {
+function buildEventTitle(
+  serviceName: string | null,
+  patientName: string | null,
+): string {
   if (serviceName && patientName) return `${serviceName} - ${patientName}`;
   if (serviceName) return serviceName;
   if (patientName) return `Consulta odontologica - ${patientName}`;
   return 'Consulta odontologica';
 }
 
-function isRateLimitError(payload: GoogleEventResponse, httpStatus: number): boolean {
+function isRateLimitError(
+  payload: GoogleEventResponse,
+  httpStatus: number,
+): boolean {
   if (httpStatus === 429) return true;
   if (payload.error?.status === 'RESOURCE_EXHAUSTED') return true;
   const reason = payload.error?.errors?.[0]?.reason ?? '';

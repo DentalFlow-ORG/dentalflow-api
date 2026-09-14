@@ -41,7 +41,9 @@ export class ListStripeEventsDto {
   type?: string;
 
   @IsOptional()
-  @Matches(ISO_DATE, { message: 'from deve ser uma data no formato YYYY-MM-DD' })
+  @Matches(ISO_DATE, {
+    message: 'from deve ser uma data no formato YYYY-MM-DD',
+  })
   from?: string;
 
   @IsOptional()

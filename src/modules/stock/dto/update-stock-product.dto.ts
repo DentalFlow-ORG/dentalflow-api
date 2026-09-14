@@ -1,4 +1,4 @@
-import { Transform, Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -9,12 +9,12 @@ import {
   IsString,
   MaxLength,
   Min,
-} from 'class-validator'
+} from 'class-validator';
 import {
   IsSafeId,
   MAX_ID_LENGTH,
-} from '../../../common/validators/input-validation.decorators'
-import { trimValue } from '../../../common/utils/transform.helpers'
+} from '../../../common/validators/input-validation.decorators';
+import { trimValue } from '../../../common/utils/transform.helpers';
 
 export class UpdateStockProductDto {
   @IsOptional()
@@ -22,52 +22,52 @@ export class UpdateStockProductDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
-  name?: string
+  name?: string;
 
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(MAX_ID_LENGTH)
   @IsSafeId()
-  categoryId?: string
+  categoryId?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  description?: string
+  description?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(40)
-  unit?: string
+  unit?: string;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  minQuantity?: number
+  minQuantity?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  purchasePrice?: number
+  purchasePrice?: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  supplier?: string
+  supplier?: string;
 
   @IsOptional()
   @IsDateString()
-  expiresAt?: string
+  expiresAt?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(2000)
-  notes?: string
+  notes?: string;
 
   @IsOptional()
   @IsBoolean()
-  isActive?: boolean
+  isActive?: boolean;
 }

@@ -80,7 +80,10 @@ export class FiscalController {
     @Param('appointmentId') appointmentId: string,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
-    return this.fiscalService.getAppointmentInvoiceDraft(clinicId, appointmentId);
+    return this.fiscalService.getAppointmentInvoiceDraft(
+      clinicId,
+      appointmentId,
+    );
   }
 
   @Get('invoices/:id')

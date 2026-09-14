@@ -9,7 +9,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { normalizeEmail, trimValue } from '../../../common/utils/transform.helpers';
+import {
+  normalizeEmail,
+  trimValue,
+} from '../../../common/utils/transform.helpers';
 import {
   PASSWORD_COMPLEXITY_MESSAGE,
   PASSWORD_COMPLEXITY_REGEX,
@@ -46,7 +49,8 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(50)
   @Matches(personNamePattern, {
-    message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+    message:
+      'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   firstName!: string;
 
@@ -56,13 +60,15 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(50)
   @Matches(personNamePattern, {
-    message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+    message:
+      'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   lastName!: string;
 
   @IsBoolean()
   @Equals(true, {
-    message: 'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar uma conta.',
+    message:
+      'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar uma conta.',
   })
   acceptedTerms!: boolean;
 }

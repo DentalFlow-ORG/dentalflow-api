@@ -34,7 +34,11 @@ import { LoginIdentityRateLimitExceededException } from './login-identity-rate-l
 const txMock = {
   clinic: { create: jest.fn() },
   user: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
-  refreshToken: { create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() },
+  refreshToken: {
+    create: jest.fn(),
+    updateMany: jest.fn(),
+    deleteMany: jest.fn(),
+  },
   termsAcceptance: { create: jest.fn() },
   passwordResetToken: { update: jest.fn() },
 };
@@ -173,7 +177,10 @@ describe('AuthService', () => {
       );
       expect(txMock.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ email: 'owner@clinic.com', role: 'OWNER' }),
+          data: expect.objectContaining({
+            email: 'owner@clinic.com',
+            role: 'OWNER',
+          }),
         }),
       );
     });
@@ -203,9 +210,9 @@ describe('AuthService', () => {
     it('logs USER_CREATED and TERMS_ACCEPTED audit events', async () => {
       await service.register(dto);
 
-      const actions = (auditLogMock.log.mock.calls as [{ action: string }][]).map(
-        ([input]) => input.action,
-      );
+      const actions = (
+        auditLogMock.log.mock.calls as [{ action: string }][]
+      ).map(([input]) => input.action);
       expect(actions).toContain('USER_CREATED');
       expect(actions).toContain('TERMS_ACCEPTED');
     });
@@ -366,7 +373,9 @@ describe('AuthService', () => {
     it('throws UnauthorizedException when the token is not found', async () => {
       prismaMock.refreshToken.findUnique.mockResolvedValue(null);
 
-      await expect(service.refresh(rawToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(rawToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('revokes all sessions and throws on revoked token reuse', async () => {
@@ -375,7 +384,9 @@ describe('AuthService', () => {
         revokedAt: new Date(Date.now() - 1000),
       });
 
-      await expect(service.refresh(rawToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(rawToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
       expect(prismaMock.refreshToken.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -391,7 +402,9 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(service.refresh(rawToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(rawToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('revokes all sessions and throws for an inactive user', async () => {
@@ -400,7 +413,9 @@ describe('AuthService', () => {
         user: { ...storedToken.user, isActive: false },
       });
 
-      await expect(service.refresh(rawToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(rawToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
 
       expect(prismaMock.refreshToken.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -415,7 +430,9 @@ describe('AuthService', () => {
         user: { ...storedToken.user, deletedAt: new Date() },
       });
 
-      await expect(service.refresh(rawToken)).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh(rawToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -447,14 +464,19 @@ describe('AuthService', () => {
       await service.logout('user-1', 'raw-token');
 
       expect(auditLogMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'USER_LOGOUT', actorUserId: 'user-1' }),
+        expect.objectContaining({
+          action: 'USER_LOGOUT',
+          actorUserId: 'user-1',
+        }),
       );
     });
 
     it('is idempotent — does not throw when the token is already revoked', async () => {
       prismaMock.refreshToken.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.logout('user-1', 'already-revoked-token')).resolves.toEqual({
+      await expect(
+        service.logout('user-1', 'already-revoked-token'),
+      ).resolves.toEqual({
         success: true,
       });
     });
@@ -504,7 +526,10 @@ describe('AuthService', () => {
       expect(result).toMatchObject({
         accessToken: 'signed-access-token',
         refreshToken: expect.any(String),
-        user: expect.objectContaining({ role: 'OWNER', isProfileComplete: true }),
+        user: expect.objectContaining({
+          role: 'OWNER',
+          isProfileComplete: true,
+        }),
       });
     });
 
@@ -522,9 +547,9 @@ describe('AuthService', () => {
     it('logs USER_UPDATED and TERMS_ACCEPTED audit events', async () => {
       await service.completeProfile('user-1', dto);
 
-      const actions = (auditLogMock.log.mock.calls as [{ action: string }][]).map(
-        ([input]) => input.action,
-      );
+      const actions = (
+        auditLogMock.log.mock.calls as [{ action: string }][]
+      ).map(([input]) => input.action);
       expect(actions).toContain('USER_UPDATED');
       expect(actions).toContain('TERMS_ACCEPTED');
     });
@@ -532,13 +557,20 @@ describe('AuthService', () => {
     it('throws ForbiddenException when the user is not found or profile is already complete', async () => {
       prismaMock.user.findFirst.mockResolvedValue(null);
 
-      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException when the user has no googleId', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ ...incompleteUser, googleId: null });
+      prismaMock.user.findFirst.mockResolvedValue({
+        ...incompleteUser,
+        googleId: null,
+      });
 
-      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException when the user already belongs to a clinic', async () => {
@@ -547,13 +579,20 @@ describe('AuthService', () => {
         clinicId: 'existing-clinic',
       });
 
-      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException when the user role is not PATIENT', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ ...incompleteUser, role: 'OWNER' });
+      prismaMock.user.findFirst.mockResolvedValue({
+        ...incompleteUser,
+        role: 'OWNER',
+      });
 
-      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.completeProfile('user-1', dto)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -610,7 +649,10 @@ describe('AuthService', () => {
       await service.forgotPassword(dto);
 
       expect(auditLogMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'USER_PASSWORD_RESET_REQUESTED', actorUserId: dbUser.id }),
+        expect.objectContaining({
+          action: 'USER_PASSWORD_RESET_REQUESTED',
+          actorUserId: dbUser.id,
+        }),
       );
     });
 
@@ -619,10 +661,14 @@ describe('AuthService', () => {
 
       await service.forgotPassword(dto);
 
-      const createCall = prismaMock.passwordResetToken.create.mock.calls[0][0] as {
+      const createCall = prismaMock.passwordResetToken.create.mock
+        .calls[0][0] as {
         data: { tokenHash: string };
       };
-      const mailCall = mailMock.sendPasswordResetEmail.mock.calls[0] as [string, string];
+      const mailCall = mailMock.sendPasswordResetEmail.mock.calls[0] as [
+        string,
+        string,
+      ];
       const storedHash: string = createCall.data.tokenHash;
       const sentRawToken: string = mailCall[1];
 
@@ -658,7 +704,9 @@ describe('AuthService', () => {
     it('throws UnprocessableEntityException when token is not found', async () => {
       prismaMock.passwordResetToken.findUnique.mockResolvedValue(null);
 
-      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('throws UnprocessableEntityException when token is expired', async () => {
@@ -667,7 +715,9 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() - 1000),
       });
 
-      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('throws UnprocessableEntityException when token is already used', async () => {
@@ -676,7 +726,9 @@ describe('AuthService', () => {
         usedAt: new Date(Date.now() - 5000),
       });
 
-      await expect(service.resetPassword(dto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.resetPassword(dto)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('updates passwordHash inside the transaction', async () => {
@@ -685,7 +737,9 @@ describe('AuthService', () => {
       expect(txMock.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: storedRecord.userId },
-          data: expect.objectContaining({ passwordHash: 'new-hashed-password' }),
+          data: expect.objectContaining({
+            passwordHash: 'new-hashed-password',
+          }),
         }),
       );
     });
@@ -716,7 +770,10 @@ describe('AuthService', () => {
 
       expect(txMock.refreshToken.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ userId: storedRecord.userId, revokedAt: null }),
+          where: expect.objectContaining({
+            userId: storedRecord.userId,
+            revokedAt: null,
+          }),
           data: expect.objectContaining({ revokedAt: expect.any(Date) }),
         }),
       );

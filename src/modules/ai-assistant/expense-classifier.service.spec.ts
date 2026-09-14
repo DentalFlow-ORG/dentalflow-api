@@ -47,25 +47,51 @@ const TX_ID = 'tx-1';
 const NOW = new Date('2026-05-26T10:00:00Z');
 
 const EXPENSE_CATEGORIES = [
-  { id: 'cat-aluguel', name: 'Aluguel', type: FinancialTransactionType.EXPENSE },
-  { id: 'cat-salarios', name: 'Salarios', type: FinancialTransactionType.EXPENSE },
-  { id: 'cat-materiais', name: 'Materiais', type: FinancialTransactionType.EXPENSE },
-  { id: 'cat-impostos', name: 'Impostos', type: FinancialTransactionType.EXPENSE },
-  { id: 'cat-software', name: 'Software e ferramentas', type: FinancialTransactionType.EXPENSE },
-  { id: 'cat-outros', name: 'Despesas manuais', type: FinancialTransactionType.EXPENSE },
+  {
+    id: 'cat-aluguel',
+    name: 'Aluguel',
+    type: FinancialTransactionType.EXPENSE,
+  },
+  {
+    id: 'cat-salarios',
+    name: 'Salarios',
+    type: FinancialTransactionType.EXPENSE,
+  },
+  {
+    id: 'cat-materiais',
+    name: 'Materiais',
+    type: FinancialTransactionType.EXPENSE,
+  },
+  {
+    id: 'cat-impostos',
+    name: 'Impostos',
+    type: FinancialTransactionType.EXPENSE,
+  },
+  {
+    id: 'cat-software',
+    name: 'Software e ferramentas',
+    type: FinancialTransactionType.EXPENSE,
+  },
+  {
+    id: 'cat-outros',
+    name: 'Despesas manuais',
+    type: FinancialTransactionType.EXPENSE,
+  },
 ];
 
-function buildTransaction(overrides: Partial<{
-  id: string;
-  clinicId: string;
-  type: FinancialTransactionType;
-  description: string;
-  amount: string;
-  transactionDate: Date;
-  updatedAt: Date;
-  appointmentId: string | null;
-  profileId: string | null;
-}> = {}) {
+function buildTransaction(
+  overrides: Partial<{
+    id: string;
+    clinicId: string;
+    type: FinancialTransactionType;
+    description: string;
+    amount: string;
+    transactionDate: Date;
+    updatedAt: Date;
+    appointmentId: string | null;
+    profileId: string | null;
+  }> = {},
+) {
   return {
     id: TX_ID,
     clinicId: CLINIC_ID,
@@ -80,7 +106,12 @@ function buildTransaction(overrides: Partial<{
   };
 }
 
-function mockQuota(planKey: string, allowed: boolean, remaining: number, limit: number) {
+function mockQuota(
+  planKey: string,
+  allowed: boolean,
+  remaining: number,
+  limit: number,
+) {
   mockQuotaService.getQuota.mockResolvedValue({
     allowed,
     planKey,
@@ -94,7 +125,11 @@ function mockQuota(planKey: string, allowed: boolean, remaining: number, limit: 
 }
 
 function mockOpenAi(service: ExpenseClassifierService, responseJson: string) {
-  (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+  (
+    service as unknown as {
+      openai: { chat: { completions: { create: jest.Mock } } };
+    }
+  ).openai = {
     chat: {
       completions: {
         create: jest.fn().mockResolvedValue({
@@ -106,8 +141,11 @@ function mockOpenAi(service: ExpenseClassifierService, responseJson: string) {
 }
 
 function getOpenAiMock(service: ExpenseClassifierService): jest.Mock {
-  return (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } })
-    .openai.chat.completions.create;
+  return (
+    service as unknown as {
+      openai: { chat: { completions: { create: jest.Mock } } };
+    }
+  ).openai.chat.completions.create;
 }
 
 function buildService() {
@@ -126,9 +164,13 @@ describe('ExpenseClassifierService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.OPENAI_API_KEY = 'sk-test';
-    mockPrisma.financialTransaction.findFirst.mockResolvedValue(buildTransaction());
+    mockPrisma.financialTransaction.findFirst.mockResolvedValue(
+      buildTransaction(),
+    );
     mockPrisma.financialCategory.findMany.mockResolvedValue(EXPENSE_CATEGORIES);
-    mockPrisma.financialCategory.findFirst.mockResolvedValue(EXPENSE_CATEGORIES[0]);
+    mockPrisma.financialCategory.findFirst.mockResolvedValue(
+      EXPENSE_CATEGORIES[0],
+    );
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue(null);
     mockPrisma.aiAssistantAnalysis.create.mockResolvedValue({});
     mockRepository.saveSuccess.mockResolvedValue(undefined);
@@ -183,7 +225,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'Materiais', confidence: 0.8, reason: 'IA sugeriu.' }),
+      JSON.stringify({
+        categoryName: 'Materiais',
+        confidence: 0.8,
+        reason: 'IA sugeriu.',
+      }),
     );
 
     const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -202,10 +248,16 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'Aluguel', confidence: 0.95, reason: 'Confirmado pela IA.' }),
+      JSON.stringify({
+        categoryName: 'Aluguel',
+        confidence: 0.95,
+        reason: 'Confirmado pela IA.',
+      }),
     );
 
-    const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, { forceAi: true });
+    const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {
+      forceAi: true,
+    });
 
     expect(result.source).toBe('AI');
     expect(getOpenAiMock(service)).toHaveBeenCalledTimes(1);
@@ -230,7 +282,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'Materiais', confidence: 0.82, reason: 'IA classificou.' }),
+      JSON.stringify({
+        categoryName: 'Materiais',
+        confidence: 0.82,
+        reason: 'IA classificou.',
+      }),
     );
 
     const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -248,7 +304,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('premium', true, 100, 100);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'Impostos', confidence: 0.78, reason: 'IA classificou.' }),
+      JSON.stringify({
+        categoryName: 'Impostos',
+        confidence: 0.78,
+        reason: 'IA classificou.',
+      }),
     );
 
     const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -274,7 +334,10 @@ describe('ExpenseClassifierService', () => {
 
   it('returns cached result without calling AI when cache hit exists', async () => {
     mockPrisma.financialTransaction.findFirst.mockResolvedValue(
-      buildTransaction({ description: 'Descricao sem palavras chave', updatedAt: NOW }),
+      buildTransaction({
+        description: 'Descricao sem palavras chave',
+        updatedAt: NOW,
+      }),
     );
     mockQuota('professional', true, 30, 30);
     mockPrisma.aiAssistantAnalysis.findFirst.mockResolvedValue({
@@ -306,7 +369,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'CategoriaInventada', confidence: 0.9, reason: 'IA inventou.' }),
+      JSON.stringify({
+        categoryName: 'CategoriaInventada',
+        confidence: 0.9,
+        reason: 'IA inventou.',
+      }),
     );
 
     const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -325,7 +392,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: null, confidence: 0.3, reason: 'Sem categoria adequada.' }),
+      JSON.stringify({
+        categoryName: null,
+        confidence: 0.3,
+        reason: 'Sem categoria adequada.',
+      }),
     );
 
     const result = await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -338,11 +409,15 @@ describe('ExpenseClassifierService', () => {
   // ── 12. Apply validates same-clinic category ───────────────────────────────
 
   it('throws NotFoundException when categoryId belongs to different clinic', async () => {
-    mockPrisma.financialTransaction.findFirst.mockResolvedValue(buildTransaction());
+    mockPrisma.financialTransaction.findFirst.mockResolvedValue(
+      buildTransaction(),
+    );
     mockPrisma.financialCategory.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.applySuggestedCategory(CLINIC_ID, TX_ID, { categoryId: 'cat-other-clinic' }),
+      service.applySuggestedCategory(CLINIC_ID, TX_ID, {
+        categoryId: 'cat-other-clinic',
+      }),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -386,12 +461,17 @@ describe('ExpenseClassifierService', () => {
     const ids = ['tx-1', 'tx-2'];
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
       buildTransaction({ id: 'tx-1', description: 'Aluguel do escritorio' }),
-      buildTransaction({ id: 'tx-2', description: 'Pagamento salario funcionario' }),
+      buildTransaction({
+        id: 'tx-2',
+        description: 'Pagamento salario funcionario',
+      }),
     ]);
     mockQuota('professional', true, 30, 30);
     mockOpenAi(service, '{}');
 
-    const result = await service.classifyBatch(USER_ID, CLINIC_ID, { transactionIds: ids });
+    const result = await service.classifyBatch(USER_ID, CLINIC_ID, {
+      transactionIds: ids,
+    });
 
     expect(result.summary.quotaUsed).toBe(0);
     expect(getOpenAiMock(service)).not.toHaveBeenCalled();
@@ -403,21 +483,34 @@ describe('ExpenseClassifierService', () => {
     const ids = ['tx-certain', 'tx-uncertain'];
     mockPrisma.financialTransaction.findMany.mockResolvedValue([
       buildTransaction({ id: 'tx-certain', description: 'Aluguel escritorio' }),
-      buildTransaction({ id: 'tx-uncertain', description: 'Pagamento ref 99999 misc' }),
+      buildTransaction({
+        id: 'tx-uncertain',
+        description: 'Pagamento ref 99999 misc',
+      }),
     ]);
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: 'Impostos', confidence: 0.78, reason: 'IA.' }),
+      JSON.stringify({
+        categoryName: 'Impostos',
+        confidence: 0.78,
+        reason: 'IA.',
+      }),
     );
 
-    const result = await service.classifyBatch(USER_ID, CLINIC_ID, { transactionIds: ids });
+    const result = await service.classifyBatch(USER_ID, CLINIC_ID, {
+      transactionIds: ids,
+    });
 
     expect(result.summary.quotaUsed).toBe(1);
     expect(getOpenAiMock(service)).toHaveBeenCalledTimes(1);
 
-    const certainItem = result.items.find((i) => i.transactionId === 'tx-certain')!;
-    const uncertainItem = result.items.find((i) => i.transactionId === 'tx-uncertain')!;
+    const certainItem = result.items.find(
+      (i) => i.transactionId === 'tx-certain',
+    )!;
+    const uncertainItem = result.items.find(
+      (i) => i.transactionId === 'tx-uncertain',
+    )!;
     expect(certainItem.source).toBe('RULE');
     expect(uncertainItem.source).toBe('AI');
   });
@@ -435,7 +528,11 @@ describe('ExpenseClassifierService', () => {
     mockQuota('professional', true, 30, 30);
     mockOpenAi(
       service,
-      JSON.stringify({ categoryName: null, confidence: 0.3, reason: 'Sem match.' }),
+      JSON.stringify({
+        categoryName: null,
+        confidence: 0.3,
+        reason: 'Sem match.',
+      }),
     );
 
     await service.classifyExpense(USER_ID, CLINIC_ID, TX_ID, {});
@@ -461,8 +558,16 @@ describe('ExpenseClassifierService', () => {
       buildTransaction({ description: 'Despesa generica sem keywords' }),
     );
     mockQuota('professional', true, 30, 30);
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
-      chat: { completions: { create: jest.fn().mockRejectedValue(new Error('Network error')) } },
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
+      chat: {
+        completions: {
+          create: jest.fn().mockRejectedValue(new Error('Network error')),
+        },
+      },
     };
 
     await expect(
@@ -477,9 +582,17 @@ describe('ExpenseClassifierService', () => {
       buildTransaction({ description: 'Despesa generica sem keywords' }),
     );
     mockQuota('professional', true, 30, 30);
-    const rateLimitError = Object.assign(new Error('Rate limited'), { status: 429 });
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
-      chat: { completions: { create: jest.fn().mockRejectedValue(rateLimitError) } },
+    const rateLimitError = Object.assign(new Error('Rate limited'), {
+      status: 429,
+    });
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
+      chat: {
+        completions: { create: jest.fn().mockRejectedValue(rateLimitError) },
+      },
     };
 
     await expect(

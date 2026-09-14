@@ -12,9 +12,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  brazilCurrentIsoMonth,
-} from '../../common/utils/brazil-timezone';
+import { brazilCurrentIsoMonth } from '../../common/utils/brazil-timezone';
 import { AppointmentPaymentDto } from './dto/appointment-payment.dto';
 import { CreateFinancialCategoryDto } from './dto/create-financial-category.dto';
 import { CreateFinancialTransactionDto } from './dto/create-financial-transaction.dto';
@@ -212,7 +210,10 @@ export class FinanceService {
     await this.prisma.financialCategory.delete({ where: { id: categoryId } });
   }
 
-  async listTransactions(clinicId: string, query: ListFinancialTransactionsDto) {
+  async listTransactions(
+    clinicId: string,
+    query: ListFinancialTransactionsDto,
+  ) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const period = this.resolvePeriod(query);
@@ -262,7 +263,10 @@ export class FinanceService {
         categoryId: dto.categoryId,
         amount: this.toDecimal(dto.amount),
         description: dto.description,
-        transactionDate: this.parseDate(dto.transactionDate, 'Data da movimentacao'),
+        transactionDate: this.parseDate(
+          dto.transactionDate,
+          'Data da movimentacao',
+        ),
         dueDate: this.parseOptionalDate(dto.dueDate, 'Data de vencimento'),
         paidAt: this.resolvePaidAt(status, dto.paidAt),
         status,
@@ -301,7 +305,12 @@ export class FinanceService {
             }
           : {}),
         ...(dto.dueDate !== undefined
-          ? { dueDate: this.parseOptionalDate(dto.dueDate, 'Data de vencimento') }
+          ? {
+              dueDate: this.parseOptionalDate(
+                dto.dueDate,
+                'Data de vencimento',
+              ),
+            }
           : {}),
         ...(dto.status ? { status: dto.status } : {}),
         ...(dto.paidAt !== undefined
@@ -404,9 +413,14 @@ export class FinanceService {
     fixedExpenseId: string,
     period?: string,
   ) {
-    const fixedExpense = await this.assertFixedExpense(clinicId, fixedExpenseId);
+    const fixedExpense = await this.assertFixedExpense(
+      clinicId,
+      fixedExpenseId,
+    );
     if (!fixedExpense.isActive) {
-      throw new ConflictException('Despesa fixa inativa nao pode gerar lancamento.');
+      throw new ConflictException(
+        'Despesa fixa inativa nao pode gerar lancamento.',
+      );
     }
 
     const dueDate = this.resolveFixedExpenseDueDate(
@@ -623,7 +637,9 @@ export class FinanceService {
       : new Date(Date.UTC(bmy, bmm, 1));
 
     if (from > to) {
-      throw new BadRequestException('Data inicial nao pode ser maior que a final.');
+      throw new BadRequestException(
+        'Data inicial nao pode ser maior que a final.',
+      );
     }
 
     return {
@@ -675,7 +691,9 @@ export class FinanceService {
     recurrence: FixedExpenseRecurrence,
     period?: string,
   ) {
-    const base = period ? this.parseDate(`${period}-01`, 'Periodo') : new Date();
+    const base = period
+      ? this.parseDate(`${period}-01`, 'Periodo')
+      : new Date();
 
     if (recurrence === FixedExpenseRecurrence.WEEKLY) {
       const start = this.dateOnly(base);
@@ -683,7 +701,8 @@ export class FinanceService {
       return start;
     }
 
-    const month = recurrence === FixedExpenseRecurrence.YEARLY ? 0 : base.getUTCMonth();
+    const month =
+      recurrence === FixedExpenseRecurrence.YEARLY ? 0 : base.getUTCMonth();
     const year = base.getUTCFullYear();
     const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 
@@ -708,8 +727,14 @@ export class FinanceService {
     status: FinancialTransactionStatus,
   ) {
     return transactions
-      .filter((transaction) => transaction.type === type && transaction.status === status)
-      .reduce((total, transaction) => total + this.toNumber(transaction.amount), 0);
+      .filter(
+        (transaction) =>
+          transaction.type === type && transaction.status === status,
+      )
+      .reduce(
+        (total, transaction) => total + this.toNumber(transaction.amount),
+        0,
+      );
   }
 
   private buildTimeSeries(
@@ -727,7 +752,9 @@ export class FinanceService {
     >();
 
     transactions
-      .filter((transaction) => transaction.status === FinancialTransactionStatus.PAID)
+      .filter(
+        (transaction) => transaction.status === FinancialTransactionStatus.PAID,
+      )
       .forEach((transaction) => {
         const key = this.groupDate(transaction.transactionDate, groupBy);
         const current = grouped.get(key) ?? {
@@ -763,7 +790,12 @@ export class FinanceService {
   ) {
     const grouped = new Map<
       string,
-      { categoryId: string | null; categoryName: string; color: string | null; amount: number }
+      {
+        categoryId: string | null;
+        categoryName: string;
+        color: string | null;
+        amount: number;
+      }
     >();
 
     transactions
@@ -785,7 +817,9 @@ export class FinanceService {
         grouped.set(key, current);
       });
 
-    return [...grouped.values()].sort((left, right) => right.amount - left.amount);
+    return [...grouped.values()].sort(
+      (left, right) => right.amount - left.amount,
+    );
   }
 
   private groupIncomeByService(
@@ -819,7 +853,9 @@ export class FinanceService {
         grouped.set(key, current);
       });
 
-    return [...grouped.values()].sort((left, right) => right.amount - left.amount);
+    return [...grouped.values()].sort(
+      (left, right) => right.amount - left.amount,
+    );
   }
 
   private groupDate(date: Date, groupBy: FinanceGroupBy) {

@@ -8,7 +8,12 @@ import { WebhookService } from './webhook.service';
 
 @Module({
   controllers: [BillingController, WebhookController],
-  providers: [BillingService, StripeService, WebhookService, PlanCapabilitiesService],
+  providers: [
+    BillingService,
+    StripeService,
+    WebhookService,
+    PlanCapabilitiesService,
+  ],
   exports: [BillingService, StripeService, PlanCapabilitiesService],
 })
 export class BillingModule {}

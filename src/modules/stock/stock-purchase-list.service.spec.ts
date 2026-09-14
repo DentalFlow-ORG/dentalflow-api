@@ -92,7 +92,9 @@ describe('StockPurchaseListService', () => {
     const result = await service.getPurchaseList(CLINIC_ID);
 
     expect(result.items[0].priority).toBe('CRITICAL');
-    expect(result.items[0].reason).toBe('Estoque abaixo de 25% do mínimo definido.');
+    expect(result.items[0].reason).toBe(
+      'Estoque abaixo de 25% do mínimo definido.',
+    );
   });
 
   it('classifies a product below 25% of minQuantity as CRITICAL', async () => {
@@ -117,7 +119,9 @@ describe('StockPurchaseListService', () => {
     const result = await service.getPurchaseList(CLINIC_ID);
 
     expect(result.items[0].priority).toBe('HIGH');
-    expect(result.items[0].reason).toBe('Estoque abaixo de 50% do mínimo definido.');
+    expect(result.items[0].reason).toBe(
+      'Estoque abaixo de 50% do mínimo definido.',
+    );
   });
 
   it('classifies a product between 25% and 50% of minQuantity as HIGH', async () => {
@@ -205,13 +209,33 @@ describe('StockPurchaseListService', () => {
   it('sorts CRITICAL before HIGH before MEDIUM, then by ascending ratio within tier', async () => {
     prismaMock.stockProduct.findMany.mockResolvedValue([
       // MEDIUM: ratio 0.70
-      makeProduct({ id: 'p-medium', name: 'C Medium', currentQuantity: 7, minQuantity: 10 }),
+      makeProduct({
+        id: 'p-medium',
+        name: 'C Medium',
+        currentQuantity: 7,
+        minQuantity: 10,
+      }),
       // HIGH: ratio 0.40
-      makeProduct({ id: 'p-high', name: 'B High', currentQuantity: 4, minQuantity: 10 }),
+      makeProduct({
+        id: 'p-high',
+        name: 'B High',
+        currentQuantity: 4,
+        minQuantity: 10,
+      }),
       // CRITICAL (empty)
-      makeProduct({ id: 'p-crit-empty', name: 'A Critical Empty', currentQuantity: 0, minQuantity: 10 }),
+      makeProduct({
+        id: 'p-crit-empty',
+        name: 'A Critical Empty',
+        currentQuantity: 0,
+        minQuantity: 10,
+      }),
       // CRITICAL: ratio 0.20
-      makeProduct({ id: 'p-crit-low', name: 'D Critical Low', currentQuantity: 2, minQuantity: 10 }),
+      makeProduct({
+        id: 'p-crit-low',
+        name: 'D Critical Low',
+        currentQuantity: 2,
+        minQuantity: 10,
+      }),
     ]);
 
     const result = await service.getPurchaseList(CLINIC_ID);
@@ -223,8 +247,18 @@ describe('StockPurchaseListService', () => {
 
   it('sorts alphabetically by name (pt-BR) when priority and ratio are equal', async () => {
     prismaMock.stockProduct.findMany.mockResolvedValue([
-      makeProduct({ id: 'p2', name: 'Benzocaína', currentQuantity: 0, minQuantity: 10 }),
-      makeProduct({ id: 'p1', name: 'Ácido fluorídrico', currentQuantity: 0, minQuantity: 10 }),
+      makeProduct({
+        id: 'p2',
+        name: 'Benzocaína',
+        currentQuantity: 0,
+        minQuantity: 10,
+      }),
+      makeProduct({
+        id: 'p1',
+        name: 'Ácido fluorídrico',
+        currentQuantity: 0,
+        minQuantity: 10,
+      }),
     ]);
 
     const result = await service.getPurchaseList(CLINIC_ID);
@@ -238,11 +272,36 @@ describe('StockPurchaseListService', () => {
 
   it('computes summary counts and totalEstimatedCostCents correctly', async () => {
     prismaMock.stockProduct.findMany.mockResolvedValue([
-      makeProduct({ id: 'p1', currentQuantity: 0, minQuantity: 10, purchasePrice: 1000 }),    // CRITICAL, cost 10000
-      makeProduct({ id: 'p2', currentQuantity: 2, minQuantity: 10, purchasePrice: 500 }),     // CRITICAL, cost 4000
-      makeProduct({ id: 'p3', currentQuantity: 4, minQuantity: 10, purchasePrice: 200 }),     // HIGH,     cost 1200
-      makeProduct({ id: 'p4', currentQuantity: 7, minQuantity: 10, purchasePrice: null }),    // MEDIUM,   cost null
-      makeProduct({ id: 'p5', currentQuantity: 15, minQuantity: 10, purchasePrice: 300 }),    // above min → excluded
+      makeProduct({
+        id: 'p1',
+        currentQuantity: 0,
+        minQuantity: 10,
+        purchasePrice: 1000,
+      }), // CRITICAL, cost 10000
+      makeProduct({
+        id: 'p2',
+        currentQuantity: 2,
+        minQuantity: 10,
+        purchasePrice: 500,
+      }), // CRITICAL, cost 4000
+      makeProduct({
+        id: 'p3',
+        currentQuantity: 4,
+        minQuantity: 10,
+        purchasePrice: 200,
+      }), // HIGH,     cost 1200
+      makeProduct({
+        id: 'p4',
+        currentQuantity: 7,
+        minQuantity: 10,
+        purchasePrice: null,
+      }), // MEDIUM,   cost null
+      makeProduct({
+        id: 'p5',
+        currentQuantity: 15,
+        minQuantity: 10,
+        purchasePrice: 300,
+      }), // above min → excluded
     ]);
 
     const result = await service.getPurchaseList(CLINIC_ID);
@@ -259,17 +318,32 @@ describe('StockPurchaseListService', () => {
   // ── 12. Portuguese reason strings ────────────────────────────────────────────
 
   it.each([
-    { current: 0,   min: 10, expectedReason: 'Produto esgotado.' },
-    { current: 2,   min: 10, expectedReason: 'Estoque abaixo de 25% do mínimo definido.' },
-    { current: 4,   min: 10, expectedReason: 'Estoque abaixo de 50% do mínimo definido.' },
-    { current: 7,   min: 10, expectedReason: 'Estoque abaixo do mínimo definido.' },
-  ])('reason for current=$current min=$min is "$expectedReason"', async ({ current, min, expectedReason }) => {
-    prismaMock.stockProduct.findMany.mockResolvedValue([
-      makeProduct({ currentQuantity: current, minQuantity: min }),
-    ]);
+    { current: 0, min: 10, expectedReason: 'Produto esgotado.' },
+    {
+      current: 2,
+      min: 10,
+      expectedReason: 'Estoque abaixo de 25% do mínimo definido.',
+    },
+    {
+      current: 4,
+      min: 10,
+      expectedReason: 'Estoque abaixo de 50% do mínimo definido.',
+    },
+    {
+      current: 7,
+      min: 10,
+      expectedReason: 'Estoque abaixo do mínimo definido.',
+    },
+  ])(
+    'reason for current=$current min=$min is "$expectedReason"',
+    async ({ current, min, expectedReason }) => {
+      prismaMock.stockProduct.findMany.mockResolvedValue([
+        makeProduct({ currentQuantity: current, minQuantity: min }),
+      ]);
 
-    const result = await service.getPurchaseList(CLINIC_ID);
+      const result = await service.getPurchaseList(CLINIC_ID);
 
-    expect(result.items[0].reason).toBe(expectedReason);
-  });
+      expect(result.items[0].reason).toBe(expectedReason);
+    },
+  );
 });

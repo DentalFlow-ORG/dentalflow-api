@@ -36,7 +36,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         path: request.url,
         errorName:
           exception instanceof Error ? exception.name : typeof exception,
-        errorMessage: 'Exception after headers already sent — response not written',
+        errorMessage:
+          'Exception after headers already sent — response not written',
       });
       return;
     }
@@ -86,8 +87,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (!(exception instanceof Error)) return false;
     const err = exception as Error & { type?: string };
     return (
-      err.name === 'PayloadTooLargeError' ||
-      err.type === 'entity.too.large'
+      err.name === 'PayloadTooLargeError' || err.type === 'entity.too.large'
     );
   }
 
@@ -174,7 +174,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const errorName =
       exception instanceof Error ? exception.name : typeof exception;
     const errorMessage =
-      exception instanceof Error ? redactSensitive(exception.message) : 'unknown';
+      exception instanceof Error
+        ? redactSensitive(exception.message)
+        : 'unknown';
 
     const prismaCode =
       exception instanceof Prisma.PrismaClientKnownRequestError

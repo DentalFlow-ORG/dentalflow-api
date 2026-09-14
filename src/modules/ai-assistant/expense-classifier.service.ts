@@ -60,54 +60,140 @@ const KEYWORD_GROUPS: KeywordGroup[] = [
   },
   {
     keywords: [
-      'energia', 'luz', 'conta de luz', 'agua', 'água', 'internet',
-      'telefone', 'celular', 'contas de consumo', 'consumo',
+      'energia',
+      'luz',
+      'conta de luz',
+      'agua',
+      'água',
+      'internet',
+      'telefone',
+      'celular',
+      'contas de consumo',
+      'consumo',
     ],
-    labels: ['utilitarios', 'utilities', 'agua', 'luz', 'energia', 'internet', 'telefone'],
+    labels: [
+      'utilitarios',
+      'utilities',
+      'agua',
+      'luz',
+      'energia',
+      'internet',
+      'telefone',
+    ],
   },
   {
     keywords: [
-      'material', 'luva', 'mascara', 'máscara', 'anestesico', 'anestésico',
-      'resina', 'cimento', 'broca', 'caneta', 'agulha', 'seringa',
-      'autoclave', 'amalgama', 'amalgâma', 'gaze', 'curativo', 'dental',
-      'odontolog', 'sutura', 'fio dental',
+      'material',
+      'luva',
+      'mascara',
+      'máscara',
+      'anestesico',
+      'anestésico',
+      'resina',
+      'cimento',
+      'broca',
+      'caneta',
+      'agulha',
+      'seringa',
+      'autoclave',
+      'amalgama',
+      'amalgâma',
+      'gaze',
+      'curativo',
+      'dental',
+      'odontolog',
+      'sutura',
+      'fio dental',
     ],
-    labels: ['materiais', 'material', 'supplies', 'odontologico', 'odontológico'],
+    labels: [
+      'materiais',
+      'material',
+      'supplies',
+      'odontologico',
+      'odontológico',
+    ],
   },
   {
     keywords: [
-      'salario', 'salário', 'folha', 'funcionario', 'funcionário',
-      'remuneracao', 'remuneração', 'colaborador', 'pagamento de pessoal',
-      'pagamento funcionario', 'pro labore', 'pró-labore',
+      'salario',
+      'salário',
+      'folha',
+      'funcionario',
+      'funcionário',
+      'remuneracao',
+      'remuneração',
+      'colaborador',
+      'pagamento de pessoal',
+      'pagamento funcionario',
+      'pro labore',
+      'pró-labore',
     ],
     labels: ['salarios', 'salário', 'payroll', 'folha', 'pessoal'],
   },
   {
     keywords: [
-      'marketing', 'anuncio', 'anúncio', 'trafego', 'tráfego',
-      'google ads', 'meta ads', 'instagram', 'facebook', 'propaganda',
-      'publicidade', 'campanha', 'impulsionamento',
+      'marketing',
+      'anuncio',
+      'anúncio',
+      'trafego',
+      'tráfego',
+      'google ads',
+      'meta ads',
+      'instagram',
+      'facebook',
+      'propaganda',
+      'publicidade',
+      'campanha',
+      'impulsionamento',
     ],
     labels: ['marketing', 'publicidade', 'propaganda'],
   },
   {
     keywords: [
-      'software', 'sistema', 'assinatura', 'licenca', 'licença',
-      'plataforma', 'dentalflow', 'nuvem', 'cloud', 'saas', 'app',
+      'software',
+      'sistema',
+      'assinatura',
+      'licenca',
+      'licença',
+      'plataforma',
+      'dentalflow',
+      'nuvem',
+      'cloud',
+      'saas',
+      'app',
     ],
     labels: ['software', 'sistema', 'ferramentas', 'tecnologia'],
   },
   {
     keywords: [
-      'laboratorio', 'laboratório', 'protese', 'prótese', 'proteses',
-      'próteses', 'lab ', 'coroa', 'implante', 'ortodontia',
+      'laboratorio',
+      'laboratório',
+      'protese',
+      'prótese',
+      'proteses',
+      'próteses',
+      'lab ',
+      'coroa',
+      'implante',
+      'ortodontia',
     ],
     labels: ['laboratorio', 'laboratório', 'protese', 'prótese'],
   },
   {
     keywords: [
-      'imposto', 'tributo', 'simples', 'das ', ' iss', 'inss', 'fgts',
-      'irrf', 'carne', 'carnê', 'pgdas', 'decore', 'receita federal',
+      'imposto',
+      'tributo',
+      'simples',
+      'das ',
+      ' iss',
+      'inss',
+      'fgts',
+      'irrf',
+      'carne',
+      'carnê',
+      'pgdas',
+      'decore',
+      'receita federal',
     ],
     labels: ['impostos', 'imposto', 'tributos', 'tributo', 'taxes'],
   },
@@ -131,7 +217,9 @@ export class ExpenseClassifierService {
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      this.logger.warn('OPENAI_API_KEY not configured — expense classifier AI disabled.');
+      this.logger.warn(
+        'OPENAI_API_KEY not configured — expense classifier AI disabled.',
+      );
     } else {
       this.openai = new OpenAI({ apiKey });
     }
@@ -176,7 +264,10 @@ export class ExpenseClassifierService {
     }
 
     // Deterministic rule pass
-    const ruleResult = this.applyRules(transaction.description, expenseCategories);
+    const ruleResult = this.applyRules(
+      transaction.description,
+      expenseCategories,
+    );
 
     // Skip AI if rule is confident and user did not force AI
     if (ruleResult.confidence >= CONFIDENCE_THRESHOLD && !forceAi) {
@@ -194,12 +285,16 @@ export class ExpenseClassifierService {
 
     // Cache lookup before AI call
     if (!forceAi) {
-      const cached = await this.findCache(clinicId, transactionId, transaction.updatedAt);
+      const cached = await this.findCache(
+        clinicId,
+        transactionId,
+        transaction.updatedAt,
+      );
       if (cached) {
         const content = cached.content as Record<string, unknown>;
         const categoryName = content.suggestedCategoryName as string | null;
         const category = categoryName
-          ? expenseCategories.find((c) => c.name === categoryName) ?? null
+          ? (expenseCategories.find((c) => c.name === categoryName) ?? null)
           : null;
         return {
           transactionId,
@@ -208,7 +303,8 @@ export class ExpenseClassifierService {
           confidence: content.confidence as number,
           source: 'CACHE',
           reason: content.reason as string,
-          requiresConfirmation: (content.confidence as number) < CONFIDENCE_THRESHOLD,
+          requiresConfirmation:
+            (content.confidence as number) < CONFIDENCE_THRESHOLD,
           quotaUsed: false,
         };
       }
@@ -222,7 +318,13 @@ export class ExpenseClassifierService {
       );
     }
 
-    return this.callAi(userId, clinicId, transactionId, transaction, expenseCategories);
+    return this.callAi(
+      userId,
+      clinicId,
+      transactionId,
+      transaction,
+      expenseCategories,
+    );
   }
 
   // ── Apply suggested category ───────────────────────────────────────────────
@@ -312,7 +414,10 @@ export class ExpenseClassifierService {
         continue;
       }
 
-      const ruleResult = this.applyRules(transaction.description, expenseCategories);
+      const ruleResult = this.applyRules(
+        transaction.description,
+        expenseCategories,
+      );
       if (ruleResult.confidence >= CONFIDENCE_THRESHOLD && !forceAi) {
         items.push({
           transactionId: txId,
@@ -329,12 +434,16 @@ export class ExpenseClassifierService {
 
       // Cache check
       if (!forceAi) {
-        const cached = await this.findCache(clinicId, txId, transaction.updatedAt);
+        const cached = await this.findCache(
+          clinicId,
+          txId,
+          transaction.updatedAt,
+        );
         if (cached) {
           const content = cached.content as Record<string, unknown>;
           const categoryName = content.suggestedCategoryName as string | null;
           const category = categoryName
-            ? expenseCategories.find((c) => c.name === categoryName) ?? null
+            ? (expenseCategories.find((c) => c.name === categoryName) ?? null)
             : null;
           items.push({
             transactionId: txId,
@@ -343,7 +452,8 @@ export class ExpenseClassifierService {
             confidence: content.confidence as number,
             source: 'CACHE',
             reason: content.reason as string,
-            requiresConfirmation: (content.confidence as number) < CONFIDENCE_THRESHOLD,
+            requiresConfirmation:
+              (content.confidence as number) < CONFIDENCE_THRESHOLD,
             quotaUsed: false,
           });
           continue;
@@ -352,7 +462,10 @@ export class ExpenseClassifierService {
 
       if (quotaRemaining <= 0) {
         items.push(
-          this.noMatchResult(txId, 'Limite de classificações inteligentes atingido.'),
+          this.noMatchResult(
+            txId,
+            'Limite de classificações inteligentes atingido.',
+          ),
         );
         continue;
       }
@@ -391,7 +504,12 @@ export class ExpenseClassifierService {
   private applyRules(
     description: string,
     categories: { id: string; name: string }[],
-  ): { categoryId: string | null; categoryName: string | null; confidence: number; reason: string } {
+  ): {
+    categoryId: string | null;
+    categoryName: string | null;
+    confidence: number;
+    reason: string;
+  } {
     const normalized = this.normalize(description);
 
     // Pass 1: exact or partial category-name match
@@ -401,7 +519,7 @@ export class ExpenseClassifierService {
         return {
           categoryId: cat.id,
           categoryName: cat.name,
-          confidence: 0.90,
+          confidence: 0.9,
           reason: `Descrição contém o nome da categoria "${cat.name}".`,
         };
       }
@@ -428,7 +546,7 @@ export class ExpenseClassifierService {
       return {
         categoryId: null,
         categoryName: null,
-        confidence: 0.50,
+        confidence: 0.5,
         reason: `Palavra-chave "${matchedKeyword}" encontrada mas nenhuma categoria correspondente.`,
       };
     }
@@ -447,7 +565,9 @@ export class ExpenseClassifierService {
   ): { id: string; name: string } | null {
     for (const label of labels) {
       const labelNorm = this.normalize(label);
-      const match = categories.find((c) => this.normalize(c.name).includes(labelNorm));
+      const match = categories.find((c) =>
+        this.normalize(c.name).includes(labelNorm),
+      );
       if (match) return match;
     }
     return null;
@@ -465,7 +585,11 @@ export class ExpenseClassifierService {
 
   // ── Cache ──────────────────────────────────────────────────────────────────
 
-  private async findCache(clinicId: string, transactionId: string, updatedAt: Date) {
+  private async findCache(
+    clinicId: string,
+    transactionId: string,
+    updatedAt: Date,
+  ) {
     const record = await this.prisma.aiAssistantAnalysis.findFirst({
       where: {
         clinicId,
@@ -488,7 +612,12 @@ export class ExpenseClassifierService {
     userId: string,
     clinicId: string,
     transactionId: string,
-    transaction: { description: string; amount: object; transactionDate: Date; updatedAt: Date },
+    transaction: {
+      description: string;
+      amount: object;
+      transactionDate: Date;
+      updatedAt: Date;
+    },
     categories: { id: string; name: string }[],
   ): Promise<ClassificationResult> {
     this.assertAiEnabled();
@@ -539,7 +668,8 @@ Regras obrigatórias:
       };
 
       aiCategoryName = parsed.categoryName ?? null;
-      aiConfidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.7;
+      aiConfidence =
+        typeof parsed.confidence === 'number' ? parsed.confidence : 0.7;
       aiReason = parsed.reason ?? 'Sugestão da IA.';
 
       // Safety: reject category not in available list
@@ -550,7 +680,8 @@ Regras obrigatórias:
         )
       ) {
         aiCategoryName = null;
-        aiReason = 'Categoria sugerida pela IA não encontrada na lista disponível.';
+        aiReason =
+          'Categoria sugerida pela IA não encontrada na lista disponível.';
         aiConfidence = 0.0;
       }
 
@@ -586,7 +717,9 @@ Regras obrigatórias:
     } catch (err: unknown) {
       const durationMs = Date.now() - start;
       const isRateLimit =
-        typeof err === 'object' && err !== null && (err as { status?: number }).status === 429;
+        typeof err === 'object' &&
+        err !== null &&
+        (err as { status?: number }).status === 429;
 
       this.logger.error(
         JSON.stringify({
@@ -619,9 +752,9 @@ Regras obrigatórias:
     }
 
     const matchedCategory = aiCategoryName
-      ? categories.find(
+      ? (categories.find(
           (c) => c.name.toLowerCase() === aiCategoryName.toLowerCase(),
-        ) ?? null
+        ) ?? null)
       : null;
 
     return {
@@ -644,7 +777,10 @@ Regras obrigatórias:
     }
   }
 
-  private noMatchResult(transactionId: string, reason: string): ClassificationResult {
+  private noMatchResult(
+    transactionId: string,
+    reason: string,
+  ): ClassificationResult {
     return {
       transactionId,
       suggestedCategoryId: null,

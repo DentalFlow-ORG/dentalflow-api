@@ -1,9 +1,4 @@
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 const CLINICAL_TEXT_MAX_LENGTH = 10_000;

@@ -43,7 +43,10 @@ describe('DictateRecordDto', () => {
 
   it('accepts all allowed MIME types', async () => {
     for (const mimeType of ALLOWED_AUDIO_MIME_TYPES) {
-      const errors = await validateDto(DictateRecordDto, { ...VALID_PAYLOAD, mimeType });
+      const errors = await validateDto(DictateRecordDto, {
+        ...VALID_PAYLOAD,
+        mimeType,
+      });
       expect(errors).toHaveLength(0);
     }
   });
@@ -125,10 +128,20 @@ describe('PlanFeature.CLINICAL_DICTATION', () => {
   });
 
   it('is available for premium only — not starter or professional', () => {
-    expect(getPlanFeatures('premium').has(PlanFeature.CLINICAL_DICTATION)).toBe(true);
-    expect(getPlanFeatures('professional').has(PlanFeature.CLINICAL_DICTATION)).toBe(false);
-    expect(getPlanFeatures('starter').has(PlanFeature.CLINICAL_DICTATION)).toBe(false);
-    expect(getPlanFeatures(null).has(PlanFeature.CLINICAL_DICTATION)).toBe(false);
-    expect(getPlanFeatures('unknown-plan').has(PlanFeature.CLINICAL_DICTATION)).toBe(false);
+    expect(getPlanFeatures('premium').has(PlanFeature.CLINICAL_DICTATION)).toBe(
+      true,
+    );
+    expect(
+      getPlanFeatures('professional').has(PlanFeature.CLINICAL_DICTATION),
+    ).toBe(false);
+    expect(getPlanFeatures('starter').has(PlanFeature.CLINICAL_DICTATION)).toBe(
+      false,
+    );
+    expect(getPlanFeatures(null).has(PlanFeature.CLINICAL_DICTATION)).toBe(
+      false,
+    );
+    expect(
+      getPlanFeatures('unknown-plan').has(PlanFeature.CLINICAL_DICTATION),
+    ).toBe(false);
   });
 });

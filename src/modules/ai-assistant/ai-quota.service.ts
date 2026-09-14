@@ -39,12 +39,24 @@ const AI_PLAN_LIMITS: Record<string, PlanLimits> = {
   professional: {
     allowed: true,
     perTypeMonthly: 1,
-    typeOverrides: { STOCK_COPILOT: 10, ABNORMAL_CONSUMPTION_COPILOT: 10, EXPENSE_CLASSIFICATION: 30, MONTHLY_FINANCE_DIAGNOSIS: 5, CLINICAL_DICTATION: 10 },
+    typeOverrides: {
+      STOCK_COPILOT: 10,
+      ABNORMAL_CONSUMPTION_COPILOT: 10,
+      EXPENSE_CLASSIFICATION: 30,
+      MONTHLY_FINANCE_DIAGNOSIS: 5,
+      CLINICAL_DICTATION: 10,
+    },
   },
   premium: {
     allowed: true,
     perTypeMonthly: 10,
-    typeOverrides: { STOCK_COPILOT: 30, ABNORMAL_CONSUMPTION_COPILOT: 30, EXPENSE_CLASSIFICATION: 100, MONTHLY_FINANCE_DIAGNOSIS: 20, CLINICAL_DICTATION: 30 },
+    typeOverrides: {
+      STOCK_COPILOT: 30,
+      ABNORMAL_CONSUMPTION_COPILOT: 30,
+      EXPENSE_CLASSIFICATION: 100,
+      MONTHLY_FINANCE_DIAGNOSIS: 20,
+      CLINICAL_DICTATION: 30,
+    },
   },
 };
 const DEFAULT_LIMITS: PlanLimits = { allowed: false, perTypeMonthly: 0 };
@@ -53,18 +65,28 @@ const DEFAULT_LIMITS: PlanLimits = { allowed: false, perTypeMonthly: 0 };
 export class AiQuotaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getQuota(clinicId: string, type: AiAssistantAnalysisType): Promise<AiQuotaInfo> {
+  async getQuota(
+    clinicId: string,
+    type: AiAssistantAnalysisType,
+  ): Promise<AiQuotaInfo> {
     const { start, nextResetAt } = this.monthBounds();
 
     // Sequential awaits to ensure each query uses its own dedicated pg connection.
     // Running these concurrently with Promise.all can cause pg to dispatch multiple
     // queries to the same client before one resolves, triggering the pg@8 deprecation
     // warning "Calling client.query() when the client is already executing a query".
-    const planKey   = await this.getPlanKey(clinicId);
-    const used      = await this.countMonthlyUsed(clinicId, type, start, nextResetAt);
+    const planKey = await this.getPlanKey(clinicId);
+    const used = await this.countMonthlyUsed(
+      clinicId,
+      type,
+      start,
+      nextResetAt,
+    );
     const lastRecord = await this.getLastSuccess(clinicId, type);
 
-    const limits = planKey ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS) : DEFAULT_LIMITS;
+    const limits = planKey
+      ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS)
+      : DEFAULT_LIMITS;
     const monthlyLimit = limits.typeOverrides?.[type] ?? limits.perTypeMonthly;
     const remaining = limits.allowed ? Math.max(0, monthlyLimit - used) : 0;
 
@@ -88,7 +110,10 @@ export class AiQuotaService {
     };
   }
 
-  async assertQuota(clinicId: string, type: AiAssistantAnalysisType): Promise<void> {
+  async assertQuota(
+    clinicId: string,
+    type: AiAssistantAnalysisType,
+  ): Promise<void> {
     const quota = await this.getQuota(clinicId, type);
     if (!quota.allowed) {
       throw new ForbiddenException(
@@ -107,7 +132,9 @@ export class AiQuotaService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         clinicId,
-        status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] },
+        status: {
+          in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING],
+        },
       },
       select: { plan: { select: { slug: true } } },
     });
@@ -138,7 +165,10 @@ export class AiQuotaService {
     });
   }
 
-  private async getLastSuccess(clinicId: string, type: AiAssistantAnalysisType) {
+  private async getLastSuccess(
+    clinicId: string,
+    type: AiAssistantAnalysisType,
+  ) {
     return this.prisma.aiAssistantAnalysis.findFirst({
       where: { clinicId, type, status: AiAssistantAnalysisStatus.SUCCESS },
       orderBy: { generatedAt: 'desc' },

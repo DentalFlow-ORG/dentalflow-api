@@ -71,7 +71,11 @@ export class PrivacyService {
       action: 'PRIVACY_REQUEST_CREATED',
       entityType: 'PrivacyRequest',
       entityId: created.id,
-      metadata: { requestCode, requestType: dto.requestType, requesterType: dto.requesterType },
+      metadata: {
+        requestCode,
+        requestType: dto.requestType,
+        requesterType: dto.requesterType,
+      },
       ipAddress: meta.ipAddress,
       userAgent: meta.userAgent,
     });
@@ -193,7 +197,11 @@ export class PrivacyService {
       action: 'PRIVACY_REQUEST_STATUS_CHANGED',
       entityType: 'PrivacyRequest',
       entityId: id,
-      metadata: { previousStatus, newStatus: dto.status, requestCode: request.requestCode },
+      metadata: {
+        previousStatus,
+        newStatus: dto.status,
+        requestCode: request.requestCode,
+      },
       ipAddress: meta.ipAddress,
       userAgent: meta.userAgent,
     });
@@ -224,7 +232,13 @@ export class PrivacyService {
         status: PrivacyRequestStatus.COMPLETED,
         completedAt: new Date(),
       },
-      select: { id: true, requestCode: true, status: true, responseNotes: true, completedAt: true },
+      select: {
+        id: true,
+        requestCode: true,
+        status: true,
+        responseNotes: true,
+        completedAt: true,
+      },
     });
 
     await this.auditLog.log({

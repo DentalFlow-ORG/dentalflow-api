@@ -1,7 +1,10 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 
-import { BatchPatientAvatarsDto, BATCH_AVATARS_MAX_COUNT } from './batch-patient-avatars.dto';
+import {
+  BatchPatientAvatarsDto,
+  BATCH_AVATARS_MAX_COUNT,
+} from './batch-patient-avatars.dto';
 
 async function validateDto(payload: Record<string, unknown>) {
   return validate(plainToInstance(BatchPatientAvatarsDto, payload));
@@ -9,7 +12,9 @@ async function validateDto(payload: Record<string, unknown>) {
 
 describe('BatchPatientAvatarsDto validation', () => {
   it('accepts a valid array of identifiers', async () => {
-    const errors = await validateDto({ identifiers: ['a@test.com', 'João Silva'] });
+    const errors = await validateDto({
+      identifiers: ['a@test.com', 'João Silva'],
+    });
     expect(errors).toHaveLength(0);
   });
 
@@ -25,14 +30,20 @@ describe('BatchPatientAvatarsDto validation', () => {
 
   it('rejects when identifiers exceeds the max count', async () => {
     const errors = await validateDto({
-      identifiers: Array.from({ length: BATCH_AVATARS_MAX_COUNT + 1 }, (_, i) => `p${i}@test.com`),
+      identifiers: Array.from(
+        { length: BATCH_AVATARS_MAX_COUNT + 1 },
+        (_, i) => `p${i}@test.com`,
+      ),
     });
     expect(errors.some((e) => e.property === 'identifiers')).toBe(true);
   });
 
   it('accepts exactly the max allowed count', async () => {
     const errors = await validateDto({
-      identifiers: Array.from({ length: BATCH_AVATARS_MAX_COUNT }, (_, i) => `p${i}@test.com`),
+      identifiers: Array.from(
+        { length: BATCH_AVATARS_MAX_COUNT },
+        (_, i) => `p${i}@test.com`,
+      ),
     });
     expect(errors).toHaveLength(0);
   });

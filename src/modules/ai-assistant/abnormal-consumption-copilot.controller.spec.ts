@@ -24,9 +24,7 @@ const MOCK_USER = { id: 'user-1', clinicId: 'clinic-1' } as unknown as AuthUser;
 function buildRes() {
   const jsonFn = jest.fn();
   const sendFn = jest.fn();
-  const statusFn = jest
-    .fn()
-    .mockReturnValue({ json: jsonFn, send: sendFn });
+  const statusFn = jest.fn().mockReturnValue({ json: jsonFn, send: sendFn });
   const res = { status: statusFn } as unknown as Response;
   return { res, statusFn, jsonFn, sendFn };
 }
@@ -90,6 +88,8 @@ describe('AbnormalConsumptionCopilotController.getLatestCopilotSummary', () => {
 
     await controller.getLatestCopilotSummary(MOCK_USER, res);
 
-    expect(mockCopilotService.getLatestAnalysis).toHaveBeenCalledWith('clinic-abc');
+    expect(mockCopilotService.getLatestAnalysis).toHaveBeenCalledWith(
+      'clinic-abc',
+    );
   });
 });

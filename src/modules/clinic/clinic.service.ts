@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common'
-import { PrismaService } from '../../prisma/prisma.service'
-import { UpdateClinicProfileDto } from './dto/update-clinic-profile.dto'
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { UpdateClinicProfileDto } from './dto/update-clinic-profile.dto';
 
 const PROFILE_SELECT = {
   id: true,
@@ -17,7 +17,7 @@ const PROFILE_SELECT = {
   postalCode: true,
   timezone: true,
   createdAt: true,
-} as const
+} as const;
 
 @Injectable()
 export class ClinicService {
@@ -27,7 +27,7 @@ export class ClinicService {
     return this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },
       select: PROFILE_SELECT,
-    })
+    });
   }
 
   updateProfile(clinicId: string, dto: UpdateClinicProfileDto) {
@@ -35,6 +35,6 @@ export class ClinicService {
       where: { id: clinicId },
       data: dto,
       select: PROFILE_SELECT,
-    })
+    });
   }
 }

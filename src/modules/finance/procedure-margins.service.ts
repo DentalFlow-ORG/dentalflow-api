@@ -8,7 +8,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ProcedureMarginsQueryDto } from './dto/procedure-margins-query.dto';
 import { brazilCurrentIsoMonth } from '../../common/utils/brazil-timezone';
 
-export type ProcedureMarginStatus = 'HEALTHY' | 'ATTENTION' | 'INSUFFICIENT_DATA';
+export type ProcedureMarginStatus =
+  | 'HEALTHY'
+  | 'ATTENTION'
+  | 'INSUFFICIENT_DATA';
 
 type PeriodBounds = { from: Date; to: Date };
 
@@ -131,7 +134,9 @@ export class ProcedureMarginsService {
             : null;
         const itemMarginPercent =
           itemProfitCents !== null && group.grossRevenueCents > 0
-            ? Number(((itemProfitCents / group.grossRevenueCents) * 100).toFixed(2))
+            ? Number(
+                ((itemProfitCents / group.grossRevenueCents) * 100).toFixed(2),
+              )
             : null;
 
         return {
@@ -154,8 +159,12 @@ export class ProcedureMarginsService {
       });
 
     const allHaveCost =
-      items.length > 0 && items.every((i) => i.estimatedDirectCostCents !== null);
-    const totalGrossRevenue = items.reduce((s, i) => s + i.grossRevenueCents, 0);
+      items.length > 0 &&
+      items.every((i) => i.estimatedDirectCostCents !== null);
+    const totalGrossRevenue = items.reduce(
+      (s, i) => s + i.grossRevenueCents,
+      0,
+    );
     const totalCostCents = allHaveCost
       ? items.reduce((s, i) => s + (i.estimatedDirectCostCents ?? 0), 0)
       : null;
@@ -168,7 +177,10 @@ export class ProcedureMarginsService {
 
     const totals = {
       totalAppointments: items.reduce((s, i) => s + i.totalAppointments, 0),
-      completedAppointments: items.reduce((s, i) => s + i.completedAppointments, 0),
+      completedAppointments: items.reduce(
+        (s, i) => s + i.completedAppointments,
+        0,
+      ),
       grossRevenueCents: totalGrossRevenue,
       estimatedDirectCostCents: totalCostCents,
       estimatedProfitCents: totalProfitCents,

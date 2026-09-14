@@ -185,7 +185,10 @@ export class AuthService {
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
           termsVersion: TERMS_VERSION,
           ipHash: metadata.ipAddress
-            ? createHash('sha256').update(metadata.ipAddress).digest('hex').slice(0, 16)
+            ? createHash('sha256')
+                .update(metadata.ipAddress)
+                .digest('hex')
+                .slice(0, 16)
             : null,
           userAgent: metadata.deviceInfo?.slice(0, 512) ?? null,
         },
@@ -211,14 +214,22 @@ export class AuthService {
         action: 'TERMS_ACCEPTED',
         entityType: 'User',
         entityId: user.id,
-        metadata: { privacyPolicyVersion: PRIVACY_POLICY_VERSION, termsVersion: TERMS_VERSION },
+        metadata: {
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+          termsVersion: TERMS_VERSION,
+        },
         ipAddress: metadata.ipAddress,
         userAgent: metadata.deviceInfo,
       }),
     ]);
 
     return {
-      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
+      accessToken: this.sign(
+        safeUser.id,
+        safeUser.clinicId,
+        safeUser.role,
+        user.tokenVersion,
+      ),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
@@ -264,7 +275,11 @@ export class AuthService {
     // Patients are clinical records only — they have no platform access
     if (user.role === 'PATIENT') {
       this.loginIdentityRateLimiter.recordFailure(emailHash);
-      void this.logLoginFailure(emailHash, 'PATIENT_ROLE_NOT_ALLOWED', metadata);
+      void this.logLoginFailure(
+        emailHash,
+        'PATIENT_ROLE_NOT_ALLOWED',
+        metadata,
+      );
       throw new UnauthorizedException('E-mail ou senha invalidos');
     }
 
@@ -313,7 +328,12 @@ export class AuthService {
     });
 
     return {
-      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
+      accessToken: this.sign(
+        safeUser.id,
+        safeUser.clinicId,
+        safeUser.role,
+        user.tokenVersion,
+      ),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
@@ -476,7 +496,11 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string, rawToken: string, metadata: TokenMetadata = {}): Promise<LogoutResponse> {
+  async logout(
+    userId: string,
+    rawToken: string,
+    metadata: TokenMetadata = {},
+  ): Promise<LogoutResponse> {
     const tokenHash = hashToken(rawToken);
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, userId, revokedAt: null },
@@ -543,12 +567,20 @@ export class AuthService {
 
     const token = await this.exchangeGoogleCode(code);
     if (!token.access_token) {
-      throw new BadRequestException('Não foi possível autenticar com o Google.');
+      throw new BadRequestException(
+        'Não foi possível autenticar com o Google.',
+      );
     }
 
     const googleUser = await this.fetchGoogleUser(token.access_token);
-    if (!googleUser.sub || !googleUser.email || googleUser.email_verified !== true) {
-      throw new UnauthorizedException('Não foi possível validar seu e-mail no Google.');
+    if (
+      !googleUser.sub ||
+      !googleUser.email ||
+      googleUser.email_verified !== true
+    ) {
+      throw new UnauthorizedException(
+        'Não foi possível validar seu e-mail no Google.',
+      );
     }
 
     const normalizedEmail = googleUser.email.trim().toLowerCase();
@@ -571,15 +603,21 @@ export class AuthService {
 
     if (existing) {
       if (!existing.isActive || existing.deletedAt !== null) {
-        throw new UnauthorizedException('Não foi possível autenticar com o Google.');
+        throw new UnauthorizedException(
+          'Não foi possível autenticar com o Google.',
+        );
       }
 
       if (existing.role === 'PATIENT' && existing.isProfileComplete) {
-        throw new UnauthorizedException('Não foi possível autenticar com o Google.');
+        throw new UnauthorizedException(
+          'Não foi possível autenticar com o Google.',
+        );
       }
 
       if (existing.googleId && existing.googleId !== googleUser.sub) {
-        throw new UnauthorizedException('Não foi possível autenticar com o Google.');
+        throw new UnauthorizedException(
+          'Não foi possível autenticar com o Google.',
+        );
       }
 
       const user = await this.prisma.user.update({
@@ -605,7 +643,10 @@ export class AuthService {
     const created = await this.prisma.user.create({
       data: {
         email: normalizedEmail,
-        passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS),
+        passwordHash: await bcrypt.hash(
+          randomBytes(32).toString('hex'),
+          BCRYPT_ROUNDS,
+        ),
         firstName: splitName.firstName,
         lastName: splitName.lastName,
         role: 'PATIENT',
@@ -651,7 +692,12 @@ export class AuthService {
       },
     });
 
-    if (!user || !user.googleId || user.clinicId !== null || user.role !== 'PATIENT') {
+    if (
+      !user ||
+      !user.googleId ||
+      user.clinicId !== null ||
+      user.role !== 'PATIENT'
+    ) {
       throw new ForbiddenException('Não foi possível concluir este perfil.');
     }
 
@@ -679,7 +725,10 @@ export class AuthService {
           privacyPolicyVersion: PRIVACY_POLICY_VERSION,
           termsVersion: TERMS_VERSION,
           ipHash: metadata.ipAddress
-            ? createHash('sha256').update(metadata.ipAddress).digest('hex').slice(0, 16)
+            ? createHash('sha256')
+                .update(metadata.ipAddress)
+                .digest('hex')
+                .slice(0, 16)
             : null,
           userAgent: metadata.deviceInfo?.slice(0, 512) ?? null,
         },
@@ -699,7 +748,10 @@ export class AuthService {
         action: 'USER_UPDATED',
         entityType: 'User',
         entityId: updated.id,
-        metadata: { reason: 'GOOGLE_PROFILE_COMPLETED', clinicId: updated.clinicId },
+        metadata: {
+          reason: 'GOOGLE_PROFILE_COMPLETED',
+          clinicId: updated.clinicId,
+        },
         ipAddress: metadata.ipAddress,
         userAgent: metadata.deviceInfo,
       }),
@@ -708,7 +760,10 @@ export class AuthService {
         action: 'TERMS_ACCEPTED',
         entityType: 'User',
         entityId: updated.id,
-        metadata: { privacyPolicyVersion: PRIVACY_POLICY_VERSION, termsVersion: TERMS_VERSION },
+        metadata: {
+          privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+          termsVersion: TERMS_VERSION,
+        },
         ipAddress: metadata.ipAddress,
         userAgent: metadata.deviceInfo,
       }),
@@ -906,7 +961,12 @@ export class AuthService {
     const safeUser = this.toAuthResponseUser(user);
 
     return {
-      accessToken: this.sign(safeUser.id, safeUser.clinicId, safeUser.role, user.tokenVersion),
+      accessToken: this.sign(
+        safeUser.id,
+        safeUser.clinicId,
+        safeUser.role,
+        user.tokenVersion,
+      ),
       refreshToken: rawRefreshToken,
       user: safeUser,
     };
@@ -955,7 +1015,9 @@ export class AuthService {
     const token = (await response.json()) as GoogleTokenResponse;
 
     if (!response.ok) {
-      throw new BadRequestException('Não foi possível autenticar com o Google.');
+      throw new BadRequestException(
+        'Não foi possível autenticar com o Google.',
+      );
     }
 
     return token;
@@ -967,23 +1029,28 @@ export class AuthService {
     });
 
     if (!response.ok) {
-      throw new BadRequestException('Não foi possível validar sua conta Google.');
+      throw new BadRequestException(
+        'Não foi possível validar sua conta Google.',
+      );
     }
 
     return response.json() as Promise<GoogleUserInfo>;
   }
 
-  private splitGoogleName(googleUser: GoogleUserInfo): { firstName: string; lastName: string } {
+  private splitGoogleName(googleUser: GoogleUserInfo): {
+    firstName: string;
+    lastName: string;
+  } {
     const givenName = googleUser.given_name?.trim();
     const familyName = googleUser.family_name?.trim();
     if (givenName && familyName) {
-      return { firstName: givenName.slice(0, 50), lastName: familyName.slice(0, 50) };
+      return {
+        firstName: givenName.slice(0, 50),
+        lastName: familyName.slice(0, 50),
+      };
     }
 
-    const parts = (googleUser.name ?? '')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+    const parts = (googleUser.name ?? '').trim().split(/\s+/).filter(Boolean);
 
     if (parts.length >= 2) {
       return {

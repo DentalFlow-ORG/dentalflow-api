@@ -37,10 +37,10 @@ export function normalizeAudioMime(rawMime: string): AudioNormalization {
 
   const EXT_MAP: Record<string, string> = {
     'audio/webm': 'webm',
-    'audio/ogg':  'ogg',
-    'audio/mp4':  'mp4',
+    'audio/ogg': 'ogg',
+    'audio/mp4': 'mp4',
     'audio/mpeg': 'mp3',
-    'audio/wav':  'wav',
+    'audio/wav': 'wav',
   };
 
   const ext = EXT_MAP[base];
@@ -76,9 +76,19 @@ export type ClinicalFieldKey = (typeof CLINICAL_FIELD_KEYS)[number];
 // Validated against this set — unknown values are silently dropped.
 
 export const VALID_ODONTOGRAM_CONDITIONS = new Set([
-  'healthy', 'caries', 'restored', 'absent', 'extraction',
-  'fracture', 'mobility', 'crown', 'endodontic', 'implant',
-  'prosthetic', 'sealant', 'watch',
+  'healthy',
+  'caries',
+  'restored',
+  'absent',
+  'extraction',
+  'fracture',
+  'mobility',
+  'crown',
+  'endodontic',
+  'implant',
+  'prosthetic',
+  'sealant',
+  'watch',
 ]);
 
 // ── Valid FDI tooth numbers ───────────────────────────────────────────────────
@@ -86,15 +96,61 @@ export const VALID_ODONTOGRAM_CONDITIONS = new Set([
 
 export const VALID_FDI_TOOTH_NUMBERS = new Set<string>([
   // Permanent upper
-  '11','12','13','14','15','16','17','18',
-  '21','22','23','24','25','26','27','28',
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '16',
+  '17',
+  '18',
+  '21',
+  '22',
+  '23',
+  '24',
+  '25',
+  '26',
+  '27',
+  '28',
   // Permanent lower
-  '31','32','33','34','35','36','37','38',
-  '41','42','43','44','45','46','47','48',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '36',
+  '37',
+  '38',
+  '41',
+  '42',
+  '43',
+  '44',
+  '45',
+  '46',
+  '47',
+  '48',
   // Deciduous upper
-  '51','52','53','54','55','61','62','63','64','65',
+  '51',
+  '52',
+  '53',
+  '54',
+  '55',
+  '61',
+  '62',
+  '63',
+  '64',
+  '65',
   // Deciduous lower
-  '71','72','73','74','75','81','82','83','84','85',
+  '71',
+  '72',
+  '73',
+  '74',
+  '75',
+  '81',
+  '82',
+  '83',
+  '84',
+  '85',
 ]);
 
 // ── Odontogram suggestion shape returned by the API ───────────────────────────
@@ -243,14 +299,22 @@ export class ClinicalDictationService {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  async dictate(clinicId: string, userId: string, dto: DictateRecordDto): Promise<DictationResult> {
+  async dictate(
+    clinicId: string,
+    userId: string,
+    dto: DictateRecordDto,
+  ): Promise<DictationResult> {
     // Order: kill-switch → quota → OpenAI → record usage
     this.assertEnabled();
-    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.CLINICAL_DICTATION);
+    await this.quotaService.assertQuota(
+      clinicId,
+      AiAssistantAnalysisType.CLINICAL_DICTATION,
+    );
 
     const startedAt = Date.now();
     const transcript = await this.transcribeAudio(dto);
-    const { fields, odontogramSuggestions } = await this.classifyTranscript(transcript);
+    const { fields, odontogramSuggestions } =
+      await this.classifyTranscript(transcript);
 
     this.logSuccess(
       transcript.length,
@@ -262,28 +326,30 @@ export class ClinicalDictationService {
     // Record successful usage for monthly quota tracking.
     // Best-effort: a DB write failure must never break the dictation response.
     // Content contains only safe metadata — no transcript text or field values.
-    this.analysisRepository.saveSuccess({
-      clinicId,
-      userId,
-      type: AiAssistantAnalysisType.CLINICAL_DICTATION,
-      content: {
-        transcriptLength: transcript.length,
-        fieldsClassified: Object.keys(fields),
-        odontogramSuggestionsCount: odontogramSuggestions.length,
-      },
-      model: this.classificationModel,
-      generatedAt: new Date(),
-      periodStart: null,
-      periodEnd: null,
-    }).catch(() => {
-      this.logger.error(
-        JSON.stringify({
-          event: 'clinical_dictation_quota_record_failed',
-          errorCode: 'PERSISTENCE_ERROR',
-          createdAt: new Date().toISOString(),
-        }),
-      );
-    });
+    this.analysisRepository
+      .saveSuccess({
+        clinicId,
+        userId,
+        type: AiAssistantAnalysisType.CLINICAL_DICTATION,
+        content: {
+          transcriptLength: transcript.length,
+          fieldsClassified: Object.keys(fields),
+          odontogramSuggestionsCount: odontogramSuggestions.length,
+        },
+        model: this.classificationModel,
+        generatedAt: new Date(),
+        periodStart: null,
+        periodEnd: null,
+      })
+      .catch(() => {
+        this.logger.error(
+          JSON.stringify({
+            event: 'clinical_dictation_quota_record_failed',
+            errorCode: 'PERSISTENCE_ERROR',
+            createdAt: new Date().toISOString(),
+          }),
+        );
+      });
 
     return { transcript, fields, odontogramSuggestions };
   }
@@ -314,7 +380,9 @@ export class ClinicalDictationService {
     // ── 1. Normalize MIME → clean type + safe filename ─────────────────────
     // Strips codec params so 'audio/webm;codecs=opus' → { mimeType: 'audio/webm',
     // filename: 'dictation.webm' }.  Without a proper extension Whisper returns 400.
-    const { mimeType: normalizedMime, filename } = normalizeAudioMime(dto.mimeType);
+    const { mimeType: normalizedMime, filename } = normalizeAudioMime(
+      dto.mimeType,
+    );
 
     // ── 2. Normalize base64 ────────────────────────────────────────────────
     // The frontend already strips the data-URL prefix, but be defensive:
@@ -361,7 +429,9 @@ export class ClinicalDictationService {
    * optional odontogram suggestions. The raw transcript is used only as GPT
    * input and is never logged.
    */
-  private async classifyTranscript(transcript: string): Promise<ClassificationOutput> {
+  private async classifyTranscript(
+    transcript: string,
+  ): Promise<ClassificationOutput> {
     let raw: string;
 
     try {
@@ -458,7 +528,9 @@ export class ClinicalDictationService {
       if (!toothNumber || !VALID_FDI_TOOTH_NUMBERS.has(toothNumber)) continue;
 
       const condition =
-        typeof s.condition === 'string' ? s.condition.trim().toLowerCase() : null;
+        typeof s.condition === 'string'
+          ? s.condition.trim().toLowerCase()
+          : null;
       if (!condition || !VALID_ODONTOGRAM_CONDITIONS.has(condition)) continue;
 
       const notes =
@@ -467,7 +539,9 @@ export class ClinicalDictationService {
           : undefined;
 
       const confidence =
-        s.confidence === 'high' || s.confidence === 'medium' || s.confidence === 'low'
+        s.confidence === 'high' ||
+        s.confidence === 'medium' ||
+        s.confidence === 'low'
           ? s.confidence
           : undefined;
 

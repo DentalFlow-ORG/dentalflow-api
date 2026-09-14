@@ -7,7 +7,9 @@ export class MailService {
 
   async sendPasswordResetEmail(to: string, rawToken: string): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
-    const frontendUrl = (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+    const frontendUrl = (
+      process.env.FRONTEND_URL ?? 'http://localhost:5173'
+    ).replace(/\/$/, '');
     const isProduction = process.env.NODE_ENV === 'production';
 
     // ── No provider configured ──────────────────────────────────────────────

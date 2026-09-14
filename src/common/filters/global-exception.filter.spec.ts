@@ -39,7 +39,10 @@ describe('GlobalExceptionFilter', () => {
     filter.catch(new BadRequestException('campos inválidos'), host);
 
     expect(statusFn).toHaveBeenCalledWith(400);
-    const body = jsonFn.mock.calls[0][0] as { statusCode: number; message: unknown };
+    const body = jsonFn.mock.calls[0][0] as {
+      statusCode: number;
+      message: unknown;
+    };
     expect(body.statusCode).toBe(400);
   });
 
@@ -53,7 +56,10 @@ describe('GlobalExceptionFilter', () => {
     filter.catch(err, host);
 
     expect(statusFn).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
-    const body = jsonFn.mock.calls[0][0] as { statusCode: number; message: string };
+    const body = jsonFn.mock.calls[0][0] as {
+      statusCode: number;
+      message: string;
+    };
     expect(body.statusCode).toBe(413);
     expect(body.message).toBe('Payload muito grande.');
     // Must not leak raw body-parser message or request details
@@ -90,7 +96,10 @@ describe('GlobalExceptionFilter', () => {
     const jsonFn = jest.fn();
     const statusFn = jest.fn().mockReturnValue({ json: jsonFn });
     const request = { url: '/api/test', method: 'GET' } as unknown as Request;
-    const response = { status: statusFn, headersSent: true } as unknown as Response;
+    const response = {
+      status: statusFn,
+      headersSent: true,
+    } as unknown as Response;
     const host = {
       switchToHttp: () => ({
         getRequest: () => request,
@@ -110,7 +119,10 @@ describe('GlobalExceptionFilter', () => {
       'error',
     );
     const request = { url: '/api/test', method: 'GET' } as unknown as Request;
-    const response = { status: jest.fn(), headersSent: true } as unknown as Response;
+    const response = {
+      status: jest.fn(),
+      headersSent: true,
+    } as unknown as Response;
     const host = {
       switchToHttp: () => ({
         getRequest: () => request,

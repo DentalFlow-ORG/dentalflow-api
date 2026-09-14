@@ -56,7 +56,8 @@ export class LocalFiscalInvoiceProvider implements FiscalInvoiceProvider {
       status: 'CANCELED',
       reason,
       legalValidity: false,
-      message: 'Cancelamento interno simulado. Nenhuma NFS-e real foi cancelada.',
+      message:
+        'Cancelamento interno simulado. Nenhuma NFS-e real foi cancelada.',
     });
   }
 

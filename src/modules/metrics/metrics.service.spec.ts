@@ -153,8 +153,7 @@ describe('MetricsService.getProductivitySummary', () => {
       const summary = await service.getProductivitySummary(CLINIC);
 
       expect(summary.today.date).toBe('2026-06-15');
-      const where = (prisma.appointment.findMany).mock.calls[0][0]
-        .where;
+      const where = prisma.appointment.findMany.mock.calls[0][0].where;
       expect(where.appointmentDate.gte.toISOString()).toBe(
         '2026-06-15T00:00:00.000Z',
       );
@@ -237,8 +236,7 @@ describe('MetricsService.getProductivitySummary', () => {
       seed({});
       await service.getProductivitySummary(CLINIC);
 
-      const where = (prisma.appointment.findMany).mock.calls[1][0]
-        .where;
+      const where = prisma.appointment.findMany.mock.calls[1][0].where;
       expect(where.status).toBe(AppointmentStatus.COMPLETED);
       expect(where.paymentStatus.in).toEqual([
         AppointmentPaymentStatus.PAYMENT_PENDING,
@@ -687,7 +685,7 @@ describe('MetricsService.getProductivitySummary', () => {
     await service.getProductivitySummary(CLINIC);
 
     const wheres = [
-      ...(prisma.appointment.findMany).mock.calls,
+      ...prisma.appointment.findMany.mock.calls,
       ...prisma.stockProduct.findMany.mock.calls,
       ...prisma.financialTransaction.findMany.mock.calls,
       ...prisma.appointment.groupBy.mock.calls,

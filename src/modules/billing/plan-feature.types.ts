@@ -4,13 +4,13 @@
  * NotificationService) and are NOT re-enforced here to avoid double-checking.
  */
 export enum PlanFeature {
-  FINANCE             = 'FINANCE',
-  INVENTORY           = 'INVENTORY',
-  FISCAL_CONTROL      = 'FISCAL_CONTROL',
-  REPORTS             = 'REPORTS',
-  GOOGLE_CALENDAR     = 'GOOGLE_CALENDAR',
+  FINANCE = 'FINANCE',
+  INVENTORY = 'INVENTORY',
+  FISCAL_CONTROL = 'FISCAL_CONTROL',
+  REPORTS = 'REPORTS',
+  GOOGLE_CALENDAR = 'GOOGLE_CALENDAR',
   /** Premium-only: voice-based clinical record dictation via Whisper + GPT. */
-  CLINICAL_DICTATION  = 'CLINICAL_DICTATION',
+  CLINICAL_DICTATION = 'CLINICAL_DICTATION',
 }
 
 /**
@@ -41,7 +41,9 @@ const PLAN_FEATURE_TABLE: Record<string, ReadonlySet<PlanFeature>> = {
 
 const EMPTY_FEATURES = new Set<PlanFeature>();
 
-export function getPlanFeatures(planSlug: string | null): ReadonlySet<PlanFeature> {
+export function getPlanFeatures(
+  planSlug: string | null,
+): ReadonlySet<PlanFeature> {
   if (!planSlug) return EMPTY_FEATURES;
   return PLAN_FEATURE_TABLE[planSlug] ?? EMPTY_FEATURES;
 }

@@ -1,4 +1,11 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 import { IsClockTime } from '../../../common/validators/input-validation.decorators';
 
 export class CreateAvailabilityDto {

@@ -1,47 +1,47 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateClinicProfileDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  name?: string
+  name?: string;
 
   @IsOptional()
   @IsEmail()
-  email?: string
+  email?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  phone?: string
+  phone?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  websiteUrl?: string
+  websiteUrl?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  addressLine1?: string
+  addressLine1?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  addressLine2?: string
+  addressLine2?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  city?: string
+  city?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(2)
-  state?: string
+  state?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(9)
-  postalCode?: string
+  postalCode?: string;
 }

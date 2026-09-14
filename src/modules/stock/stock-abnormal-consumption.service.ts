@@ -80,9 +80,7 @@ export class StockAbnormalConsumptionService {
     const windowStart = new Date(
       now.getTime() - baselineDays * 24 * 3600 * 1000,
     );
-    const recentStart = new Date(
-      now.getTime() - recentDays * 24 * 3600 * 1000,
-    );
+    const recentStart = new Date(now.getTime() - recentDays * 24 * 3600 * 1000);
 
     // Sequential to avoid concurrent queries on the same pg connection
     // (would trigger the pg@8 "client already executing" deprecation warning).

@@ -33,11 +33,11 @@ import { validateEnv } from './config/validate-env';
 // Two patterns are tested so the helper works with and without the API prefix
 // (e.g. direct access, reverse-proxy, or a different API_PREFIX env value).
 function isClinicalDictationRoute(req: express.Request): boolean {
-  const path = req.path || (req.url ?? '').split('?')[0]
+  const path = req.path || (req.url ?? '').split('?')[0];
   return (
     /^\/api\/clinical-records\/[^/]+\/dictate$/.test(path) ||
     /^\/clinical-records\/[^/]+\/dictate$/.test(path)
-  )
+  );
 }
 
 async function bootstrap() {
@@ -106,36 +106,50 @@ async function bootstrap() {
   // 1. Clinical dictation — 6 MB.
   //    Headroom: DTO MaxLength 4 000 000 chars ≈ 3.81 MB; parser limit 6 MB
   //    gives ~57 % headroom so DTO validation returns 400 before body-parser 413.
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (!isClinicalDictationRoute(req)) {
-      return next();
-    }
-    // Dev-only routing confirmation — safe: logs method + path only, no body.
-    if (appConfig.nodeEnv !== 'production') {
-      console.log(`[ClinicalDictation] ${req.method} ${req.path} — using 6 MB JSON parser`);
-    }
-    return express.json({ limit: '6mb' })(req, res, next);
-  });
+  app.use(
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (!isClinicalDictationRoute(req)) {
+        return next();
+      }
+      // Dev-only routing confirmation — safe: logs method + path only, no body.
+      if (appConfig.nodeEnv !== 'production') {
+        console.log(
+          `[ClinicalDictation] ${req.method} ${req.path} — using 6 MB JSON parser`,
+        );
+      }
+      return express.json({ limit: '6mb' })(req, res, next);
+    },
+  );
 
   // 2. Global 100 kb limit — all non-dictation routes.
   //    Explicitly skips dictation so body-parser does not attempt to re-parse
   //    an already-consumed stream (belt-and-suspenders over req._body).
   //    rawBody verify captures the raw buffer needed by the Stripe webhook.
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (isClinicalDictationRoute(req)) {
-      return next();
-    }
-    return express.json({
-      limit: '100kb',
-      verify: (
-        rawReq: express.Request & { rawBody?: Buffer },
-        _res: express.Response,
-        buf: Buffer,
-      ) => {
-        if (Buffer.isBuffer(buf)) rawReq.rawBody = buf;
-      },
-    })(req, res, next);
-  });
+  app.use(
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (isClinicalDictationRoute(req)) {
+        return next();
+      }
+      return express.json({
+        limit: '100kb',
+        verify: (
+          rawReq: express.Request & { rawBody?: Buffer },
+          _res: express.Response,
+          buf: Buffer,
+        ) => {
+          if (Buffer.isBuffer(buf)) rawReq.rawBody = buf;
+        },
+      })(req, res, next);
+    },
+  );
 
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 

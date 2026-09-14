@@ -113,11 +113,15 @@ export class StockCopilotService {
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      this.logger.warn('OPENAI_API_KEY not configured — stock copilot disabled.');
+      this.logger.warn(
+        'OPENAI_API_KEY not configured — stock copilot disabled.',
+      );
     }
     this.openai = new OpenAI({ apiKey: apiKey ?? 'not-configured' });
     this.model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
-    this.maxOutputTokens = Number(process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 600);
+    this.maxOutputTokens = Number(
+      process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 600,
+    );
   }
 
   async getCopilotSummary(
@@ -126,7 +130,8 @@ export class StockCopilotService {
     forceRefresh: boolean,
   ): Promise<CopilotSummaryResult | null> {
     // 1. Purchase list is always cheap (deterministic, no AI)
-    const purchaseList = await this.purchaseListService.getPurchaseList(clinicId);
+    const purchaseList =
+      await this.purchaseListService.getPurchaseList(clinicId);
     const snapshot = purchaseList.summary;
 
     // 2. Empty purchase list — nothing to analyze
@@ -191,7 +196,9 @@ export class StockCopilotService {
    * regardless of the current purchase-list state.  Used by the GET /latest
    * endpoint so analyses remain visible even when the purchase list is empty.
    */
-  async getLatestAnalysis(clinicId: string): Promise<CopilotSummaryResult | null> {
+  async getLatestAnalysis(
+    clinicId: string,
+  ): Promise<CopilotSummaryResult | null> {
     const quota = await this.quotaService.getQuota(
       clinicId,
       AiAssistantAnalysisType.STOCK_COPILOT,

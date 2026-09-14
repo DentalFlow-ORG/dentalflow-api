@@ -48,7 +48,10 @@ describe('TenantGuard', () => {
 
     it('returns true for routes without @TenantScoped() (guard is opt-in)', () => {
       const guard = new TenantGuard(
-        makeReflector({ [IS_PUBLIC_KEY]: undefined, [TENANT_SCOPED_KEY]: undefined }),
+        makeReflector({
+          [IS_PUBLIC_KEY]: undefined,
+          [TENANT_SCOPED_KEY]: undefined,
+        }),
         accessPolicy,
       );
 
@@ -58,19 +61,30 @@ describe('TenantGuard', () => {
 
   describe('@TenantScoped() enforcement', () => {
     function tenantScopedReflector(): Reflector {
-      return makeReflector({ [IS_PUBLIC_KEY]: undefined, [TENANT_SCOPED_KEY]: true });
+      return makeReflector({
+        [IS_PUBLIC_KEY]: undefined,
+        [TENANT_SCOPED_KEY]: true,
+      });
     }
 
     it('returns true for OWNER with a clinicId', () => {
       const guard = new TenantGuard(tenantScopedReflector(), accessPolicy);
-      const context = makeContext({ id: 'u1', clinicId: 'clinic-1', role: 'OWNER' });
+      const context = makeContext({
+        id: 'u1',
+        clinicId: 'clinic-1',
+        role: 'OWNER',
+      });
 
       expect(guard.canActivate(context)).toBe(true);
     });
 
     it('returns true for DENTIST with a clinicId', () => {
       const guard = new TenantGuard(tenantScopedReflector(), accessPolicy);
-      const context = makeContext({ id: 'u2', clinicId: 'clinic-1', role: 'DENTIST' });
+      const context = makeContext({
+        id: 'u2',
+        clinicId: 'clinic-1',
+        role: 'DENTIST',
+      });
 
       expect(guard.canActivate(context)).toBe(true);
     });
@@ -86,7 +100,11 @@ describe('TenantGuard', () => {
 
     it('throws ForbiddenException for PATIENT without clinicId', () => {
       const guard = new TenantGuard(tenantScopedReflector(), accessPolicy);
-      const context = makeContext({ id: 'u5', clinicId: null, role: 'PATIENT' });
+      const context = makeContext({
+        id: 'u5',
+        clinicId: null,
+        role: 'PATIENT',
+      });
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });

@@ -73,7 +73,10 @@ export class AppointmentsController {
 
   @Get(':id')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  findById(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
+  findById(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AppointmentIdParamDto,
+  ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.findAppointmentById(
       clinicId,
@@ -137,7 +140,10 @@ export class AppointmentsController {
 
   @Patch(':id/confirm')
   @Roles('OWNER', 'ASSISTANT')
-  confirmAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
+  confirmAction(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AppointmentIdParamDto,
+  ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,
@@ -167,7 +173,10 @@ export class AppointmentsController {
 
   @Patch(':id/complete')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  completeAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
+  completeAction(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AppointmentIdParamDto,
+  ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,
@@ -180,7 +189,10 @@ export class AppointmentsController {
 
   @Patch(':id/no-show')
   @Roles('OWNER', 'DENTIST', 'ASSISTANT')
-  noShowAction(@CurrentUser() user: AuthUser, @Param() params: AppointmentIdParamDto) {
+  noShowAction(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AppointmentIdParamDto,
+  ) {
     const clinicId = this.accessPolicy.assertClinicOperationsAccess(user);
     return this.appointmentsService.updateAppointmentStatus(
       clinicId,

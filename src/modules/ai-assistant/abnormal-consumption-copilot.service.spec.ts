@@ -102,7 +102,11 @@ function mockOpenAi(
   service: AbnormalConsumptionCopilotService,
   responseJson: string,
 ) {
-  (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+  (
+    service as unknown as {
+      openai: { chat: { completions: { create: jest.Mock } } };
+    }
+  ).openai = {
     chat: {
       completions: {
         create: jest.fn().mockResolvedValue({
@@ -161,7 +165,9 @@ describe('AbnormalConsumptionCopilotService', () => {
 
     expect(result).not.toBeNull();
     expect(result.source).toBe('AI');
-    expect(result.summary).toBe('Foram detectadas variações nos produtos analisados.');
+    expect(result.summary).toBe(
+      'Foram detectadas variações nos produtos analisados.',
+    );
   });
 
   // ── 2. Premium allowed ───────────────────────────────────────────────────────
@@ -216,7 +222,11 @@ describe('AbnormalConsumptionCopilotService', () => {
     mockRepository.findLatest.mockResolvedValue(CACHED_RECORD);
     const mockCreate = jest.fn();
     mockOpenAi(service, VALID_AI_RESPONSE);
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai.chat.completions.create = mockCreate;
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai.chat.completions.create = mockCreate;
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, {
       forceRefresh: false,
@@ -237,7 +247,11 @@ describe('AbnormalConsumptionCopilotService', () => {
     mockQuota('professional', true, 10, 10);
     mockRepository.findLatest.mockResolvedValue(CACHED_RECORD);
     mockOpenAi(service, VALID_AI_RESPONSE);
-    const mockCreate = (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai.chat.completions.create;
+    const mockCreate = (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai.chat.completions.create;
 
     const result = await service.getCopilotSummary(USER_ID, CLINIC_ID, {
       forceRefresh: true,
@@ -271,7 +285,11 @@ describe('AbnormalConsumptionCopilotService', () => {
     );
     mockQuota('premium', true, 30, 30);
     mockOpenAi(service, VALID_AI_RESPONSE);
-    const mockCreate = (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai.chat.completions.create;
+    const mockCreate = (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai.chat.completions.create;
 
     await service.getCopilotSummary(USER_ID, CLINIC_ID, { forceRefresh: true });
 
@@ -290,7 +308,11 @@ describe('AbnormalConsumptionCopilotService', () => {
     );
     mockQuota('professional', true, 10, 10);
     mockOpenAi(service, VALID_AI_RESPONSE);
-    const mockCreate = (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai.chat.completions.create;
+    const mockCreate = (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai.chat.completions.create;
 
     await service.getCopilotSummary(USER_ID, CLINIC_ID, { forceRefresh: true });
 
@@ -331,7 +353,11 @@ describe('AbnormalConsumptionCopilotService', () => {
       buildConsumptionResult(1),
     );
     mockQuota('professional', true, 10, 10);
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: {
         completions: {
           create: jest.fn().mockRejectedValue(new Error('Network error')),
@@ -352,7 +378,11 @@ describe('AbnormalConsumptionCopilotService', () => {
     const rateLimitError = Object.assign(new Error('Rate limited'), {
       status: 429,
     });
-    (service as unknown as { openai: { chat: { completions: { create: jest.Mock } } } }).openai = {
+    (
+      service as unknown as {
+        openai: { chat: { completions: { create: jest.Mock } } };
+      }
+    ).openai = {
       chat: {
         completions: { create: jest.fn().mockRejectedValue(rateLimitError) },
       },
@@ -376,10 +406,7 @@ describe('AbnormalConsumptionCopilotService', () => {
 
     expect(
       mockAbnormalConsumptionService.getAbnormalConsumption,
-    ).toHaveBeenCalledWith(
-      OTHER_CLINIC_ID,
-      expect.objectContaining({}),
-    );
+    ).toHaveBeenCalledWith(OTHER_CLINIC_ID, expect.objectContaining({}));
   });
 
   it('passes the correct clinicId to findLatest for cache lookup', async () => {
@@ -477,7 +504,9 @@ describe('AbnormalConsumptionCopilotService.getLatestAnalysis', () => {
     expect(result!.source).toBe('CACHE');
     expect(result!.cached).toBe(true);
     // The anomaly service is never called — no live data fetch
-    expect(mockAbnormalConsumptionService.getAbnormalConsumption).not.toHaveBeenCalled();
+    expect(
+      mockAbnormalConsumptionService.getAbnormalConsumption,
+    ).not.toHaveBeenCalled();
   });
 
   it('throws ForbiddenException when plan does not allow copilot', async () => {

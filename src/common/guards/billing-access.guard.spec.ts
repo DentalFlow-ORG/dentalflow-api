@@ -54,36 +54,63 @@ describe('BillingAccessGuard', () => {
         billingSvcMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
     });
 
     it('returns true for routes without @RequiresBillingAccess() (guard is opt-in)', async () => {
       const guard = new BillingAccessGuard(
-        makeReflector({ [IS_PUBLIC_KEY]: undefined, [REQUIRES_BILLING_ACCESS_KEY]: undefined }),
+        makeReflector({
+          [IS_PUBLIC_KEY]: undefined,
+          [REQUIRES_BILLING_ACCESS_KEY]: undefined,
+        }),
         billingSvcMock as never,
       );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
-      expect(billingSvcMock.getCurrentSubscriptionStatus).not.toHaveBeenCalled();
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
+      expect(
+        billingSvcMock.getCurrentSubscriptionStatus,
+      ).not.toHaveBeenCalled();
     });
   });
 
   describe('ADMIN bypass', () => {
     it('returns true for ADMIN without checking billing status', async () => {
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
 
-      await expect(guard.canActivate(makeContext(adminUser))).resolves.toBe(true);
-      expect(billingSvcMock.getCurrentSubscriptionStatus).not.toHaveBeenCalled();
+      await expect(guard.canActivate(makeContext(adminUser))).resolves.toBe(
+        true,
+      );
+      expect(
+        billingSvcMock.getCurrentSubscriptionStatus,
+      ).not.toHaveBeenCalled();
     });
   });
 
   describe('clinic membership requirement', () => {
     it('throws ForbiddenException for a user without clinicId', async () => {
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
-      const context = makeContext({ id: 'u5', clinicId: null, role: 'PATIENT' });
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
+      const context = makeContext({
+        id: 'u5',
+        clinicId: null,
+        role: 'PATIENT',
+      });
 
-      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-      expect(billingSvcMock.getCurrentSubscriptionStatus).not.toHaveBeenCalled();
+      await expect(guard.canActivate(context)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(
+        billingSvcMock.getCurrentSubscriptionStatus,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -93,18 +120,30 @@ describe('BillingAccessGuard', () => {
         accessAllowed: true,
         status: 'active',
       });
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
 
-      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext(ownerUser))).resolves.toBe(
+        true,
+      );
     });
 
     it('queries billing status using the user clinicId', async () => {
-      billingSvcMock.getCurrentSubscriptionStatus.mockResolvedValue({ accessAllowed: true });
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
+      billingSvcMock.getCurrentSubscriptionStatus.mockResolvedValue({
+        accessAllowed: true,
+      });
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
 
       await guard.canActivate(makeContext(ownerUser));
 
-      expect(billingSvcMock.getCurrentSubscriptionStatus).toHaveBeenCalledWith('clinic-1');
+      expect(billingSvcMock.getCurrentSubscriptionStatus).toHaveBeenCalledWith(
+        'clinic-1',
+      );
     });
   });
 
@@ -117,7 +156,10 @@ describe('BillingAccessGuard', () => {
         requiresPayment: false,
         message: 'Nenhuma assinatura encontrada.',
       });
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
 
       await expect(guard.canActivate(makeContext(ownerUser))).rejects.toThrow(
         PaymentRequiredException,
@@ -132,7 +174,10 @@ describe('BillingAccessGuard', () => {
         requiresPayment: true,
         message: 'Sua assinatura foi cancelada.',
       });
-      const guard = new BillingAccessGuard(billingReflector(), billingSvcMock as never);
+      const guard = new BillingAccessGuard(
+        billingReflector(),
+        billingSvcMock as never,
+      );
 
       try {
         await guard.canActivate(makeContext(ownerUser));

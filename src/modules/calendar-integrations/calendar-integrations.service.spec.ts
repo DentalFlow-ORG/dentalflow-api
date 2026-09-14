@@ -13,7 +13,10 @@ import { CalendarIntegrationsService } from './calendar-integrations.service';
 // We do this by importing the compiled file and reaching into the module-level function.
 // Since TypeScript compiles module-level functions as non-enumerable exports, we instead
 // test buildEventTitle behavior through sync result assertions and a shadow copy here.
-function buildEventTitle(serviceName: string | null, patientName: string | null): string {
+function buildEventTitle(
+  serviceName: string | null,
+  patientName: string | null,
+): string {
   if (serviceName && patientName) return `${serviceName} - ${patientName}`;
   if (serviceName) return serviceName;
   if (patientName) return `Consulta odontologica - ${patientName}`;
@@ -72,7 +75,9 @@ function baseAppointment(overrides: Partial<object> = {}) {
 
 describe('buildEventTitle', () => {
   it('returns "serviceName - patientName" when both exist', () => {
-    expect(buildEventTitle('Limpeza', 'João Silva')).toBe('Limpeza - João Silva');
+    expect(buildEventTitle('Limpeza', 'João Silva')).toBe(
+      'Limpeza - João Silva',
+    );
   });
 
   it('returns serviceName when only service exists', () => {
@@ -80,7 +85,9 @@ describe('buildEventTitle', () => {
   });
 
   it('returns "Consulta odontologica - patientName" when only patient exists', () => {
-    expect(buildEventTitle(null, 'Maria')).toBe('Consulta odontologica - Maria');
+    expect(buildEventTitle(null, 'Maria')).toBe(
+      'Consulta odontologica - Maria',
+    );
   });
 
   it('returns "Consulta odontologica" when both are missing', () => {
@@ -135,14 +142,14 @@ describe('CalendarIntegrationsService.syncDentist', () => {
     service = buildService();
 
     // Mock assertConfig by setting private config fields via environment
-     
-    jest.spyOn(service as any, 'assertConfig').mockImplementation(() => undefined);
+
+    jest
+      .spyOn(service as any, 'assertConfig')
+      .mockImplementation(() => undefined);
   });
 
   it('throws BadRequestException when no integration exists', async () => {
-    prismaMock.$queryRaw
-      .mockResolvedValueOnce([]) // findActiveUserIntegration → empty
-      ;
+    prismaMock.$queryRaw.mockResolvedValueOnce([]); // findActiveUserIntegration → empty
 
     await expect(service.syncDentist(USER_ID, CLINIC_ID)).rejects.toThrow(
       BadRequestException,
@@ -152,8 +159,7 @@ describe('CalendarIntegrationsService.syncDentist', () => {
   it('throws NotFoundException when dentist has no linked profile', async () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([baseUserIntegration()]) // findActiveUserIntegration
-      .mockResolvedValueOnce([])                      // findDentistProfile → empty
-      ;
+      .mockResolvedValueOnce([]); // findDentistProfile → empty
 
     await expect(service.syncDentist(USER_ID, CLINIC_ID)).rejects.toThrow(
       NotFoundException,
@@ -162,26 +168,29 @@ describe('CalendarIntegrationsService.syncDentist', () => {
 
   it('queries appointments scoped to profileId only', async () => {
     prismaMock.$queryRaw
-      .mockResolvedValueOnce([baseUserIntegration()])        // findActiveUserIntegration
-      .mockResolvedValueOnce([{ id: PROFILE_ID }])           // findDentistProfile
-      .mockResolvedValueOnce([])                             // findDentistAppointmentsToSync → empty
-      ;
+      .mockResolvedValueOnce([baseUserIntegration()]) // findActiveUserIntegration
+      .mockResolvedValueOnce([{ id: PROFILE_ID }]) // findDentistProfile
+      .mockResolvedValueOnce([]); // findDentistAppointmentsToSync → empty
     prismaMock.$executeRaw.mockResolvedValue(undefined);
 
     // getValidUserAccessToken returns decrypted token — skip actual crypto by
     // mocking getValidUserAccessToken directly since encrypt/decrypt needs a real key
-     
-    jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
+
+    jest
+      .spyOn(service as any, 'getValidUserAccessToken')
+      .mockResolvedValue('mock-token');
 
     const result = await service.syncDentist(USER_ID, CLINIC_ID);
 
     expect(result).toEqual({ synced: 0, failed: 0 });
 
     // Confirm the appointments query was called — it receives profileId from findDentistProfile
-    const appointmentQueryCall = prismaMock.$queryRaw.mock.calls.find((call) => {
-      const sql = String(call[0]);
-      return sql.includes('profileId') || sql.includes('"profileId"');
-    });
+    const appointmentQueryCall = prismaMock.$queryRaw.mock.calls.find(
+      (call) => {
+        const sql = String(call[0]);
+        return sql.includes('profileId') || sql.includes('"profileId"');
+      },
+    );
     expect(appointmentQueryCall).toBeDefined();
   });
 
@@ -197,8 +206,9 @@ describe('CalendarIntegrationsService.syncDentist', () => {
       // (appointments from OTHER_PROFILE_ID should not appear)
       .mockResolvedValueOnce([]);
 
-     
-    jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
+    jest
+      .spyOn(service as any, 'getValidUserAccessToken')
+      .mockResolvedValue('mock-token');
     prismaMock.$executeRaw.mockResolvedValue(undefined);
 
     const result = await service.syncDentist(USER_ID, CLINIC_ID);
@@ -217,8 +227,10 @@ describe('CalendarIntegrationsService.disconnectDentist', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = buildService();
-     
-    jest.spyOn(service as any, 'assertConfig').mockImplementation(() => undefined);
+
+    jest
+      .spyOn(service as any, 'assertConfig')
+      .mockImplementation(() => undefined);
   });
 
   it('returns disconnected status when no active integration exists', async () => {
@@ -232,16 +244,18 @@ describe('CalendarIntegrationsService.disconnectDentist', () => {
   it('queries only profile-scoped appointments during disconnect cleanup', async () => {
     prismaMock.$queryRaw
       .mockResolvedValueOnce([baseUserIntegration()]) // findActiveUserIntegration
-      .mockResolvedValueOnce([{ id: PROFILE_ID }])   // findDentistProfile
-      .mockResolvedValueOnce([])                     // findProfileAppointmentsWithDentistEvents → empty
-      ;
+      .mockResolvedValueOnce([{ id: PROFILE_ID }]) // findDentistProfile
+      .mockResolvedValueOnce([]); // findProfileAppointmentsWithDentistEvents → empty
 
-     
-    jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
-     
+    jest
+      .spyOn(service as any, 'getValidUserAccessToken')
+      .mockResolvedValue('mock-token');
+
     jest.spyOn(service as any, 'decrypt').mockReturnValue('decrypted-token');
-     
-    jest.spyOn(service as any, 'revokeGoogleToken').mockResolvedValue(undefined);
+
+    jest
+      .spyOn(service as any, 'revokeGoogleToken')
+      .mockResolvedValue(undefined);
     prismaMock.$executeRaw.mockResolvedValue(undefined);
 
     const result = await service.disconnectDentist(USER_ID, CLINIC_ID);
@@ -251,7 +265,10 @@ describe('CalendarIntegrationsService.disconnectDentist', () => {
     // Confirm the profile-appointments query includes profileId filtering
     const profileEventQuery = prismaMock.$queryRaw.mock.calls.find((call) => {
       const sql = String(call[0]);
-      return sql.includes('dentistGoogleCalendarEventId') || sql.includes('"dentistGoogleCalendarEventId"');
+      return (
+        sql.includes('dentistGoogleCalendarEventId') ||
+        sql.includes('"dentistGoogleCalendarEventId"')
+      );
     });
     expect(profileEventQuery).toBeDefined();
   });

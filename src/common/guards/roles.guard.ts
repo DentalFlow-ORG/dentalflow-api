@@ -6,9 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
-import {
-  IS_ANY_AUTHENTICATED_KEY,
-} from '../decorators/any-authenticated.decorator';
+import { IS_ANY_AUTHENTICATED_KEY } from '../decorators/any-authenticated.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthenticatedRequest } from '../types/authenticated-request.type';
@@ -41,7 +39,9 @@ export class RolesGuard implements CanActivate {
     const user = context.switchToHttp().getRequest<AuthenticatedRequest>().user;
 
     if (!requiredRoles.includes(user.role)) {
-      throw new ForbiddenException('Você não tem permissão para acessar este recurso');
+      throw new ForbiddenException(
+        'Você não tem permissão para acessar este recurso',
+      );
     }
 
     return true;

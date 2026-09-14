@@ -120,8 +120,12 @@ export class StockService {
         purchasePrice: true,
       },
     });
-    const inactive = await this.prisma.stockProduct.count({ where: { clinicId, isActive: false } });
-    const totalCategories = await this.prisma.stockCategory.count({ where: { clinicId } });
+    const inactive = await this.prisma.stockProduct.count({
+      where: { clinicId, isActive: false },
+    });
+    const totalCategories = await this.prisma.stockCategory.count({
+      where: { clinicId },
+    });
 
     let lowStock = 0;
     let emptyStock = 0;
@@ -137,7 +141,8 @@ export class StockService {
       else if (status === 'EXPIRED') expired++;
 
       if (product.purchasePrice !== null) {
-        estimatedValue += Number(product.currentQuantity) * product.purchasePrice;
+        estimatedValue +=
+          Number(product.currentQuantity) * product.purchasePrice;
       }
     }
 
@@ -252,12 +257,16 @@ export class StockService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
         ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
         ...(dto.minQuantity !== undefined
           ? { minQuantity: new Prisma.Decimal(dto.minQuantity) }
           : {}),
-        ...(dto.purchasePrice !== undefined ? { purchasePrice: dto.purchasePrice } : {}),
+        ...(dto.purchasePrice !== undefined
+          ? { purchasePrice: dto.purchasePrice }
+          : {}),
         ...(dto.supplier !== undefined ? { supplier: dto.supplier } : {}),
         ...(dto.expiresAt !== undefined
           ? { expiresAt: dto.expiresAt ? this.parseDate(dto.expiresAt) : null }
@@ -396,7 +405,10 @@ export class StockService {
       newQuantity: Prisma.Decimal;
       type: StockMovementTypeValue;
     },
-  ): Promise<{ previousQuantity: Prisma.Decimal; newQuantity: Prisma.Decimal }> {
+  ): Promise<{
+    previousQuantity: Prisma.Decimal;
+    newQuantity: Prisma.Decimal;
+  }> {
     if (input.type === StockMovementType.IN) {
       const updated = await tx.stockProduct.updateMany({
         where: {

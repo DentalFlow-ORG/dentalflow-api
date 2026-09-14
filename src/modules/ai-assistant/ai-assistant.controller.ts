@@ -36,8 +36,12 @@ export class AiAssistantController {
   @Roles('OWNER')
   async getLatestFinance(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
-    const { data, dataReadiness, visibility } = await this.aiService.getLatestFinance(user.id, clinicId);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE);
+    const { data, dataReadiness, visibility } =
+      await this.aiService.getLatestFinance(user.id, clinicId);
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
     return { data, quota, dataReadiness, visibility };
   }
 
@@ -46,8 +50,12 @@ export class AiAssistantController {
   @Roles('OWNER', 'ASSISTANT')
   async getLatestInventory(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerOrAssistantAccess(user);
-    const { data, dataReadiness, visibility } = await this.aiService.getLatestInventory(user.id, clinicId);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const { data, dataReadiness, visibility } =
+      await this.aiService.getLatestInventory(user.id, clinicId);
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
     return { data, quota, dataReadiness, visibility };
   }
 
@@ -59,8 +67,16 @@ export class AiAssistantController {
     @Body() dto: AnalyzeFinanceDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
-    const data = await this.aiService.analyzeFinance(user.id, clinicId, dto.from, dto.to);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE);
+    const data = await this.aiService.analyzeFinance(
+      user.id,
+      clinicId,
+      dto.from,
+      dto.to,
+    );
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
     return { data, quota };
   }
 
@@ -69,12 +85,15 @@ export class AiAssistantController {
   @Roles('OWNER')
   async analyzeInventory(
     @CurrentUser() user: AuthUser,
-     
+
     @Body() _dto: AnalyzeInventoryDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     const data = await this.aiService.analyzeInventory(user.id, clinicId);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
     return { data, quota };
   }
 }

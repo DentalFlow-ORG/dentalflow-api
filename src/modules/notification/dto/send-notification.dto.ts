@@ -16,7 +16,8 @@ export class SendNotificationDto {
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
   @Matches(phonePattern, {
-    message: 'Telefone deve ser um número brasileiro válido com DDD (10 ou 11 dígitos)',
+    message:
+      'Telefone deve ser um número brasileiro válido com DDD (10 ou 11 dígitos)',
   })
   phone!: string;
 

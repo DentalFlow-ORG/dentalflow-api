@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
 
 import { StockService } from './stock.service';
@@ -33,7 +37,10 @@ const prismaMock = {
   },
 };
 
-function product(quantity: number, overrides: { clinicId?: string; isActive?: boolean } = {}) {
+function product(
+  quantity: number,
+  overrides: { clinicId?: string; isActive?: boolean } = {},
+) {
   return {
     id: PRODUCT_ID,
     clinicId: overrides.clinicId ?? CLINIC_ID,
@@ -102,7 +109,11 @@ describe('StockService', () => {
           }),
         }),
       );
-      expect(result).toMatchObject({ quantity: 5, previousQuantity: 10, newQuantity: 15 });
+      expect(result).toMatchObject({
+        quantity: 5,
+        previousQuantity: 10,
+        newQuantity: 15,
+      });
     });
 
     it('creates an OUT movement after atomically decreasing stock', async () => {
@@ -134,7 +145,11 @@ describe('StockService', () => {
         },
         data: { currentQuantity: { decrement: new Prisma.Decimal(3) } },
       });
-      expect(result).toMatchObject({ quantity: 3, previousQuantity: 10, newQuantity: 7 });
+      expect(result).toMatchObject({
+        quantity: 3,
+        previousQuantity: 10,
+        newQuantity: 7,
+      });
     });
 
     it('blocks OUT movement when quantity is insufficient before updating stock', async () => {
@@ -231,7 +246,10 @@ describe('StockService', () => {
 
   describe('deleteCategory', () => {
     beforeEach(() => {
-      prismaMock.stockCategory.findFirst.mockResolvedValue({ id: CATEGORY_ID, clinicId: CLINIC_ID });
+      prismaMock.stockCategory.findFirst.mockResolvedValue({
+        id: CATEGORY_ID,
+        clinicId: CLINIC_ID,
+      });
       prismaMock.stockProduct.count.mockResolvedValue(0);
       prismaMock.stockCategory.delete.mockResolvedValue({ id: CATEGORY_ID });
     });
@@ -239,9 +257,9 @@ describe('StockService', () => {
     it('throws ConflictException when the category has linked products', async () => {
       prismaMock.stockProduct.count.mockResolvedValue(2);
 
-      await expect(service.deleteCategory(CLINIC_ID, CATEGORY_ID)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.deleteCategory(CLINIC_ID, CATEGORY_ID),
+      ).rejects.toThrow(ConflictException);
       expect(prismaMock.stockCategory.delete).not.toHaveBeenCalled();
     });
 
@@ -256,9 +274,9 @@ describe('StockService', () => {
     it('throws NotFoundException for a category belonging to a different clinic', async () => {
       prismaMock.stockCategory.findFirst.mockResolvedValue(null);
 
-      await expect(service.deleteCategory(CLINIC_ID, CATEGORY_ID)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deleteCategory(CLINIC_ID, CATEGORY_ID),
+      ).rejects.toThrow(NotFoundException);
       expect(prismaMock.stockCategory.delete).not.toHaveBeenCalled();
     });
   });
@@ -271,7 +289,10 @@ describe('StockService', () => {
         isActive: true,
         category: { id: CATEGORY_ID },
       });
-      prismaMock.stockProduct.update.mockResolvedValue({ id: PRODUCT_ID, isActive: false });
+      prismaMock.stockProduct.update.mockResolvedValue({
+        id: PRODUCT_ID,
+        isActive: false,
+      });
     });
 
     it('sets isActive: false on the product', async () => {
@@ -286,9 +307,9 @@ describe('StockService', () => {
     it('throws NotFoundException for a product belonging to a different clinic', async () => {
       prismaMock.stockProduct.findFirst.mockResolvedValue(null);
 
-      await expect(service.deactivateProduct(CLINIC_ID, PRODUCT_ID)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deactivateProduct(CLINIC_ID, PRODUCT_ID),
+      ).rejects.toThrow(NotFoundException);
       expect(prismaMock.stockProduct.update).not.toHaveBeenCalled();
     });
   });

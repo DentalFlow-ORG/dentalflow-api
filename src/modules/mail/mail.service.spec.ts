@@ -11,7 +11,12 @@ const MockResend = Resend as jest.MockedClass<typeof Resend>;
 
 // ── Env helpers ───────────────────────────────────────────────────────────────
 
-const MANAGED_KEYS = ['RESEND_API_KEY', 'MAIL_FROM', 'FRONTEND_URL', 'NODE_ENV'] as const;
+const MANAGED_KEYS = [
+  'RESEND_API_KEY',
+  'MAIL_FROM',
+  'FRONTEND_URL',
+  'NODE_ENV',
+] as const;
 type ManagedKey = (typeof MANAGED_KEYS)[number];
 
 const savedEnv: Partial<Record<ManagedKey, string | undefined>> = {};
@@ -54,9 +59,15 @@ describe('MailService', () => {
     jest.clearAllMocks();
 
     // Silence logger output in tests while still capturing calls
-    logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
 
     // Default: no provider configured, dev/test environment
     delete process.env.RESEND_API_KEY;
@@ -65,7 +76,9 @@ describe('MailService', () => {
     process.env.NODE_ENV = 'test';
 
     // Fresh Resend mock instance per test
-    mockSend = jest.fn().mockResolvedValue({ data: { id: 'email-id-123' }, error: null });
+    mockSend = jest
+      .fn()
+      .mockResolvedValue({ data: { id: 'email-id-123' }, error: null });
     MockResend.mockImplementation(
       () => ({ emails: { send: mockSend } }) as unknown as Resend,
     );
@@ -103,18 +116,25 @@ describe('MailService', () => {
 
         expect(logSpy).toHaveBeenCalledTimes(1);
         const loggedMessage: string = logSpy.mock.calls[0][0];
-        expect(loggedMessage).toContain('http://localhost:4000/recuperar-senha/redefinir?token=tok123');
+        expect(loggedMessage).toContain(
+          'http://localhost:4000/recuperar-senha/redefinir?token=tok123',
+        );
       });
 
       it('falls back to http://localhost:5173 when FRONTEND_URL is not set', async () => {
         await service.sendPasswordResetEmail('user@clinic.com', 'tok456');
 
         const loggedMessage: string = logSpy.mock.calls[0][0];
-        expect(loggedMessage).toContain('http://localhost:5173/recuperar-senha/redefinir?token=tok456');
+        expect(loggedMessage).toContain(
+          'http://localhost:5173/recuperar-senha/redefinir?token=tok456',
+        );
       });
 
       it('does not instantiate Resend', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-abc123');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-abc123',
+        );
 
         expect(MockResend).not.toHaveBeenCalled();
       });
@@ -134,7 +154,10 @@ describe('MailService', () => {
       });
 
       it('does not log the reset token', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-abc123');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-abc123',
+        );
 
         const allLogs = [
           ...logSpy.mock.calls,
@@ -148,7 +171,10 @@ describe('MailService', () => {
       });
 
       it('does not log the reset link', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-abc123');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-abc123',
+        );
 
         const allLogs = [
           ...logSpy.mock.calls,
@@ -162,7 +188,10 @@ describe('MailService', () => {
       });
 
       it('does not instantiate Resend', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-abc123');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-abc123',
+        );
 
         expect(MockResend).not.toHaveBeenCalled();
       });
@@ -185,7 +214,10 @@ describe('MailService', () => {
     });
 
     it('calls emails.send with the correct to, from, and subject', async () => {
-      await service.sendPasswordResetEmail('dentist@clinic.com', 'raw-token-xyz');
+      await service.sendPasswordResetEmail(
+        'dentist@clinic.com',
+        'raw-token-xyz',
+      );
 
       expect(mockSend).toHaveBeenCalledTimes(1);
       expect(mockSend).toHaveBeenCalledWith(
@@ -225,7 +257,11 @@ describe('MailService', () => {
       beforeEach(() => {
         mockSend.mockResolvedValue({
           data: null,
-          error: { name: 'validation_error', message: 'Invalid from address', statusCode: 422 },
+          error: {
+            name: 'validation_error',
+            message: 'Invalid from address',
+            statusCode: 422,
+          },
         });
       });
 
@@ -236,7 +272,10 @@ describe('MailService', () => {
       });
 
       it('logs a safe error message', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-xyz');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-xyz',
+        );
 
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const errorMessage: string = errorSpy.mock.calls[0][0];
@@ -245,7 +284,10 @@ describe('MailService', () => {
       });
 
       it('does not log the raw token on error', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-xyz');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-xyz',
+        );
 
         const allLogs = [
           ...logSpy.mock.calls,
@@ -271,7 +313,10 @@ describe('MailService', () => {
       });
 
       it('logs the error message safely', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-xyz');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-xyz',
+        );
 
         expect(errorSpy).toHaveBeenCalledTimes(1);
         const errorMessage: string = errorSpy.mock.calls[0][0];
@@ -279,7 +324,10 @@ describe('MailService', () => {
       });
 
       it('does not log the raw token on network failure', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-xyz');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-xyz',
+        );
 
         const allLogs = [
           ...logSpy.mock.calls,
@@ -308,7 +356,10 @@ describe('MailService', () => {
       });
 
       it('does not call emails.send', async () => {
-        await service.sendPasswordResetEmail('user@clinic.com', 'raw-token-xyz');
+        await service.sendPasswordResetEmail(
+          'user@clinic.com',
+          'raw-token-xyz',
+        );
 
         expect(mockSend).not.toHaveBeenCalled();
       });

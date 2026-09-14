@@ -107,7 +107,10 @@ type DiagnosisAiContext = {
 
 const ANALYSIS_TYPE = AiAssistantAnalysisType.MONTHLY_FINANCE_DIAGNOSIS;
 const AI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
-const MAX_AI_TOKENS = parseInt(process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? '600', 10);
+const MAX_AI_TOKENS = parseInt(
+  process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? '600',
+  10,
+);
 const MIN_TRANSACTIONS_FOR_AI = 1;
 
 const SYSTEM_PROMPT = `Você é um consultor financeiro operacional para clínicas odontológicas brasileiras.
@@ -151,7 +154,9 @@ export class MonthlyFinanceDiagnosisService {
   ) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      this.logger.warn('OPENAI_API_KEY not configured — monthly finance diagnosis AI disabled.');
+      this.logger.warn(
+        'OPENAI_API_KEY not configured — monthly finance diagnosis AI disabled.',
+      );
     } else {
       this.openai = new OpenAI({ apiKey });
     }
@@ -166,7 +171,12 @@ export class MonthlyFinanceDiagnosisService {
     const { firstDay, nextMonth } = this.monthBounds(month);
 
     // Build deterministic finance snapshot
-    const snapshot = await this.buildFinanceSnapshot(clinicId, month, firstDay, nextMonth);
+    const snapshot = await this.buildFinanceSnapshot(
+      clinicId,
+      month,
+      firstDay,
+      nextMonth,
+    );
 
     // Check cache first (skip if forceRefresh)
     if (!forceRefresh) {
@@ -217,21 +227,36 @@ export class MonthlyFinanceDiagnosisService {
       orderBy: { transactionDate: 'asc' },
     });
 
-    const income = transactions.filter((t) => t.type === FinancialTransactionType.INCOME);
-    const expenses = transactions.filter((t) => t.type === FinancialTransactionType.EXPENSE);
+    const income = transactions.filter(
+      (t) => t.type === FinancialTransactionType.INCOME,
+    );
+    const expenses = transactions.filter(
+      (t) => t.type === FinancialTransactionType.EXPENSE,
+    );
 
     const revenueCents = this.sumCents(income);
     const expenseCents = this.sumCents(expenses);
     const profitCents = revenueCents - expenseCents;
     const profitMarginPercent =
-      revenueCents > 0 ? Math.round((profitCents / revenueCents) * 10000) / 100 : null;
+      revenueCents > 0
+        ? Math.round((profitCents / revenueCents) * 10000) / 100
+        : null;
 
     const uncategorizedExpenseCount = expenses.filter(
-      (t) => t.category.isDefault && t.category.name.toLowerCase().includes('manuais'),
+      (t) =>
+        t.category.isDefault &&
+        t.category.name.toLowerCase().includes('manuais'),
     ).length;
 
-    const topExpenseCategories = this.buildTopExpenseCategories(expenses, expenseCents);
-    const cashflowByWeek = this.buildCashflowByWeek(transactions, firstDay, nextMonth);
+    const topExpenseCategories = this.buildTopExpenseCategories(
+      expenses,
+      expenseCents,
+    );
+    const cashflowByWeek = this.buildCashflowByWeek(
+      transactions,
+      firstDay,
+      nextMonth,
+    );
     const alerts = this.buildAlerts(
       profitCents,
       profitMarginPercent,
@@ -279,7 +304,11 @@ export class MonthlyFinanceDiagnosisService {
   }
 
   private buildCashflowByWeek(
-    transactions: { type: FinancialTransactionType; amount: object; transactionDate: Date }[],
+    transactions: {
+      type: FinancialTransactionType;
+      amount: object;
+      transactionDate: Date;
+    }[],
     firstDay: Date,
     nextMonth: Date,
   ): WeeklyCashflow[] {
@@ -333,7 +362,8 @@ export class MonthlyFinanceDiagnosisService {
       alerts.push({
         type: 'NEGATIVE_RESULT',
         severity: 'HIGH',
-        message: 'O resultado do mês é negativo — as despesas superaram as receitas.',
+        message:
+          'O resultado do mês é negativo — as despesas superaram as receitas.',
       });
     } else if (profitMarginPercent !== null && profitMarginPercent < 20) {
       alerts.push({
@@ -343,7 +373,9 @@ export class MonthlyFinanceDiagnosisService {
       });
     }
 
-    const dominantCategory = topCategories.find((c) => c.percentageOfExpenses > 60);
+    const dominantCategory = topCategories.find(
+      (c) => c.percentageOfExpenses > 60,
+    );
     if (dominantCategory) {
       alerts.push({
         type: 'HIGH_EXPENSE_CATEGORY',
@@ -433,7 +465,9 @@ export class MonthlyFinanceDiagnosisService {
 
       aiSummary = typeof parsed.summary === 'string' ? parsed.summary : '';
       aiHealth = this.parseHealth(parsed.financialHealth);
-      aiHighlights = Array.isArray(parsed.highlights) ? parsed.highlights.filter(Boolean) : [];
+      aiHighlights = Array.isArray(parsed.highlights)
+        ? parsed.highlights.filter(Boolean)
+        : [];
       aiRisks = Array.isArray(parsed.risks) ? parsed.risks.filter(Boolean) : [];
       aiActions = Array.isArray(parsed.recommendedActions)
         ? parsed.recommendedActions.filter(Boolean)
@@ -451,7 +485,9 @@ export class MonthlyFinanceDiagnosisService {
     } catch (err: unknown) {
       const durationMs = Date.now() - start;
       const isRateLimit =
-        typeof err === 'object' && err !== null && (err as { status?: number }).status === 429;
+        typeof err === 'object' &&
+        err !== null &&
+        (err as { status?: number }).status === 429;
 
       this.logger.error(
         JSON.stringify({
@@ -523,7 +559,9 @@ export class MonthlyFinanceDiagnosisService {
 
   // ── Low data (deterministic, no AI) ───────────────────────────────────────
 
-  private buildLowDataResult(snapshot: FinanceSnapshot): MonthlyFinanceDiagnosisResult {
+  private buildLowDataResult(
+    snapshot: FinanceSnapshot,
+  ): MonthlyFinanceDiagnosisResult {
     return {
       summary:
         'Ainda não há lançamentos financeiros suficientes para gerar um diagnóstico confiável deste mês. Registre as receitas e despesas do período para obter uma análise mais completa.',
@@ -578,7 +616,8 @@ export class MonthlyFinanceDiagnosisService {
   }
 
   private parseHealth(raw: string | undefined): DiagnosisFinancialHealth {
-    if (raw === 'HEALTHY' || raw === 'WARNING' || raw === 'CRITICAL') return raw;
+    if (raw === 'HEALTHY' || raw === 'WARNING' || raw === 'CRITICAL')
+      return raw;
     return 'WARNING';
   }
 

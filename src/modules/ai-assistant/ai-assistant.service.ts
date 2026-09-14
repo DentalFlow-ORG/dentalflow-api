@@ -143,7 +143,9 @@ export class AiAssistantService {
     }
     this.openai = new OpenAI({ apiKey: apiKey ?? 'not-configured' });
     this.model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
-    this.maxOutputTokens = Number(process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 900);
+    this.maxOutputTokens = Number(
+      process.env.OPENAI_AI_MAX_OUTPUT_TOKENS ?? 900,
+    );
   }
 
   // ─── Health / config inspection ──────────────────────────────────────────
@@ -159,13 +161,21 @@ export class AiAssistantService {
     const apiKey = process.env.OPENAI_API_KEY ?? '';
     // Format check: key must be non-empty and start with 'sk-'. Value is never logged.
     const hasApiKey = apiKey.length > 0 && apiKey.startsWith('sk-');
-    const modelConfigured = !!(process.env.OPENAI_MODEL);
+    const modelConfigured = !!process.env.OPENAI_MODEL;
     const rawTokens = process.env.OPENAI_AI_MAX_OUTPUT_TOKENS;
     const maxOutputTokensConfigured =
-      rawTokens !== undefined && !isNaN(Number(rawTokens)) && Number(rawTokens) > 0;
+      rawTokens !== undefined &&
+      !isNaN(Number(rawTokens)) &&
+      Number(rawTokens) > 0;
     const ready = enabled && hasApiKey;
 
-    return { enabled, hasApiKey, modelConfigured, maxOutputTokensConfigured, ready };
+    return {
+      enabled,
+      hasApiKey,
+      modelConfigured,
+      maxOutputTokensConfigured,
+      ready,
+    };
   }
 
   async pingOpenAi(): Promise<{
@@ -228,11 +238,20 @@ export class AiAssistantService {
 
   // ─── Persistence: load saved analyses ────────────────────────────────────
 
-  async getLatestFinance(userId: string, clinicId: string): Promise<AiLatestResult> {
+  async getLatestFinance(
+    userId: string,
+    clinicId: string,
+  ): Promise<AiLatestResult> {
     // Sequential to avoid concurrent pg queries on the same connection.
-    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.FINANCE);
+    const record = await this.analysisRepository.findLatest(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
     const dataReadiness = await this.getFinanceDataReadiness(clinicId);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.FINANCE);
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
@@ -249,7 +268,11 @@ export class AiAssistantService {
     // Blocked plan with sufficient data — return or generate teaser
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (record && record.generatedAt >= thirtyDaysAgo) {
-      return { data: this.mapAnalysisToResponse(record), dataReadiness, visibility: 'TEASER' };
+      return {
+        data: this.mapAnalysisToResponse(record),
+        dataReadiness,
+        visibility: 'TEASER',
+      };
     }
 
     // Attempt auto-generation of teaser
@@ -263,7 +286,13 @@ export class AiAssistantService {
     }
     try {
       const context = await this.financeContextBuilder.build(clinicId);
-      const response = await this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
+      const response = await this.callOpenAi(
+        userId,
+        clinicId,
+        FINANCE_SYSTEM_PROMPT,
+        context,
+        'finance',
+      );
       return { data: response, dataReadiness, visibility: 'TEASER' };
     } catch {
       return {
@@ -274,11 +303,20 @@ export class AiAssistantService {
     }
   }
 
-  async getLatestInventory(userId: string, clinicId: string): Promise<AiLatestResult> {
+  async getLatestInventory(
+    userId: string,
+    clinicId: string,
+  ): Promise<AiLatestResult> {
     // Sequential to avoid concurrent pg queries on the same connection.
-    const record = await this.analysisRepository.findLatest(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const record = await this.analysisRepository.findLatest(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
     const dataReadiness = await this.getInventoryDataReadiness(clinicId);
-    const quota = await this.quotaService.getQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
+    const quota = await this.quotaService.getQuota(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
 
     if (!dataReadiness.ready) {
       return { data: null, dataReadiness, visibility: 'INSUFFICIENT_DATA' };
@@ -295,7 +333,11 @@ export class AiAssistantService {
     // Blocked plan with sufficient data — return or generate teaser
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (record && record.generatedAt >= thirtyDaysAgo) {
-      return { data: this.mapAnalysisToResponse(record), dataReadiness, visibility: 'TEASER' };
+      return {
+        data: this.mapAnalysisToResponse(record),
+        dataReadiness,
+        visibility: 'TEASER',
+      };
     }
 
     // Attempt auto-generation of teaser
@@ -309,7 +351,13 @@ export class AiAssistantService {
     }
     try {
       const context = await this.inventoryContextBuilder.build(clinicId);
-      const response = await this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
+      const response = await this.callOpenAi(
+        userId,
+        clinicId,
+        INVENTORY_SYSTEM_PROMPT,
+        context,
+        'inventory',
+      );
       return { data: response, dataReadiness, visibility: 'TEASER' };
     } catch {
       return {
@@ -354,13 +402,22 @@ export class AiAssistantService {
     to?: string,
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
-    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.FINANCE);
+    await this.quotaService.assertQuota(
+      clinicId,
+      AiAssistantAnalysisType.FINANCE,
+    );
     const readiness = await this.getFinanceDataReadiness(clinicId);
     if (!readiness.ready) {
       throw new BadRequestException(readiness.reason);
     }
     const context = await this.financeContextBuilder.build(clinicId, from, to);
-    return this.callOpenAi(userId, clinicId, FINANCE_SYSTEM_PROMPT, context, 'finance');
+    return this.callOpenAi(
+      userId,
+      clinicId,
+      FINANCE_SYSTEM_PROMPT,
+      context,
+      'finance',
+    );
   }
 
   async analyzeInventory(
@@ -368,18 +425,29 @@ export class AiAssistantService {
     clinicId: string,
   ): Promise<AiAnalysisResponse> {
     this.assertEnabled();
-    await this.quotaService.assertQuota(clinicId, AiAssistantAnalysisType.INVENTORY);
+    await this.quotaService.assertQuota(
+      clinicId,
+      AiAssistantAnalysisType.INVENTORY,
+    );
     const readiness = await this.getInventoryDataReadiness(clinicId);
     if (!readiness.ready) {
       throw new BadRequestException(readiness.reason);
     }
     const context = await this.inventoryContextBuilder.build(clinicId);
-    return this.callOpenAi(userId, clinicId, INVENTORY_SYSTEM_PROMPT, context, 'inventory');
+    return this.callOpenAi(
+      userId,
+      clinicId,
+      INVENTORY_SYSTEM_PROMPT,
+      context,
+      'inventory',
+    );
   }
 
   // ─── Data readiness checks ────────────────────────────────────────────────
 
-  private async getFinanceDataReadiness(clinicId: string): Promise<DataReadiness> {
+  private async getFinanceDataReadiness(
+    clinicId: string,
+  ): Promise<DataReadiness> {
     // transactionDate is stored as UTC midnight; use UTC midnight of the Brazil
     // date 30 days ago so records from that calendar day are correctly included.
     const thirtyDaysAgoStr = brazilDaysAgoIso(30);
@@ -407,9 +475,13 @@ export class AiAssistantService {
     return { ready: true };
   }
 
-  private async getInventoryDataReadiness(clinicId: string): Promise<DataReadiness> {
+  private async getInventoryDataReadiness(
+    clinicId: string,
+  ): Promise<DataReadiness> {
     // createdAt/updatedAt are UTC timestamps — use Brazil midnight boundaries.
-    const thirtyDaysAgoTs = parseBrazilDateOnlyToUtcRange(brazilDaysAgoIso(30)).start;
+    const thirtyDaysAgoTs = parseBrazilDateOnlyToUtcRange(
+      brazilDaysAgoIso(30),
+    ).start;
 
     const movements = await this.prisma.stockMovement.findMany({
       where: { clinicId, createdAt: { gte: thirtyDaysAgoTs } },
@@ -617,7 +689,10 @@ export class AiAssistantService {
   private parseResponse(
     raw: string,
     assistantType: AssistantType,
-  ): Omit<AiAnalysisResponse, 'generatedAt' | 'model' | 'periodStart' | 'periodEnd'> {
+  ): Omit<
+    AiAnalysisResponse,
+    'generatedAt' | 'model' | 'periodStart' | 'periodEnd'
+  > {
     try {
       const parsed = JSON.parse(raw) as {
         sections?: unknown[];

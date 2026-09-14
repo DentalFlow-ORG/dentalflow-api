@@ -12,7 +12,11 @@ import {
 } from 'class-validator';
 import { trimValue } from '../../../common/utils/transform.helpers';
 
-const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const ALLOWED_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
 const MAX_ATTACHMENT_SIZE_BYTES = 2 * 1024 * 1024;
 const MAX_BASE64_FIELD_LENGTH = 120_000;
 
@@ -23,7 +27,8 @@ export class AddClinicalAttachmentDto {
   @MaxLength(180)
   // eslint-disable-next-line no-control-regex -- rejecting control bytes is the point
   @Matches(/^[^/\\\x00-\x1F\x7F]+$/, {
-    message: 'Nome do arquivo nao pode conter caminhos ou caracteres de controle.',
+    message:
+      'Nome do arquivo nao pode conter caminhos ou caracteres de controle.',
   })
   fileName!: string;
 

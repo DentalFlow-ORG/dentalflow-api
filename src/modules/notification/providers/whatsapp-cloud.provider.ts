@@ -66,7 +66,8 @@ export class WhatsAppCloudProvider implements INotificationProvider {
 
       let detail: string;
       if (response.status === 401 || errorCode === 190) {
-        detail = 'Token de acesso inválido ou expirado. Verifique WHATSAPP_CLOUD_ACCESS_TOKEN no Meta Business Manager.';
+        detail =
+          'Token de acesso inválido ou expirado. Verifique WHATSAPP_CLOUD_ACCESS_TOKEN no Meta Business Manager.';
       } else if (response.status === 400) {
         detail = `Requisição inválida para o template "${payload.templateSlug}". Verifique se o template está aprovado e os parâmetros estão corretos.`;
       } else {
@@ -84,7 +85,9 @@ export class WhatsAppCloudProvider implements INotificationProvider {
     return { providerRef };
   }
 
-  private async buildTemplateComponents(payload: SendPayload): Promise<unknown[]> {
+  private async buildTemplateComponents(
+    payload: SendPayload,
+  ): Promise<unknown[]> {
     if (!payload.appointmentId) return [];
 
     const appointment = await this.prisma.appointment.findUnique({

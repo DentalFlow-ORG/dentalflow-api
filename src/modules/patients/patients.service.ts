@@ -164,9 +164,9 @@ export class PatientsService {
     // calendar date so day boundaries don't shift during 00:00-03:00 UTC.
     const todayStr = brazilTodayIso();
     const [ty, tm, td] = todayStr.split('-').map(Number);
-    const today       = new Date(Date.UTC(ty, tm - 1, td));
-    const thirtyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 30));
-    const ninetyDaysAgo  = new Date(Date.UTC(ty, tm - 1, td - 90));
+    const today = new Date(Date.UTC(ty, tm - 1, td));
+    const thirtyDaysAgo = new Date(Date.UTC(ty, tm - 1, td - 30));
+    const ninetyDaysAgo = new Date(Date.UTC(ty, tm - 1, td - 90));
 
     // Load all appointments with profile info (ordered ascending for processing)
     const appointments = await this.prisma.appointment.findMany({
@@ -249,10 +249,7 @@ export class PatientsService {
       const pendingAmountCents = pendingPaymentAppts.reduce((sum, a) => {
         return (
           sum +
-          Math.max(
-            0,
-            (a.estimatedAmountCents ?? 0) - (a.paidAmountCents ?? 0),
-          )
+          Math.max(0, (a.estimatedAmountCents ?? 0) - (a.paidAmountCents ?? 0))
         );
       }, 0);
 
@@ -281,13 +278,15 @@ export class PatientsService {
         }
       }
 
-      if (recentlyCanceled && !hasUpcoming) allReasons.push('RECENTLY_CANCELED');
+      if (recentlyCanceled && !hasUpcoming)
+        allReasons.push('RECENTLY_CANCELED');
       if (recentNoShow && !hasUpcoming) allReasons.push('RECENT_NO_SHOW');
 
       if (allReasons.length === 0) continue;
 
       const priority: AttentionPriority =
-        allReasons.includes('PENDING_PAYMENT') || allReasons.includes('INACTIVE')
+        allReasons.includes('PENDING_PAYMENT') ||
+        allReasons.includes('INACTIVE')
           ? 'HIGH'
           : allReasons.includes('RECENTLY_CANCELED') ||
               allReasons.includes('RECENT_NO_SHOW')
@@ -371,9 +370,8 @@ export class PatientsService {
       recentlyCanceled: items.filter((p) =>
         p.allReasons.includes('RECENTLY_CANCELED'),
       ).length,
-      recentNoShow: items.filter((p) =>
-        p.allReasons.includes('RECENT_NO_SHOW'),
-      ).length,
+      recentNoShow: items.filter((p) => p.allReasons.includes('RECENT_NO_SHOW'))
+        .length,
       withWhatsappConsent: items.filter((p) => p.hasWhatsappConsent).length,
     };
 

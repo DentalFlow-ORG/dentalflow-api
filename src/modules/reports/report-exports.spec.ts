@@ -93,7 +93,10 @@ describe('ReportsService — CSV exports', () => {
 
   /** The data rows of a CSV, without the header. */
   function dataRows(csv: string): string[] {
-    return csv.replace(/^\uFEFF/, '').split('\r\n').slice(1);
+    return csv
+      .replace(/^\uFEFF/, '')
+      .split('\r\n')
+      .slice(1);
   }
 
   /** Splits one CSV line into fields, honouring quoting. */

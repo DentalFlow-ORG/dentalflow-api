@@ -30,7 +30,8 @@ export class CompleteProfileDto {
   @MinLength(2)
   @MaxLength(50)
   @Matches(personNamePattern, {
-    message: 'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+    message:
+      'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   firstName!: string;
 
@@ -40,13 +41,15 @@ export class CompleteProfileDto {
   @MinLength(2)
   @MaxLength(50)
   @Matches(personNamePattern, {
-    message: 'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+    message:
+      'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
   })
   lastName!: string;
 
   @IsBoolean()
   @Equals(true, {
-    message: 'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar uma conta.',
+    message:
+      'Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar uma conta.',
   })
   acceptedTerms!: boolean;
 }

@@ -43,13 +43,21 @@ describe('AccessPolicyService', () => {
 
     it('throws ForbiddenException for ADMIN with a non-null clinicId', () => {
       expect(() =>
-        service.assertValidRoleTenantShape({ id: 'u4', clinicId: 'clinic-x', role: 'ADMIN' }),
+        service.assertValidRoleTenantShape({
+          id: 'u4',
+          clinicId: 'clinic-x',
+          role: 'ADMIN',
+        }),
       ).toThrow(ForbiddenException);
     });
 
     it('throws ForbiddenException for PATIENT with a non-null clinicId', () => {
       expect(() =>
-        service.assertValidRoleTenantShape({ id: 'u5', clinicId: 'clinic-x', role: 'PATIENT' }),
+        service.assertValidRoleTenantShape({
+          id: 'u5',
+          clinicId: 'clinic-x',
+          role: 'PATIENT',
+        }),
       ).toThrow(ForbiddenException);
     });
 
@@ -57,7 +65,11 @@ describe('AccessPolicyService', () => {
       'passes for %s with a clinicId',
       (role) => {
         expect(() =>
-          service.assertValidRoleTenantShape({ id: 'u1', clinicId: 'clinic-1', role }),
+          service.assertValidRoleTenantShape({
+            id: 'u1',
+            clinicId: 'clinic-1',
+            role,
+          }),
         ).not.toThrow();
       },
     );
@@ -66,7 +78,11 @@ describe('AccessPolicyService', () => {
       'throws ForbiddenException for %s without clinicId',
       (role) => {
         expect(() =>
-          service.assertValidRoleTenantShape({ id: 'u1', clinicId: null, role }),
+          service.assertValidRoleTenantShape({
+            id: 'u1',
+            clinicId: null,
+            role,
+          }),
         ).toThrow(ForbiddenException);
       },
     );
@@ -95,17 +111,25 @@ describe('AccessPolicyService', () => {
     it.each(['OWNER', 'DENTIST', 'ASSISTANT'] as const)(
       'returns clinicId for %s with a clinicId',
       (role) => {
-        const result = service.assertClinicMember({ id: 'u1', clinicId: 'clinic-1', role });
+        const result = service.assertClinicMember({
+          id: 'u1',
+          clinicId: 'clinic-1',
+          role,
+        });
         expect(result).toBe('clinic-1');
       },
     );
 
     it('throws ForbiddenException for ADMIN (no clinicId)', () => {
-      expect(() => service.assertClinicMember(admin())).toThrow(ForbiddenException);
+      expect(() => service.assertClinicMember(admin())).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException for PATIENT (no clinicId)', () => {
-      expect(() => service.assertClinicMember(patient())).toThrow(ForbiddenException);
+      expect(() => service.assertClinicMember(patient())).toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -113,11 +137,15 @@ describe('AccessPolicyService', () => {
 
   describe('assertClinicAccess', () => {
     it('passes for ADMIN regardless of which clinicId is checked', () => {
-      expect(() => service.assertClinicAccess(admin(), 'any-clinic')).not.toThrow();
+      expect(() =>
+        service.assertClinicAccess(admin(), 'any-clinic'),
+      ).not.toThrow();
     });
 
     it('passes for OWNER when clinicIds match', () => {
-      expect(() => service.assertClinicAccess(owner('clinic-1'), 'clinic-1')).not.toThrow();
+      expect(() =>
+        service.assertClinicAccess(owner('clinic-1'), 'clinic-1'),
+      ).not.toThrow();
     });
 
     it('throws ForbiddenException for OWNER when clinicId does not match', () => {
@@ -128,7 +156,10 @@ describe('AccessPolicyService', () => {
 
     it('throws ForbiddenException when user clinicId is null', () => {
       expect(() =>
-        service.assertClinicAccess({ id: 'u1', clinicId: null, role: 'OWNER' }, 'clinic-1'),
+        service.assertClinicAccess(
+          { id: 'u1', clinicId: null, role: 'OWNER' },
+          'clinic-1',
+        ),
       ).toThrow(ForbiddenException);
     });
   });
@@ -141,11 +172,15 @@ describe('AccessPolicyService', () => {
     });
 
     it('throws ForbiddenException for DENTIST', () => {
-      expect(() => service.assertOwnerAccess(dentist())).toThrow(ForbiddenException);
+      expect(() => service.assertOwnerAccess(dentist())).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException for ASSISTANT', () => {
-      expect(() => service.assertOwnerAccess(assistant())).toThrow(ForbiddenException);
+      expect(() => service.assertOwnerAccess(assistant())).toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -165,11 +200,15 @@ describe('AccessPolicyService', () => {
     );
 
     it('throws ForbiddenException for PATIENT (no clinicId)', () => {
-      expect(() => service.assertClinicOperationsAccess(patient())).toThrow(ForbiddenException);
+      expect(() => service.assertClinicOperationsAccess(patient())).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws ForbiddenException for ADMIN (no clinicId)', () => {
-      expect(() => service.assertClinicOperationsAccess(admin())).toThrow(ForbiddenException);
+      expect(() => service.assertClinicOperationsAccess(admin())).toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -181,11 +220,15 @@ describe('AccessPolicyService', () => {
     });
 
     it('returns clinicId for ASSISTANT', () => {
-      expect(service.assertOwnerOrAssistantAccess(assistant())).toBe('clinic-1');
+      expect(service.assertOwnerOrAssistantAccess(assistant())).toBe(
+        'clinic-1',
+      );
     });
 
     it('throws ForbiddenException for DENTIST', () => {
-      expect(() => service.assertOwnerOrAssistantAccess(dentist())).toThrow(ForbiddenException);
+      expect(() => service.assertOwnerOrAssistantAccess(dentist())).toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -216,9 +259,9 @@ describe('AccessPolicyService', () => {
     });
 
     it('throws ForbiddenException for DENTIST when profileUserId is null', () => {
-      expect(() =>
-        service.assertDentistProfileAccess(dentist(), null),
-      ).toThrow(ForbiddenException);
+      expect(() => service.assertDentistProfileAccess(dentist(), null)).toThrow(
+        ForbiddenException,
+      );
     });
   });
 });

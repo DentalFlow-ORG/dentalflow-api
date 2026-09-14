@@ -25,13 +25,15 @@ const CLINIC_ID = 'clinic-1';
 const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 const PAST = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-function baseSub(overrides: Partial<{
-  status: SubscriptionStatus;
-  trialEndsAt: Date | null;
-  currentPeriodEnd: Date | null;
-  cancelAtPeriodEnd: boolean;
-  plan: { id: string; name: string; slug: string } | null;
-}> = {}) {
+function baseSub(
+  overrides: Partial<{
+    status: SubscriptionStatus;
+    trialEndsAt: Date | null;
+    currentPeriodEnd: Date | null;
+    cancelAtPeriodEnd: boolean;
+    plan: { id: string; name: string; slug: string } | null;
+  }> = {},
+) {
   return {
     id: 'sub-1',
     status: SubscriptionStatus.ACTIVE,
@@ -114,7 +116,10 @@ describe('BillingService.getCurrentSubscriptionStatus', () => {
 
   it('returns accessAllowed: true for CANCELED subscription still within grace period', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      baseSub({ status: SubscriptionStatus.CANCELED, currentPeriodEnd: FUTURE }),
+      baseSub({
+        status: SubscriptionStatus.CANCELED,
+        currentPeriodEnd: FUTURE,
+      }),
     );
 
     const result = await service.getCurrentSubscriptionStatus(CLINIC_ID);
@@ -144,7 +149,10 @@ describe('BillingService.getCurrentSubscriptionStatus', () => {
 
       const result = await service.getCurrentSubscriptionStatus(CLINIC_ID);
 
-      expect(result).toMatchObject({ accessAllowed: false, status: expectedNormalized });
+      expect(result).toMatchObject({
+        accessAllowed: false,
+        status: expectedNormalized,
+      });
     },
   );
 

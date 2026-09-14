@@ -37,7 +37,10 @@ function buildService(): WebhookService {
 const RAW_BODY = Buffer.from('{}');
 const SIGNATURE = 'test-sig';
 
-function makeStripeEvent(type: string, dataObject: Record<string, unknown> = {}) {
+function makeStripeEvent(
+  type: string,
+  dataObject: Record<string, unknown> = {},
+) {
   return {
     id: 'evt_test',
     type,
@@ -112,7 +115,10 @@ describe('WebhookService', () => {
 
       expect(prismaMock.stripeEvent.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ processed: true, errorMessage: null }),
+          data: expect.objectContaining({
+            processed: true,
+            errorMessage: null,
+          }),
         }),
       );
     });
@@ -130,10 +136,14 @@ describe('WebhookService', () => {
         }),
       );
       prismaMock.stripeEvent.upsert.mockResolvedValue({ processed: false });
-      prismaMock.subscription.findFirst.mockRejectedValue(new Error('DB connection lost'));
+      prismaMock.subscription.findFirst.mockRejectedValue(
+        new Error('DB connection lost'),
+      );
       prismaMock.stripeEvent.update.mockResolvedValue({});
 
-      await expect(service.handleWebhook(RAW_BODY, SIGNATURE)).resolves.toBeUndefined();
+      await expect(
+        service.handleWebhook(RAW_BODY, SIGNATURE),
+      ).resolves.toBeUndefined();
 
       expect(prismaMock.stripeEvent.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -195,7 +205,9 @@ describe('WebhookService', () => {
 
       expect(prismaMock.subscription.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: SubscriptionStatus.CANCELED }),
+          data: expect.objectContaining({
+            status: SubscriptionStatus.CANCELED,
+          }),
         }),
       );
     });
@@ -245,7 +257,9 @@ describe('WebhookService', () => {
 
       expect(prismaMock.subscription.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: SubscriptionStatus.PAST_DUE }),
+          data: expect.objectContaining({
+            status: SubscriptionStatus.PAST_DUE,
+          }),
         }),
       );
     });

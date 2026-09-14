@@ -30,7 +30,9 @@ async function validateDto<T extends object>(
 describe('finance DTO validation', () => {
   it('rejects invalid and overlong IDs', async () => {
     const invalid = await validateDto(FinanceIdParamDto, { id: '../category' });
-    const overlong = await validateDto(FinanceIdParamDto, { id: 'a'.repeat(65) });
+    const overlong = await validateDto(FinanceIdParamDto, {
+      id: 'a'.repeat(65),
+    });
     const body = await validateDto(CreateFinancialTransactionDto, {
       type: FinancialTransactionType.EXPENSE,
       categoryId: 'category/1',
@@ -56,7 +58,9 @@ describe('finance DTO validation', () => {
       source: FinancialTransactionSource.MANUAL,
     });
 
-    expect(errors.some((error) => error.property === 'transactionDate')).toBe(true);
+    expect(errors.some((error) => error.property === 'transactionDate')).toBe(
+      true,
+    );
     expect(errors.some((error) => error.property === 'dueDate')).toBe(true);
   });
 

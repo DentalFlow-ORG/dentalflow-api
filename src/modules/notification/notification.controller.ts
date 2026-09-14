@@ -17,7 +17,10 @@ import { AccessPolicyService } from '../../common/services/access-policy.service
 import { AuthUser } from '../../common/types/auth-user.type';
 import { NotificationService } from './notification.service';
 import { SendNotificationDto } from './dto/send-notification.dto';
-import { CreateConsentDto, ListConsentsDto } from './dto/notification-consent.dto';
+import {
+  CreateConsentDto,
+  ListConsentsDto,
+} from './dto/notification-consent.dto';
 import { UpdatePreferenceDto } from './dto/notification-preference.dto';
 import { ListMessagesDto } from './dto/list-messages.dto';
 
