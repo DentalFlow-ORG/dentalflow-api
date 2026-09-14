@@ -620,7 +620,7 @@ Regras obrigatórias:
 
     const matchedCategory = aiCategoryName
       ? categories.find(
-          (c) => c.name.toLowerCase() === (aiCategoryName as string).toLowerCase(),
+          (c) => c.name.toLowerCase() === aiCategoryName.toLowerCase(),
         ) ?? null
       : null;
 

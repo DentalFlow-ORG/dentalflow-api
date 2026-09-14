@@ -1,8 +1,9 @@
 import { Transform } from 'class-transformer'
 import { IsOptional, IsString, MaxLength, IsNotEmpty } from 'class-validator'
+import { trimValue } from '../../../common/utils/transform.helpers'
 
 export class CreateStockCategoryDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)

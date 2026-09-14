@@ -7,7 +7,6 @@ import {
   createAppointment,
   createFinancialCategory,
   createStockCategory,
-  createStockProduct,
   createTransaction,
   seedTwoClinics,
   utcDate,

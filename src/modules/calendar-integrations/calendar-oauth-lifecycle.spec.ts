@@ -8,10 +8,7 @@ jest.mock('../../config/google-calendar.config', () => ({
   },
 }));
 
-import {
-  BadRequestException,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { InternalServerErrorException } from '@nestjs/common';
 
 import { CalendarIntegrationsService } from './calendar-integrations.service';
 

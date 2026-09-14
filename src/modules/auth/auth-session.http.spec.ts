@@ -314,9 +314,10 @@ describe('Authentication and session security', () => {
     });
 
     it('rejects a token signed with a different secret', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      /* eslint-disable @typescript-eslint/no-require-imports -- loaded lazily so the harness owns module init */
       const { JwtService } =
         require('@nestjs/jwt') as typeof import('@nestjs/jwt');
+      /* eslint-enable @typescript-eslint/no-require-imports */
       const foreign = new JwtService({ secret: 'a-different-secret-entirely' });
       const token = foreign.sign({
         sub: USERS.ownerA.id,
@@ -457,9 +458,10 @@ describe('Authentication and session security', () => {
     });
 
     it('does not expose the signing secret in any auth response', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      /* eslint-disable @typescript-eslint/no-require-imports -- loaded lazily so the harness owns module init */
       const { authConfig } =
         require('../../config/auth.config') as typeof import('../../config/auth.config');
+      /* eslint-enable @typescript-eslint/no-require-imports */
       const res = await harness
         .post('/auth/refresh')
         .set('Origin', TRUSTED_ORIGIN);

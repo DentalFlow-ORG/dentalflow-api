@@ -4,8 +4,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
-  AiAssistantAnalysisStatus,
-  AiAssistantAnalysisType,
   FinancialTransactionStatus,
   FinancialTransactionType,
 } from '@prisma/client';
@@ -41,8 +39,6 @@ const CLINIC_ID = 'clinic-1';
 const OTHER_CLINIC_ID = 'clinic-2';
 const USER_ID = 'user-1';
 const MONTH = '2026-05';
-
-const NOW = new Date('2026-05-26T10:00:00Z');
 
 function makeTransaction(overrides: Partial<{
   id: string;
@@ -418,10 +414,18 @@ describe('MonthlyFinanceDiagnosisService', () => {
     const svc = buildService();
     let capturedContext: string | undefined;
 
-    const mockCreate = jest.fn().mockImplementation(async (params: { messages: { role: string; content: string }[] }) => {
-      capturedContext = params.messages.find((m) => m.role === 'user')?.content;
-      return { choices: [{ message: { content: JSON.stringify(AI_RESPONSE) } }] };
-    });
+    const mockCreate = jest
+      .fn()
+      .mockImplementation(
+        (params: { messages: { role: string; content: string }[] }) => {
+          capturedContext = params.messages.find(
+            (m) => m.role === 'user',
+          )?.content;
+          return Promise.resolve({
+            choices: [{ message: { content: JSON.stringify(AI_RESPONSE) } }],
+          });
+        },
+      );
     svc.openai = { chat: { completions: { create: mockCreate } } } as any;
 
     mockPrisma.financialTransaction.findMany.mockResolvedValue([

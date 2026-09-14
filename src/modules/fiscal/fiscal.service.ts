@@ -542,12 +542,14 @@ export class FiscalService {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- callers await a rejection
   async getInvoicePdf(_clinicId: string, _invoiceId: string) {
     throw new NotImplementedException(
       'PDF fiscal real ainda não está disponível. Documento sem validade fiscal.',
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- callers await a rejection
   async getInvoiceXml(_clinicId: string, _invoiceId: string) {
     throw new NotImplementedException(
       'XML fiscal real ainda não está disponível. Documento sem validade fiscal.',

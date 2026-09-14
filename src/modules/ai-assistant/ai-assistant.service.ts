@@ -498,11 +498,11 @@ export class AiAssistantService {
 
       const periodStart =
         assistantType === 'finance' && 'period' in context
-          ? new Date((context as FinanceAiContext).period.from)
+          ? new Date(context.period.from)
           : null;
       const periodEnd =
         assistantType === 'finance' && 'period' in context
-          ? new Date((context as FinanceAiContext).period.to)
+          ? new Date(context.period.to)
           : null;
 
       // Persist — best-effort: never let a DB failure break the analysis response
@@ -520,7 +520,7 @@ export class AiAssistantService {
           periodStart,
           periodEnd,
         });
-      } catch (dbErr: unknown) {
+      } catch {
         this.logger.error(
           JSON.stringify({
             event: 'analysis_persist_failed',

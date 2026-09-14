@@ -7,13 +7,13 @@ import {
 
 @Injectable()
 export class LocalFiscalInvoiceProvider implements FiscalInvoiceProvider {
-  async issueServiceInvoice(
+  issueServiceInvoice(
     payload: FiscalInvoiceProviderIssuePayload,
   ): Promise<FiscalInvoiceProviderIssueResult> {
     const now = new Date();
     const suffix = payload.invoiceId.slice(-8).toUpperCase();
 
-    return {
+    return Promise.resolve({
       externalInvoiceId: `local-sim-${payload.invoiceId}`,
       status: 'SIMULATED',
       invoiceNumber: `SIM-${suffix}`,
@@ -38,33 +38,33 @@ export class LocalFiscalInvoiceProvider implements FiscalInvoiceProvider {
         },
         generatedAt: now.toISOString(),
       },
-    };
+    });
   }
 
-  async getInvoiceStatus(externalInvoiceId: string) {
-    return {
+  getInvoiceStatus(externalInvoiceId: string) {
+    return Promise.resolve({
       externalInvoiceId,
       status: 'SIMULATED',
       legalValidity: false,
       message: 'Status local simulado. Documento sem validade fiscal.',
-    };
+    });
   }
 
-  async cancelInvoice(externalInvoiceId: string, reason: string) {
-    return {
+  cancelInvoice(externalInvoiceId: string, reason: string) {
+    return Promise.resolve({
       externalInvoiceId,
       status: 'CANCELED',
       reason,
       legalValidity: false,
       message: 'Cancelamento interno simulado. Nenhuma NFS-e real foi cancelada.',
-    };
+    });
   }
 
-  async getInvoicePdf(): Promise<null> {
-    return null;
+  getInvoicePdf(): Promise<null> {
+    return Promise.resolve(null);
   }
 
-  async getInvoiceXml(): Promise<null> {
-    return null;
+  getInvoiceXml(): Promise<null> {
+    return Promise.resolve(null);
   }
 }

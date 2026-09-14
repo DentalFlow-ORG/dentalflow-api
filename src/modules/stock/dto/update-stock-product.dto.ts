@@ -14,10 +14,11 @@ import {
   IsSafeId,
   MAX_ID_LENGTH,
 } from '../../../common/validators/input-validation.decorators'
+import { trimValue } from '../../../common/utils/transform.helpers'
 
 export class UpdateStockProductDto {
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)

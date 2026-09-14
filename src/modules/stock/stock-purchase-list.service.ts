@@ -50,7 +50,7 @@ export class StockPurchaseListService {
     const items = products
       .filter((p) => Number(p.currentQuantity) <= Number(p.minQuantity))
       .map((p) => this.buildItem(p))
-      .sort(this.compareItems);
+      .sort(compareItems);
 
     return { summary: this.buildSummary(items), items };
   }
@@ -111,16 +111,6 @@ export class StockPurchaseListService {
     return 'Estoque abaixo do mínimo definido.';
   }
 
-  private compareItems(a: PurchaseListItem, b: PurchaseListItem): number {
-    const weightDiff = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
-    if (weightDiff !== 0) return weightDiff;
-
-    const ratioA = a.minQuantity > 0 ? a.currentQuantity / a.minQuantity : 0;
-    const ratioB = b.minQuantity > 0 ? b.currentQuantity / b.minQuantity : 0;
-    if (ratioA !== ratioB) return ratioA - ratioB;
-
-    return a.productName.localeCompare(b.productName, 'pt-BR');
-  }
 
   private buildSummary(items: PurchaseListItem[]): PurchaseListResult['summary'] {
     let criticalItems = 0;
@@ -144,4 +134,16 @@ export class StockPurchaseListService {
       totalEstimatedCostCents,
     };
   }
+}
+
+/** Most urgent first: priority, then how far below the minimum, then name. */
+function compareItems(a: PurchaseListItem, b: PurchaseListItem): number {
+  const weightDiff = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority];
+  if (weightDiff !== 0) return weightDiff;
+
+  const ratioA = a.minQuantity > 0 ? a.currentQuantity / a.minQuantity : 0;
+  const ratioB = b.minQuantity > 0 ? b.currentQuantity / b.minQuantity : 0;
+  if (ratioA !== ratioB) return ratioA - ratioB;
+
+  return a.productName.localeCompare(b.productName, 'pt-BR');
 }

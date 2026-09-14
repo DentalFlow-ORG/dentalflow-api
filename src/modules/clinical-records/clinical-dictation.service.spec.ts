@@ -17,7 +17,7 @@ import {
   VALID_FDI_TOOTH_NUMBERS,
   VALID_ODONTOGRAM_CONDITIONS,
 } from './clinical-dictation.service';
-import type { DictationResult, OdontogramSuggestionResult } from './clinical-dictation.service';
+import type { DictationResult } from './clinical-dictation.service';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -847,7 +847,7 @@ describe('odontogram suggestions extraction', () => {
     const result: DictationResult = await service.dictate(CLINIC_ID, USER_ID, buildDto());
 
     expect(result.odontogramSuggestions).toHaveLength(1);
-    const s = result.odontogramSuggestions[0] as OdontogramSuggestionResult;
+    const s = result.odontogramSuggestions[0];
     expect(s.toothNumber).toBe('36');
     expect(s.condition).toBe('caries');
     expect(s.notes).toBe('Cárie relatada no ditado.');

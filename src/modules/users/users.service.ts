@@ -6,10 +6,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  PlanCapabilitiesService,
-  UserLimitUsage,
-} from '../billing/plan-capabilities.service';
+import { PlanCapabilitiesService } from '../billing/plan-capabilities.service';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { CreateMemberDto } from './dto/create-member.dto';

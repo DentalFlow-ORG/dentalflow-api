@@ -135,7 +135,7 @@ describe('CalendarIntegrationsService.syncDentist', () => {
     service = buildService();
 
     // Mock assertConfig by setting private config fields via environment
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'assertConfig').mockImplementation(() => undefined);
   });
 
@@ -170,7 +170,7 @@ describe('CalendarIntegrationsService.syncDentist', () => {
 
     // getValidUserAccessToken returns decrypted token — skip actual crypto by
     // mocking getValidUserAccessToken directly since encrypt/decrypt needs a real key
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
 
     const result = await service.syncDentist(USER_ID, CLINIC_ID);
@@ -186,7 +186,6 @@ describe('CalendarIntegrationsService.syncDentist', () => {
   });
 
   it('does not sync appointments from other profiles', async () => {
-    const OTHER_PROFILE_ID = 'profile-other';
     const appointmentsFromOtherProfile = [
       baseAppointment({ id: 'appt-other' }),
     ];
@@ -198,7 +197,7 @@ describe('CalendarIntegrationsService.syncDentist', () => {
       // (appointments from OTHER_PROFILE_ID should not appear)
       .mockResolvedValueOnce([]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
     prismaMock.$executeRaw.mockResolvedValue(undefined);
 
@@ -218,7 +217,7 @@ describe('CalendarIntegrationsService.disconnectDentist', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = buildService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'assertConfig').mockImplementation(() => undefined);
   });
 
@@ -237,11 +236,11 @@ describe('CalendarIntegrationsService.disconnectDentist', () => {
       .mockResolvedValueOnce([])                     // findProfileAppointmentsWithDentistEvents → empty
       ;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'getValidUserAccessToken').mockResolvedValue('mock-token');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'decrypt').mockReturnValue('decrypted-token');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     jest.spyOn(service as any, 'revokeGoogleToken').mockResolvedValue(undefined);
     prismaMock.$executeRaw.mockResolvedValue(undefined);
 

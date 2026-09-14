@@ -13,7 +13,7 @@ export const BATCH_AVATARS_MAX_COUNT = 100;
 export class BatchPatientAvatarsDto {
   @Transform(({ value }: { value: unknown }) =>
     Array.isArray(value)
-      ? value.map((v) => (typeof v === 'string' ? v.trim() : v))
+      ? (value as unknown[]).map((v) => (typeof v === 'string' ? v.trim() : v))
       : value,
   )
   @IsArray()

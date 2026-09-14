@@ -6,7 +6,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ReportsService, EXPORT_LIMIT } from './reports.service';
 
 const CLINIC_ID = 'clinic_1';
-const OTHER_CLINIC = 'clinic_2';
 
 // ── Mock factory helpers ──────────────────────────────────────────────────────
 
@@ -293,7 +292,7 @@ describe('ReportsService', () => {
     it('fetches products without take cap (to get exact count)', async () => {
       mockPrisma.stockProduct.findMany.mockResolvedValue([]);
       await service.previewInventory(CLINIC_ID, {});
-      const call = mockPrisma.stockProduct.findMany.mock.calls[0][0] as any;
+      const call = mockPrisma.stockProduct.findMany.mock.calls[0][0];
       expect(call.take).toBeUndefined();
     });
 

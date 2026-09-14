@@ -178,7 +178,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const prismaCode =
       exception instanceof Prisma.PrismaClientKnownRequestError
-        ? (exception as Prisma.PrismaClientKnownRequestError).code
+        ? exception.code
         : undefined;
 
     this.logger.error({

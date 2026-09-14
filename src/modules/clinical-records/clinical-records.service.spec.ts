@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import type { ClinicalRecordStatus, UserRole } from '@prisma/client';
+import type { ClinicalRecordStatus } from '@prisma/client';
 
 import { ClinicalRecordsService } from './clinical-records.service';
 

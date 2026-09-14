@@ -275,7 +275,7 @@ export class ClinicalDictationService {
       generatedAt: new Date(),
       periodStart: null,
       periodEnd: null,
-    }).catch((err: unknown) => {
+    }).catch(() => {
       this.logger.error(
         JSON.stringify({
           event: 'clinical_dictation_quota_record_failed',

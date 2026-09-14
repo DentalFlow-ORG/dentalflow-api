@@ -39,9 +39,10 @@ function runValidation(env: Record<string, string | undefined>): () => void {
     const original = process.env;
     process.env = { ...env } as NodeJS.ProcessEnv;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      /* eslint-disable @typescript-eslint/no-require-imports -- must load after process.env is swapped */
       const loaded =
         require('./validate-env') as typeof import('./validate-env');
+      /* eslint-enable @typescript-eslint/no-require-imports */
       const run = loaded.validateEnv;
       validate = () => {
         const outer = process.env;

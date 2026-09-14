@@ -12,6 +12,7 @@ import {
   IsSafeId,
   MAX_ID_LENGTH,
 } from '../../../common/validators/input-validation.decorators'
+import { trimValue } from '../../../common/utils/transform.helpers'
 
 export const STOCK_MOVEMENT_TYPE_VALUES = [
   'IN',
@@ -45,13 +46,13 @@ export class CreateStockMovementDto {
   newQuantity?: number
 
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @MaxLength(120)
   reason?: string
 
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @MaxLength(2000)
   notes?: string

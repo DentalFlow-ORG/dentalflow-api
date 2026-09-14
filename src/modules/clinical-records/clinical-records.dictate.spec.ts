@@ -1,10 +1,5 @@
 import 'reflect-metadata';
-import {
-  ForbiddenException,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ClinicalRecordStatus } from '@prisma/client';
 
 import { REQUIRES_PLAN_FEATURE_KEY } from '../../common/decorators/require-plan-feature.decorator';
@@ -135,9 +130,11 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
 
   function buildService() {
     // Dynamically import to avoid circular issues; use direct instantiation.
+    /* eslint-disable @typescript-eslint/no-require-imports -- loaded per call, after the mocks are in place */
     const { ClinicalRecordsService: Svc } = require('./clinical-records.service') as {
       ClinicalRecordsService: typeof ClinicalRecordsService;
     };
+    /* eslint-enable @typescript-eslint/no-require-imports */
     return new Svc(mockPrisma as never);
   }
 

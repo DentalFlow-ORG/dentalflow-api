@@ -21,7 +21,8 @@ export class AddClinicalAttachmentDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(180)
-  @Matches(/^[^\/\\\x00-\x1F\x7F]+$/, {
+  // eslint-disable-next-line no-control-regex -- rejecting control bytes is the point
+  @Matches(/^[^/\\\x00-\x1F\x7F]+$/, {
     message: 'Nome do arquivo nao pode conter caminhos ou caracteres de controle.',
   })
   fileName!: string;

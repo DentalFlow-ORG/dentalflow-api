@@ -93,7 +93,7 @@ describe('ReportsService — CSV exports', () => {
 
   /** The data rows of a CSV, without the header. */
   function dataRows(csv: string): string[] {
-    return csv.replace(/^﻿/, '').split('\r\n').slice(1);
+    return csv.replace(/^\uFEFF/, '').split('\r\n').slice(1);
   }
 
   /** Splits one CSV line into fields, honouring quoting. */
@@ -181,7 +181,7 @@ describe('ReportsService — CSV exports', () => {
       ]);
 
       const csv = await service.exportAppointments(CLINIC, {} as never);
-      const lines = csv.replace(/^﻿/, '').split('\r\n');
+      const lines = csv.replace(/^\uFEFF/, '').split('\r\n');
 
       expect(splitCsvLine(lines[1])).toHaveLength(
         splitCsvLine(lines[0]).length,
@@ -219,7 +219,7 @@ describe('ReportsService — CSV exports', () => {
 
     it('separates with semicolons, as Brazilian Excel expects', async () => {
       const csv = await service.exportFinance(CLINIC, {} as never);
-      const header = csv.replace(/^﻿/, '').split('\r\n')[0];
+      const header = csv.replace(/^\uFEFF/, '').split('\r\n')[0];
 
       expect(header.split(';').length).toBeGreaterThan(1);
       expect(header).toContain('Data;Tipo;Status');

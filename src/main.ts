@@ -54,7 +54,10 @@ async function bootstrap() {
   // cannot read the real HTTP status from the cross-origin error response and
   // reports a generic "No Access-Control-Allow-Origin" CORS failure instead.
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       if (!origin) {
         // No Origin header: server-to-server or health check request — allow.
         callback(null, true);
@@ -137,7 +140,8 @@ async function bootstrap() {
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
   if (appConfig.nodeEnv === 'production') {
-    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+    const httpInstance = app.getHttpAdapter().getInstance() as express.Express;
+    httpInstance.set('trust proxy', 1);
   }
 
   app.setGlobalPrefix(appConfig.apiPrefix, {

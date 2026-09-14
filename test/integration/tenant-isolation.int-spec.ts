@@ -1,5 +1,3 @@
-import type { UserRole } from '@prisma/client';
-
 import {
   createIntegrationHarness,
   IntegrationHarness,
@@ -34,7 +32,6 @@ import {
 describe('Tenant isolation (real database)', () => {
   let h: IntegrationHarness;
   let ownerAToken: string;
-  let ownerBToken: string;
 
   beforeAll(async () => {
     h = await createIntegrationHarness();
@@ -48,7 +45,6 @@ describe('Tenant isolation (real database)', () => {
     await h.truncate();
     const seeded = await seedTwoClinics(h.prisma);
     ownerAToken = h.tokenFor(seeded.ownerA);
-    ownerBToken = h.tokenFor(seeded.ownerB);
   });
 
   const asA = (req: ReturnType<IntegrationHarness['get']>) =>
@@ -371,7 +367,7 @@ describe('Tenant isolation (real database)', () => {
       const adminToken = h.tokenFor({
         id: admin.id,
         clinicId: admin.clinicId,
-        role: admin.role as UserRole,
+        role: admin.role,
       });
 
       const health = await h
@@ -401,7 +397,7 @@ describe('Tenant isolation (real database)', () => {
       const adminToken = h.tokenFor({
         id: admin.id,
         clinicId: admin.clinicId,
-        role: admin.role as UserRole,
+        role: admin.role,
       });
 
       const res = await h
@@ -490,7 +486,7 @@ describe('Tenant isolation (real database)', () => {
       const token = h.tokenFor({
         id: dentist.id,
         clinicId: dentist.clinicId,
-        role: dentist.role as UserRole,
+        role: dentist.role,
       });
 
       const res = await h

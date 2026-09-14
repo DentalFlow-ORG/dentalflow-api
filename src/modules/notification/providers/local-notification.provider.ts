@@ -5,13 +5,13 @@ import type { INotificationProvider, SendPayload, SendResult } from './notificat
 export class LocalNotificationProvider implements INotificationProvider {
   private readonly logger = new Logger(LocalNotificationProvider.name);
 
-  async send(payload: SendPayload): Promise<SendResult> {
+  send(payload: SendPayload): Promise<SendResult> {
     const phone = maskPhone(payload.phone);
     this.logger.log(
       `[SIMULATED] WhatsApp -> ${phone} | template: ${payload.templateSlug} | appt: ${payload.appointmentId ?? 'none'}`,
     );
     // No external API call — simulation only
-    return { providerRef: null };
+    return Promise.resolve({ providerRef: null });
   }
 }
 

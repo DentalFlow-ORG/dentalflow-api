@@ -4,7 +4,6 @@ import {
   IsISO8601,
   IsInt,
   IsOptional,
-  IsString,
   IsUUID,
   Max,
   Min,

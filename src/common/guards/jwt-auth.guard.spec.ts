@@ -46,7 +46,7 @@ describe('JwtAuthGuard', () => {
         .spyOn(parentProto, 'canActivate')
         .mockReturnValue(true);
 
-      guard.canActivate(makeContext());
+      void guard.canActivate(makeContext());
 
       expect(superSpy).not.toHaveBeenCalled();
       superSpy.mockRestore();

@@ -248,7 +248,7 @@ describe('ProfilesService', () => {
     });
 
     it('narrows the list to a dentist’s own profile', async () => {
-      service.findAll(CLINIC, DENTIST_USER, UserRole.DENTIST);
+      await service.findAll(CLINIC, DENTIST_USER, UserRole.DENTIST);
 
       expect(prisma.profile.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
@@ -256,8 +256,8 @@ describe('ProfilesService', () => {
       });
     });
 
-    it('shows an owner every profile in the clinic', () => {
-      service.findAll(CLINIC, 'owner-1', UserRole.OWNER);
+    it('shows an owner every profile in the clinic', async () => {
+      await service.findAll(CLINIC, 'owner-1', UserRole.OWNER);
 
       expect(prisma.profile.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,

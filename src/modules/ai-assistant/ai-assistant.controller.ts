@@ -69,7 +69,7 @@ export class AiAssistantController {
   @Roles('OWNER')
   async analyzeInventory(
     @CurrentUser() user: AuthUser,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     @Body() _dto: AnalyzeInventoryDto,
   ) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);

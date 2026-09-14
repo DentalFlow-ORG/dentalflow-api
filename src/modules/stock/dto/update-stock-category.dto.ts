@@ -1,9 +1,10 @@
 import { Transform } from 'class-transformer'
 import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { trimValue } from '../../../common/utils/transform.helpers'
 
 export class UpdateStockCategoryDto {
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @MaxLength(80)
   name?: string

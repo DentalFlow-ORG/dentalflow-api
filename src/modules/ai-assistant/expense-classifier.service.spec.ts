@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AiAssistantAnalysisType, FinancialTransactionType } from '@prisma/client';
+import { FinancialTransactionType } from '@prisma/client';
 
 import { ExpenseClassifierService } from './expense-classifier.service';
 
