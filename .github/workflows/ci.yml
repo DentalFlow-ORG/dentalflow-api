@@ -63,15 +63,10 @@ jobs:
           retention-days: 7
 
   lint:
-    name: Lint (advisory)
+    name: Lint
     runs-on: ubuntu-latest
-    # `lint:check` reports a large pre-existing backlog — mostly Prettier
-    # formatting, because the repository has only ever been linted with
-    # `--fix`. The job runs so the backlog stays visible and measurable, but
-    # does not block until it has been cleared in a dedicated style commit.
-    # Promote it to a required check at that point by deleting this line and
-    # adding `lint:check` to the `verify` script.
-    continue-on-error: true
+    # Blocking. The formatting backlog that made this advisory was cleared in
+    # a dedicated style commit, so any new finding is a new finding.
 
     steps:
       - uses: actions/checkout@v4
@@ -84,39 +79,53 @@ jobs:
       - run: bunx prisma generate
       - run: bun run lint:check
 
-  # Database-backed end-to-end tests are NOT run here yet.
-  #
-  # `bun run test:e2e` needs a real PostgreSQL instance with migrations
-  # applied. The job below is the required setup, left commented out rather
-  # than silently omitted so the gap is explicit. It is not enabled because
-  # `test/app.e2e-spec.ts` currently covers only unauthenticated routing; the
-  # constraint, transaction and relational-integrity coverage that justifies
-  # the job still has to be written (see AGENTS.md §8).
-  #
-  # e2e:
-  #   name: E2E (PostgreSQL)
-  #   runs-on: ubuntu-latest
-  #   services:
-  #     postgres:
-  #       image: postgres:16
-  #       env:
-  #         POSTGRES_PASSWORD: test
-  #         POSTGRES_DB: dentalflow_test
-  #       ports: ['5432:5432']
-  #       options: >-
-  #         --health-cmd pg_isready --health-interval 10s
-  #         --health-timeout 5s --health-retries 5
-  #   env:
-  #     NODE_ENV: test
-  #     JWT_SECRET: ci-jwt-secret-not-a-real-secret
-  #     WHATSAPP_VERIFY_TOKEN: ci-whatsapp-verify-token
-  #     DATABASE_URL: postgresql://postgres:test@localhost:5432/dentalflow_test
-  #     DIRECT_URL: postgresql://postgres:test@localhost:5432/dentalflow_test
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: oven-sh/setup-bun@v2
-  #       with:
-  #         bun-version-file: package.json
-  #     - run: bun install --frozen-lockfile
-  #     - run: bunx prisma migrate deploy
-  #     - run: bun run test:e2e
+  integration:
+    name: Integration (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      # Mirrors docker-compose.test.yml exactly — same image, same
+      # credentials, same port — so a failure here reproduces locally with
+      # `bun run test:db:up && bun run test:integration` and nothing else.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dentalflow_test
+          POSTGRES_PASSWORD: dentalflow_test
+          POSTGRES_DB: dentalflow_test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U dentalflow_test -d dentalflow_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-jwt-secret-not-a-real-secret
+      WHATSAPP_VERIFY_TOKEN: ci-whatsapp-verify-token
+      # The suite reads DATABASE_URL_TEST and validates it through
+      # test/support/test-database.ts, which rejects any managed host and
+      # refuses a URL identical to DATABASE_URL. The two below are
+      # deliberately different databases so that guard is exercised, not
+      # bypassed.
+      DATABASE_URL: postgresql://dentalflow_test:dentalflow_test@127.0.0.1:5433/dentalflow_ci_unused
+      DATABASE_URL_TEST: postgresql://dentalflow_test:dentalflow_test@127.0.0.1:5433/dentalflow_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # `prisma migrate deploy` is NOT used: the committed migration chain
+      # does not apply to an empty database (see AGENTS.md §8). `db push`
+      # builds the schema straight from schema.prisma and writes no migration
+      # files, so this job tests the schema the application actually uses.
+      - name: Database-backed integration tests
+        run: bun run test:integration
