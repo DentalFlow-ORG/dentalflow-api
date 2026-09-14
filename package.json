@@ -32,7 +32,7 @@
     "preinstall": "node -e \"const ua = process.env.npm_config_user_agent; if (ua && !ua.startsWith('bun')) { console.error('\\nError: use Bun as the package manager.\\nRun: bun install\\n'); process.exit(1) }\"",
     "deadcode": "node scripts/check-dead-code.mjs",
     "prisma:validate": "prisma validate",
-    "verify": "bun run typecheck && bun run test:cov && bun run deadcode && bun run prisma:validate && bun run build"
+    "verify": "bun run typecheck && bun run lint:check && bun run test:cov && bun run deadcode && bun run prisma:validate && bun run build"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
