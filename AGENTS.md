@@ -45,6 +45,7 @@ bunx ts-node <script>      # one-off TypeScript scripts
 | Unit tests (no database)      | `bun run test`             |
 | Coverage                      | `bun run test:cov`         |
 | Start the disposable database | `bun run test:db:up`       |
+| Migration history from zero   | `bun run test:migrations`  |
 | Integration (needs that DB)   | `bun run test:integration` |
 | E2E (needs that DB)           | `bun run test:e2e`         |
 | Stop and delete that DB       | `bun run test:db:down`     |
@@ -271,11 +272,12 @@ changing them — they are usually right.
 `bun run test` never touches a database — `test/jest-unit-setup.ts` pins a
 fixed fake environment and never reads `.env`.
 
-`test:integration` and `test:e2e` do need PostgreSQL. **Never point either at
-the development `DATABASE_URL`**: it is a shared Supabase instance holding
-real clinic data, and a truncating run against it is unrecoverable.
+`test:integration`, `test:e2e` and `test:migrations` do need PostgreSQL.
+**Never point any of them at the development `DATABASE_URL`**: it is a shared
+Supabase instance holding real clinic data, and a truncating run against it is
+unrecoverable.
 
-Nothing infers that URL. Both suites resolve it through
+Nothing infers that URL. All three resolve it through
 `test/support/test-database.ts`, which throws unless the host is unambiguously
 local, rejects every managed-host marker (Supabase, Neon, RDS, Railway, …) and
 refuses a URL identical to `DATABASE_URL`. The guard has its own test,
@@ -284,8 +286,9 @@ URL shape. Do not weaken it.
 
 ```bash
 bun run test:db:up          # postgres:16-alpine on 5433, on a named volume
-bun run test:integration    # pushes the schema, then runs *.int-spec.ts
-bun run test:e2e            # pushes the schema, then runs *.e2e-spec.ts
+bun run test:migrations     # builds a throwaway DB from the real migrations
+bun run test:integration    # applies migrations, then runs *.int-spec.ts
+bun run test:e2e            # applies migrations, then runs *.e2e-spec.ts
 bun run test:db:down        # stops it and deletes the volume
 ```
 
@@ -293,20 +296,84 @@ Port 5433 is deliberate: 5432 stays free so this can never collide with a
 local development PostgreSQL. `DATABASE_URL_TEST` overrides the URL; the guard
 still applies.
 
-**The schema is applied with `prisma db push`, not `migrate deploy`.** The
-committed migration chain does not apply to an empty database.
-`20260604230209_remove_internal_leads` drops `leads` while
-`appointments_leadId_fkey` survives, because it targets a snake_case `lead_id`
-and `appointments_lead_id_idx` that the init migration never created — it
-created camelCase `leadId` and `appointments_leadId_idx` — and the `IF EXISTS`
-clauses silently no-op. It fails deterministically with PostgreSQL error
-2BP01. `scripts/push-test-schema.ts` writes no migration files, so this is a
-test-environment workaround, not a schema change. **The defect is still open**
-and will bite the first environment built from scratch.
+### Three commands that are not interchangeable
 
-CI runs both suites against a service container mirroring
-`docker-compose.test.yml` exactly, so a red job reproduces locally with
-`bun run test:db:up` and nothing else.
+| Command                     | What it does                                              | Proves the migration history? |
+| --------------------------- | --------------------------------------------------------- | ----------------------------- |
+| `prisma db push`            | Syncs the database to `schema.prisma`. Writes no migration files and never opens `prisma/migrations`. | **No.** |
+| `bun run test:db:reset`     | Destroys the container and its volume, then starts an empty one. | No — it only empties. |
+| `prisma migrate deploy`     | Applies every migration in `prisma/migrations` in order.    | **Yes.** This is the only one that does. |
+
+`db push` must never be the evidence that the history is valid. It was the
+reason a broken chain survived for months: every local run and every CI job
+built its schema from `schema.prisma`, so nothing ever read the migrations.
+`bun run test:migrations` (`scripts/check-migrations.ts`) is the gate, and CI
+runs it: it creates a throwaway database, applies the full chain with
+`migrate deploy`, compares the result against `schema.prisma`, and replays the
+corrective migrations over an already-migrated database to prove they are
+non-destructive.
+
+`test:integration` and `test:e2e` also build their schema with
+`migrate deploy` rather than `db push`. That is not only for fidelity of the
+history: two tenancy invariants are raw SQL that Prisma's schema language
+cannot express, so `db push` never creates them and the suites were running
+against a weaker schema than production —
+
+- `users_one_owner_per_clinic_idx`, a partial unique index allowing one active
+  OWNER per clinic;
+- `users_role_clinic_scope_check`, requiring ADMIN and PATIENT to carry no
+  clinic and OWNER, DENTIST and ASSISTANT to carry one.
+
+`bun run test:db:push` remains available as a developer escape hatch for fast
+schema iteration. It is not a validation step.
+
+### The leads-removal defect (fixed)
+
+`20260604230209_remove_internal_leads` could not apply to an empty database.
+It had two faults:
+
+1. It targeted snake_case identifiers that never existed — `lead_id`,
+   `appointments_lead_id_idx`, `max_leads_per_month` — while the init
+   migration created `leadId`, `appointments_leadId_idx` and
+   `maxLeadsPerMonth`. All three statements carry `IF EXISTS`, so all three
+   matched nothing and silently did nothing. `appointments_leadId_fkey`
+   survived, and `DROP TABLE "leads"` two statements later failed with
+   PostgreSQL `2BP01`.
+2. It rebuilt the `AuditAction` enum from a hard-coded list that was already
+   stale, dropping values the application writes today and inventing twenty
+   the schema has never had.
+
+Both are repaired by **new** migrations rather than an edit, so no committed
+migration's checksum changed:
+
+- `20260604230208_repair_lead_removal_prerequisites` runs one second earlier
+  and drops the camelCase leftovers, so the removal migration finds its work
+  done and its no-op statements stay no-ops;
+- `20260605000000_align_audit_action_enum` restores the enum to exactly the
+  set in `schema.prisma`, mapping any row holding a now-absent value to
+  `OTHER` rather than dropping the row.
+
+Both are guarded and idempotent, and Prisma applies them out of order without
+complaint on a database that already has the later migration recorded —
+verified, not assumed.
+
+**If an environment is stuck on the failed migration** (`_prisma_migrations`
+holds the row with `finished_at` NULL), `migrate deploy` refuses to continue
+until it is resolved:
+
+```bash
+prisma migrate resolve --rolled-back 20260604230209_remove_internal_leads
+prisma migrate deploy
+```
+
+### One known divergence
+
+`website_leads` is created by `20260520173818_add_website_leads` and has never
+been modelled in `schema.prisma` or referenced by any code, so the migrated
+schema has one table the Prisma client does not know about. It holds captured
+public leads — name, phone, consent — so dropping it is a data decision for a
+human, not a cleanup. `scripts/check-migrations.ts` allows exactly this one
+divergence and fails on any other.
 
 ---
 
@@ -326,11 +393,51 @@ Put the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
 
 **Stripe is never reached by an automated test.** The integration and e2e
 harnesses stub outbound `fetch` precisely so none can. Webhook handling,
-signature verification and event de-duplication are covered by unit tests over
-recorded payloads — real coverage of our side of the contract, and none at all
-of Stripe's. Anything touching checkout, the customer portal or a subscription
-state change needs manual QA through `stripe listen` and the Stripe test
-dashboard before release; the suites will not catch a regression there.
+signature verification, event de-duplication, plan pricing and the checkout
+success URL are covered by unit tests — real coverage of our side of the
+contract, and none at all of Stripe's.
+
+So anything touching checkout, the customer portal or a subscription state
+change needs the checklist below before release, in Stripe **test mode**.
+
+### Stripe test-mode QA checklist
+
+Run `stripe listen --forward-to http://localhost:3000/api/billing/webhook`
+first and keep it open; every step below depends on events arriving.
+
+1. **Start a checkout.** `POST /api/billing/checkout-session` for a plan.
+   The response carries a `url` on `checkout.stripe.com`.
+2. **Complete it** with test card `4242 4242 4242 4242`, any future expiry,
+   any CVC.
+3. **Check the redirect carries a real session id.** The browser must land on
+   the success URL with `?session_id=cs_test_…` — a *substituted* value, not
+   the literal `{CHECKOUT_SESSION_ID}` and not `%7BCHECKOUT_SESSION_ID%7D`.
+   The URL construction is unit-tested (`billing-plan-pricing.spec.ts`); this
+   step confirms Stripe's half.
+4. **Sync the session.** `POST /api/billing/checkout-session/sync` with that
+   id returns 200 and the clinic's subscription.
+5. **Confirm the subscription is live.** `GET /api/billing/subscription`
+   reports `ACTIVE` or `TRIALING`, the right plan, and the right interval.
+6. **Reconcile twice.** Repeat step 4 with the same session id: it must be
+   idempotent — no duplicate subscription, no duplicate invoice, no change of
+   status.
+7. **Open the billing portal.** `POST /api/billing/portal` returns a
+   `billing.stripe.com` URL that opens and shows the correct plan.
+8. **Cancel from the portal.** The app then reports the subscription as
+   cancelling at period end, and access continues until that date.
+9. **Confirm the webhook drove it.** The `stripe listen` output shows the
+   subscription event, and the state changed without anyone calling sync by
+   hand.
+10. **Replay a webhook.** `stripe events resend <event_id>` for one already
+    processed: it must be de-duplicated, not applied twice.
+
+Record the result in the PR. A change to checkout, the portal or subscription
+state that has not been through this list is not ready to merge.
+
+This remains a manual boundary by choice — reaching the live API from CI would
+trade a real dependency and real flakiness for coverage of somebody else's
+system. It does not block a release; it gates the parts of one that touch
+billing.
 
 ---
 

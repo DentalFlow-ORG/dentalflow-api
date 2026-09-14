@@ -88,6 +88,7 @@ bun run start:dev
 | Testes unitários (sem banco)| `bun run test`             |
 | Cobertura                   | `bun run test:cov`         |
 | Subir o banco descartável   | `bun run test:db:up`       |
+| Migrations do zero          | `bun run test:migrations`  |
 | Integração (exige o banco)  | `bun run test:integration` |
 | E2E (exige o banco)         | `bun run test:e2e`         |
 | Derrubar o banco            | `bun run test:db:down`     |
@@ -131,6 +132,7 @@ Dois níveis exigem PostgreSQL de verdade:
 
 ```bash
 bun run test:db:up          # postgres:16-alpine descartável na porta 5433
+bun run test:migrations     # aplica todo o histórico de migrations do zero
 bun run test:integration
 bun run test:e2e
 bun run test:db:down        # derruba e apaga o volume
@@ -141,9 +143,18 @@ bun run test:db:down        # derruba e apaga o volume
 a URL em `test/support/test-database.ts` e se recusam a rodar contra qualquer
 coisa que não seja um banco local descartável (AGENTS.md §8).
 
-O schema de teste é aplicado com `prisma db push`, não `migrate deploy`: a
-cadeia de migrations não se aplica a um banco vazio (defeito em aberto,
-documentado em AGENTS.md §8).
+O schema de teste é aplicado com `prisma migrate deploy`, nunca com
+`db push`. `db push` lê o `schema.prisma` e jamais abre `prisma/migrations`,
+então não prova nada sobre o histórico — foi assim que uma cadeia quebrada
+sobreviveu por meses. `bun run test:migrations` é a verificação: constrói um
+banco descartável do zero com as migrations reais, compara o resultado com o
+`schema.prisma` e reaplica as migrations corretivas sobre um banco já migrado
+para provar que não são destrutivas. A CI executa esse mesmo comando.
+
+Usar `migrate deploy` também dá às suítes o schema real: duas invariantes de
+tenancy são SQL puro que o Prisma não consegue expressar (um único OWNER ativo
+por clínica, e a checagem de papel × clínica), e o `db push` nunca as cria.
+Detalhes em AGENTS.md §8.
 
 Quatro suítes protegem invariantes de sistema inteiro e falham de propósito
 quando um endpoint muda:

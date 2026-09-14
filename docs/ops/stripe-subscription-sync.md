@@ -1,5 +1,12 @@
 # Reconciliação de assinatura Stripe
 
+> **Before releasing any change to checkout, the portal or subscription
+> state**, work through the Stripe test-mode QA checklist in
+> [AGENTS.md §9](../../AGENTS.md#9-stripe). No automated test reaches the
+> Stripe API — the harnesses stub outbound `fetch` so that none can — so that
+> checklist is the only thing standing between a billing regression and a
+> customer.
+
 Use este procedimento quando a Stripe já mostra uma assinatura paga/ativa, mas o DentalFlow local ainda mostra `INCOMPLETE` ou acesso bloqueado.
 
 Casos comuns:

@@ -25,11 +25,15 @@ become two different rules.
   `DATABASE_URL`** — it is a shared Supabase instance holding real clinic
   data. Start the throwaway one with `bun run test:db:up`; both suites refuse
   to run against anything else. See AGENTS.md §8.
-- **The migration chain does not apply to an empty database** (an open
-  defect). Test environments are built with `prisma db push`. Do not "fix" it
-  by writing a migration without being asked — see AGENTS.md §8.
+- **`prisma db push` is not proof that the migration history works.** It
+  reads `schema.prisma` and never opens `prisma/migrations`. The gate is
+  `bun run test:migrations`, which builds a throwaway database from the real
+  migrations — run it after touching anything under `prisma/`.
+- **Prefer a new corrective migration to editing a committed one**, whose
+  checksum other environments have already recorded. See AGENTS.md §8.
 - **Stripe has no automated coverage against the live API.** Changes to
-  checkout, the portal or subscription state need manual QA.
+  checkout, the portal or subscription state need the test-mode checklist in
+  AGENTS.md §9 before merge.
 - **Do not commit or push unless asked.**
 - **Never add a `Co-Authored-By` trailer or a "Generated with…" footer** to a
   commit or pull request. This project does not use them.

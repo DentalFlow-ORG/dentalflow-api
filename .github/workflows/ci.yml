@@ -80,7 +80,7 @@ jobs:
       - run: bun run lint:check
 
   integration:
-    name: Integration and E2E (PostgreSQL)
+    name: Migrations, integration and E2E (PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -123,10 +123,20 @@ jobs:
       - name: Generate Prisma client
         run: bunx prisma generate
 
-      # `prisma migrate deploy` is NOT used: the committed migration chain
-      # does not apply to an empty database (see AGENTS.md §8). `db push`
-      # builds the schema straight from schema.prisma and writes no migration
-      # files, so this job tests the schema the application actually uses.
+      # Builds a throwaway database from nothing using the real migration
+      # history, compares the result against schema.prisma, and replays the
+      # corrective migrations over an existing database to prove they are
+      # non-destructive. Never `db push`: that reads schema.prisma and never
+      # opens prisma/migrations, which is exactly how a chain that could not
+      # build an empty database survived for months.
+      - name: Migration history
+        run: bun run test:migrations
+
+      # Both suites build their schema with `prisma migrate deploy`, so they
+      # run against the same schema a deployment produces — including the
+      # raw-SQL tenancy invariants (the one-owner-per-clinic partial unique
+      # index and the role/clinic check constraint) that schema.prisma cannot
+      # express and `db push` therefore never creates.
       - name: Database-backed integration tests
         run: bun run test:integration
 
