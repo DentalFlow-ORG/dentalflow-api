@@ -113,6 +113,7 @@
     "setupFiles": [
       "<rootDir>/../test/jest-unit-setup.ts"
     ],
+    "globalSetup": "<rootDir>/../test/jest-global-setup.ts",
     "coverageThreshold": {
       "global": {
         "statements": 92,
