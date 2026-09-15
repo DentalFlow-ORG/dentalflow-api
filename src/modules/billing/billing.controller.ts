@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
@@ -50,6 +57,7 @@ export class BillingController {
   }
 
   @Post('checkout-session/sync')
+  @HttpCode(HttpStatus.OK)
   async syncCheckoutSession(
     @CurrentUser() user: AuthUser,
     @Body() dto: SyncCheckoutSessionDto,
