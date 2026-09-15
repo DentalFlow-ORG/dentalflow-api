@@ -1,0 +1,36 @@
+-- Removes the orphaned `website_leads` table.
+--
+-- History. 20260520173818_add_website_leads created it to back the public
+-- lead-capture endpoint `POST /api/public/leads`, which the marketing site
+-- called through a site-wide chat widget. On 2026-06-04 that feature was
+-- retired on both sides within three minutes: the frontend removed the widget
+-- and its service first (dentalflow-web 93807fe, 23:25), then the backend
+-- removed the module, the route and the `WebsiteLead` model
+-- (0be00ef, 23:28). Nothing has read or written the table since.
+--
+-- 20260604230209_remove_internal_leads deliberately left the table in place --
+-- its header still says so -- because it dropped the *internal* CRM tables
+-- (`leads`, `lead_activities`) and did not want to take captured public leads
+-- with them. That was the right call at the time. It left the migration
+-- history building a table that `schema.prisma` does not model, so every
+-- database created from the chain carried an object the Prisma client knows
+-- nothing about.
+--
+-- Production has since been checked with read-only queries: no `website_leads`
+-- table exists there, and a search of information_schema.tables and pg_tables
+-- for any table containing "lead" returns nothing. There is no captured data
+-- anywhere to preserve, so the table can go.
+--
+-- Safe in both directions:
+--
+--   * Where the table exists (a database built from this migration chain), it
+--     is dropped. Dependency analysis found nothing attached to it -- no
+--     foreign key in either direction, no owned sequence, no view, no trigger
+--     -- so its primary key and its (phone, createdAt) index go with it and
+--     nothing else is touched. CASCADE is deliberately NOT used: there is
+--     nothing for it to cascade to, and it would turn any future dependency
+--     into a silent deletion.
+--   * Where the table is already absent -- production, and any environment
+--     built from schema.prisma -- IF EXISTS makes this a no-op.
+
+DROP TABLE IF EXISTS "website_leads";
