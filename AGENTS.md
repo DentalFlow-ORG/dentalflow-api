@@ -467,7 +467,7 @@ and a "successful" run proves nothing, or worse, touches real money.
 
 **The portal**
 
-10. **Open the billing portal.** `POST /api/billing/portal` returns a
+10. **Open the billing portal.** `POST /api/billing/portal-session` returns a
     `billing.stripe.com` URL that opens and shows the correct plan.
 11. **Change and cancel from the portal.** Switch interval or plan, then
     cancel. The app reports the new plan, and then the subscription as
