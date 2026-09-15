@@ -281,14 +281,25 @@ export async function createInvoice(
  */
 export async function createPlan(
   prisma: PrismaClient,
-  overrides: { id?: string; slug?: string; name?: string } = {},
+  overrides: {
+    id?: string;
+    slug?: string;
+    name?: string;
+    isActive?: boolean;
+    isPublic?: boolean;
+  } = {},
 ) {
-  const id = overrides.id ?? 'plan-full';
+  // Derived from the slug so several plans can coexist in one test; a
+  // no-argument call still yields `plan-full`, which seedTwoClinics and
+  // subscribeClinic rely on.
+  const id = overrides.id ?? `plan-${overrides.slug ?? 'full'}`;
   return prisma.plan.create({
     data: {
       id,
       name: overrides.name ?? 'Premium',
       slug: overrides.slug ?? 'premium',
+      isActive: overrides.isActive ?? true,
+      isPublic: overrides.isPublic ?? true,
       priceMonthly: 19900,
       priceYearly: 199000,
       maxUsersPerClinic: 50,

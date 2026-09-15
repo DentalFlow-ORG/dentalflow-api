@@ -186,7 +186,6 @@ export class BillingService {
         stripePriceIdMonthly: true,
         stripePriceIdYearly: true,
         maxProfiles: true,
-        maxLeadsPerMonth: true,
         maxServicesPerProfile: true,
         hasAppointments: true,
         hasAnalytics: true,
