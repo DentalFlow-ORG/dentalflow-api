@@ -85,7 +85,9 @@ function stripeSubscription(overrides: Record<string, unknown> = {}) {
     id: 'sub_stripe',
     status: 'active',
     cancel_at_period_end: false,
+    cancel_at: null,
     canceled_at: null,
+    ended_at: null,
     items: {
       data: [
         {
@@ -493,6 +495,24 @@ describe('BillingService — subscription lifecycle', () => {
       expect(
         stripeClient.subscriptions.update.mock.calls[0][1].proration_behavior,
       ).toBe('create_prorations');
+    });
+
+    it('keeps a portal-scheduled cancellation visible after a plan change', async () => {
+      // Changing plan must not erase a cancellation the customer scheduled in
+      // the hosted portal, which Stripe reports through cancel_at alone.
+      stripeClient.subscriptions.update.mockResolvedValue(
+        stripeSubscription({
+          cancel_at_period_end: false,
+          cancel_at: 1_791_000_000,
+          canceled_at: 1_789_500_000,
+        }),
+      );
+
+      await service.changeSubscriptionPlan(CLINIC, dto);
+
+      expect(prisma.subscription.update.mock.calls[0][0].data).toMatchObject({
+        cancelAtPeriodEnd: true,
+      });
     });
 
     it('refuses when the clinic has no Stripe subscription', async () => {

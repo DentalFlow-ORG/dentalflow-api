@@ -11,7 +11,10 @@ import { launchCampaignConfig } from './billing-campaign.config';
 import { ChangeSubscriptionPlanDto } from './dto/change-subscription-plan.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { StartTrialDto } from './dto/start-trial.dto';
-import { mapStripeSubscriptionStatus } from './billing-stripe-mappers';
+import {
+  hasScheduledCancellation,
+  mapStripeSubscriptionStatus,
+} from './billing-stripe-mappers';
 import { StripeService } from './stripe.service';
 import { BRAZIL_TIME_ZONE } from '../../common/utils/brazil-timezone';
 
@@ -432,7 +435,7 @@ export class BillingService {
         currentPeriodEnd: firstItem
           ? new Date(firstItem.current_period_end * 1000)
           : undefined,
-        cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
+        cancelAtPeriodEnd: hasScheduledCancellation(updatedSubscription),
         canceledAt: updatedSubscription.canceled_at
           ? new Date(updatedSubscription.canceled_at * 1000)
           : null,

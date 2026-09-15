@@ -75,6 +75,7 @@ function stripeSubscription(overrides: Record<string, unknown> = {}) {
     status: 'active',
     trial_end: null,
     cancel_at_period_end: false,
+    cancel_at: null,
     canceled_at: null,
     ended_at: null,
     metadata: { clinicId: CLINIC },
@@ -442,6 +443,64 @@ describe('WebhookService — event handlers', () => {
       const data = prisma.subscription.update.mock.calls[0][0].data;
       expect(data.cancelAtPeriodEnd).toBe(true);
       expect(data.canceledAt).toBeInstanceOf(Date);
+    });
+
+    it('records a hosted Billing Portal cancellation, which sets only cancel_at', async () => {
+      // Payload shape taken from a real hosted-portal cancellation under Stripe
+      // API version 2026-03-25.dahlia: the portal schedules the cancellation
+      // through `cancel_at` and leaves `cancel_at_period_end` false. Reading the
+      // boolean alone loses the cancellation entirely.
+      prisma.subscription.findFirst.mockResolvedValue({
+        id: 'local-1',
+        clinicId: CLINIC,
+      });
+
+      await deliver(
+        'customer.subscription.updated',
+        stripeSubscription({
+          status: 'active',
+          cancel_at_period_end: false,
+          cancel_at: 1_791_000_000,
+          canceled_at: 1_789_500_000,
+          ended_at: null,
+        }),
+      );
+
+      const data = prisma.subscription.update.mock.calls[0][0].data;
+      expect(data.cancelAtPeriodEnd).toBe(true);
+    });
+
+    it('does not report a scheduled cancellation once the subscription ended', async () => {
+      prisma.subscription.findFirst.mockResolvedValue({
+        id: 'local-1',
+        clinicId: CLINIC,
+      });
+
+      await deliver(
+        'customer.subscription.updated',
+        stripeSubscription({
+          status: 'canceled',
+          cancel_at_period_end: false,
+          cancel_at: 1_789_000_000,
+          canceled_at: 1_789_000_000,
+          ended_at: 1_789_000_000,
+        }),
+      );
+
+      const data = prisma.subscription.update.mock.calls[0][0].data;
+      expect(data.cancelAtPeriodEnd).toBe(false);
+    });
+
+    it('leaves an ordinary renewing subscription unflagged', async () => {
+      prisma.subscription.findFirst.mockResolvedValue({
+        id: 'local-1',
+        clinicId: CLINIC,
+      });
+
+      await deliver('customer.subscription.updated', stripeSubscription());
+
+      const data = prisma.subscription.update.mock.calls[0][0].data;
+      expect(data.cancelAtPeriodEnd).toBe(false);
     });
 
     it.each([

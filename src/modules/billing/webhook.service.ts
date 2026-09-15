@@ -4,6 +4,7 @@ import type StripeConstructor from 'stripe';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  hasScheduledCancellation,
   mapStripePriceInterval,
   mapStripeSubscriptionStatus,
 } from './billing-stripe-mappers';
@@ -242,7 +243,7 @@ export class WebhookService {
         trialEndsAt: stripeSubscription.trial_end
           ? new Date(stripeSubscription.trial_end * 1000)
           : null,
-        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+        cancelAtPeriodEnd: hasScheduledCancellation(stripeSubscription),
         canceledAt: stripeSubscription.canceled_at
           ? new Date(stripeSubscription.canceled_at * 1000)
           : null,
@@ -262,7 +263,7 @@ export class WebhookService {
         trialEndsAt: stripeSubscription.trial_end
           ? new Date(stripeSubscription.trial_end * 1000)
           : null,
-        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+        cancelAtPeriodEnd: hasScheduledCancellation(stripeSubscription),
         canceledAt: stripeSubscription.canceled_at
           ? new Date(stripeSubscription.canceled_at * 1000)
           : null,
@@ -307,7 +308,7 @@ export class WebhookService {
           ? new Date(firstItem.current_period_end * 1000)
           : undefined,
         trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        cancelAtPeriodEnd: hasScheduledCancellation(sub),
         canceledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
       },
     });
