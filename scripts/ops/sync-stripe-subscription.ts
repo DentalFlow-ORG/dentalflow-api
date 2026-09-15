@@ -12,6 +12,7 @@ import type StripeConstructor from 'stripe';
 import { databaseConfig } from '../../src/config/database.config';
 import { stripeConfig } from '../../src/config/stripe.config';
 import {
+  hasScheduledCancellation,
   mapStripePriceInterval,
   mapStripeSubscriptionStatus,
 } from '../../src/modules/billing/billing-stripe-mappers';
@@ -27,7 +28,7 @@ type Selector = {
   dryRun: boolean;
 };
 
-type StripeSubscription = {
+export type StripeSubscription = {
   id: string;
   status: string;
   created: number;
@@ -36,6 +37,7 @@ type StripeSubscription = {
   items: { data: StripeSubscriptionItem[] };
   trial_end?: number | null;
   cancel_at_period_end: boolean;
+  cancel_at?: number | null;
   canceled_at?: number | null;
   ended_at?: number | null;
 };
@@ -59,12 +61,12 @@ type StripeSubscriptionItem = {
   };
 };
 
-type ResolvedStripeTarget = {
+export type ResolvedStripeTarget = {
   customer: StripeCustomer;
   subscription: StripeSubscription;
 };
 
-type LocalContext = {
+export type LocalContext = {
   clinicId: string;
   planId: string;
   billingInterval: BillingInterval | null;
@@ -470,7 +472,10 @@ function resolveIntervalFromPlan(
   return null;
 }
 
-function buildSubscriptionData(target: ResolvedStripeTarget, local: LocalContext) {
+export function buildSubscriptionData(
+  target: ResolvedStripeTarget,
+  local: LocalContext,
+) {
   const stripeSubscription = target.subscription;
   const firstItem = stripeSubscription.items.data[0];
 
@@ -488,7 +493,7 @@ function buildSubscriptionData(target: ResolvedStripeTarget, local: LocalContext
     trialEndsAt: stripeSubscription.trial_end
       ? new Date(stripeSubscription.trial_end * 1000)
       : null,
-    cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+    cancelAtPeriodEnd: hasScheduledCancellation(stripeSubscription),
     canceledAt: stripeSubscription.canceled_at
       ? new Date(stripeSubscription.canceled_at * 1000)
       : null,
@@ -609,8 +614,10 @@ function maskStripeId(value: string | null): string {
   return `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`\nFalha na reconciliação: ${message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\nFalha na reconciliação: ${message}`);
+    process.exitCode = 1;
+  });
+}
