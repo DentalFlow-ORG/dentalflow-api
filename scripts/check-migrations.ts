@@ -13,9 +13,13 @@
  *
  *   1. FRESH    — empty database, full chain. The check the defect would have
  *                 failed.
- *   2. DRIFT    — the resulting schema against `schema.prisma`. Anything other
- *                 than the one documented orphan table is a new divergence
- *                 between what migrations build and what the client expects.
+ *   2. DRIFT    — the resulting schema against `schema.prisma`, which must now
+ *                 match exactly. There is no allow-list: the orphaned
+ *                 `website_leads` table was its only entry and has been
+ *                 dropped. The catalog is also asked directly whether any
+ *                 lead table survived, because that orphan existed in neither
+ *                 schema.prisma nor the code for months while the chain kept
+ *                 building it -- only PostgreSQL could have caught it.
  *   3. REPLAY   — an existing environment that already has the chain applied
  *                 receives only the migrations it is missing, they are no-ops,
  *                 and its data survives. This is what protects a production
@@ -27,14 +31,6 @@ import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
 
 import { resolveTestDatabaseUrl } from '../test/support/test-database';
-
-/**
- * `website_leads` is created by 20260520173818_add_website_leads and has never
- * been modelled in schema.prisma or referenced by any code. It holds captured
- * public leads, so dropping it is a data decision for a human, not a cleanup
- * this check should quietly demand. Everything else must match.
- */
-const KNOWN_DRIFT = ['website_leads'];
 
 const baseUrl = resolveTestDatabaseUrl();
 
@@ -118,6 +114,23 @@ async function main(): Promise<void> {
     const count = applied.match(/migration\.sql/g)?.length ?? 0;
     console.log(`     applied ${count} migrations`);
 
+    // The orphan check, asked of PostgreSQL rather than of schema.prisma.
+    // `website_leads` was modelled in neither for months while the chain kept
+    // building it, so only the catalog can answer whether it is really gone.
+    await withScratchClient(dbName, async (client) => {
+      const orphans = await client.query<{ tablename: string }>(
+        `SELECT tablename FROM pg_tables
+          WHERE schemaname = 'public' AND tablename LIKE '%lead%'`,
+      );
+      if (orphans.rowCount !== 0) {
+        fail(
+          'the chain built a lead table schema.prisma does not model: ' +
+            orphans.rows.map((row) => row.tablename).join(', '),
+        );
+      }
+    });
+    console.log('     no orphaned lead table in the catalog');
+
     // ── 2. DRIFT ─────────────────────────────────────────────────────────────
     console.log('  2. comparing the result against schema.prisma');
     const diff = prisma(
@@ -126,12 +139,15 @@ async function main(): Promise<void> {
       true,
     );
 
+    // No allow-list. The orphaned `website_leads` table was the only entry it
+    // ever held, and 20260605000001_drop_orphaned_website_leads removed it, so
+    // migrations and schema.prisma must now agree exactly.
     const unexpected = diff
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.startsWith('- ') || line.startsWith('[+]'))
       .map((line) => line.replace(/^-\s*/, ''))
-      .filter((entry) => entry.length > 0 && !KNOWN_DRIFT.includes(entry));
+      .filter((entry) => entry.length > 0);
 
     if (unexpected.length > 0) {
       console.error(diff);
@@ -139,9 +155,7 @@ async function main(): Promise<void> {
         `migrations and schema.prisma disagree about: ${unexpected.join(', ')}`,
       );
     }
-    console.log(
-      `     no drift beyond the documented orphan (${KNOWN_DRIFT.join(', ')})`,
-    );
+    console.log('     migrations and schema.prisma agree exactly');
 
     // ── 3. REPLAY ────────────────────────────────────────────────────────────
     // An environment that already ran the chain must be able to receive a
@@ -152,6 +166,7 @@ async function main(): Promise<void> {
     const corrective = [
       '20260604230208_repair_lead_removal_prerequisites',
       '20260605000000_align_audit_action_enum',
+      '20260605000001_drop_orphaned_website_leads',
     ];
 
     await withScratchClient(dbName, async (client) => {
@@ -189,6 +204,17 @@ async function main(): Promise<void> {
       );
       if (leadValues.rowCount !== 0) {
         fail('LEAD_* audit actions survived the chain');
+      }
+
+      // Re-running the drop against a database that no longer has the table
+      // must be a no-op rather than an error -- the shape every environment
+      // built from schema.prisma is already in.
+      const stillGone = await client.query(
+        `SELECT 1 FROM pg_tables
+          WHERE schemaname = 'public' AND tablename = 'website_leads'`,
+      );
+      if (stillGone.rowCount !== 0) {
+        fail('website_leads came back during the replay');
       }
 
       const invariants = await client.query(
