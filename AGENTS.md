@@ -402,37 +402,77 @@ change needs the checklist below before release, in Stripe **test mode**.
 
 ### Stripe test-mode QA checklist
 
-Run `stripe listen --forward-to http://localhost:3000/api/billing/webhook`
-first and keep it open; every step below depends on events arriving.
+Fourteen steps. The first two and the last two are the safety rails; skip them
+and a "successful" run proves nothing, or worse, touches real money.
 
-1. **Start a checkout.** `POST /api/billing/checkout-session` for a plan.
+**Before you start**
+
+1. **Test credentials only.** `STRIPE_SECRET_KEY` must begin `sk_test_`, the
+   publishable key `pk_test_`, and `STRIPE_WEBHOOK_SECRET` must be the one
+   `stripe listen` prints — not a dashboard live-mode secret. Confirm each by
+   eye before starting the backend. A key beginning `sk_live_` means stop.
+2. **Listen in test mode.** `stripe listen --forward-to
+   http://localhost:3000/api/billing/webhook`. The CLI prints the mode it is
+   in; it must say test. Keep it open — every step below depends on events
+   arriving.
+
+**The purchase**
+
+3. **Start a checkout.** `POST /api/billing/checkout-session` for a plan.
    The response carries a `url` on `checkout.stripe.com`.
-2. **Complete it** with test card `4242 4242 4242 4242`, any future expiry,
+4. **Complete it** with test card `4242 4242 4242 4242`, any future expiry,
    any CVC.
-3. **Check the redirect carries a real session id.** The browser must land on
-   the success URL with `?session_id=cs_test_…` — a *substituted* value, not
-   the literal `{CHECKOUT_SESSION_ID}` and not `%7BCHECKOUT_SESSION_ID%7D`.
-   The URL construction is unit-tested (`billing-plan-pricing.spec.ts`); this
-   step confirms Stripe's half.
-4. **Sync the session.** `POST /api/billing/checkout-session/sync` with that
+5. **Check the placeholder was substituted.** The browser must land on the
+   success URL with `?session_id=cs_test_…` — a real id, not the literal
+   `{CHECKOUT_SESSION_ID}` and not `%7BCHECKOUT_SESSION_ID%7D`. The URL
+   construction is unit-tested (`billing-plan-pricing.spec.ts`); this step
+   confirms Stripe's half of it.
+6. **Check the callback carries that id through.** The frontend route reads it
+   from the query string and sends the same `cs_test_…` value on to the
+   backend — not a truncated or re-encoded one.
+
+**Reconciliation**
+
+7. **Sync the session.** `POST /api/billing/checkout-session/sync` with that
    id returns 200 and the clinic's subscription.
-5. **Confirm the subscription is live.** `GET /api/billing/subscription`
+8. **Confirm the subscription is live.** `GET /api/billing/subscription`
    reports `ACTIVE` or `TRIALING`, the right plan, and the right interval.
-6. **Reconcile twice.** Repeat step 4 with the same session id: it must be
+9. **Reconcile twice.** Repeat step 7 with the same session id: it must be
    idempotent — no duplicate subscription, no duplicate invoice, no change of
    status.
-7. **Open the billing portal.** `POST /api/billing/portal` returns a
-   `billing.stripe.com` URL that opens and shows the correct plan.
-8. **Cancel from the portal.** The app then reports the subscription as
-   cancelling at period end, and access continues until that date.
-9. **Confirm the webhook drove it.** The `stripe listen` output shows the
-   subscription event, and the state changed without anyone calling sync by
-   hand.
-10. **Replay a webhook.** `stripe events resend <event_id>` for one already
-    processed: it must be de-duplicated, not applied twice.
 
-Record the result in the PR. A change to checkout, the portal or subscription
-state that has not been through this list is not ready to merge.
+**The portal**
+
+10. **Open the billing portal.** `POST /api/billing/portal` returns a
+    `billing.stripe.com` URL that opens and shows the correct plan.
+11. **Change and cancel from the portal.** Switch interval or plan, then
+    cancel. The app reports the new plan, and then the subscription as
+    cancelling at period end with access continuing until that date.
+
+**The webhook**
+
+12. **Confirm the webhook drove it.** The `stripe listen` output shows the
+    subscription event, and the local state changed without anyone calling
+    sync by hand.
+13. **Replay a delivery.** `stripe events resend <event_id>` for an event
+    already processed: it must be de-duplicated — same status, same row
+    count, no second invoice.
+
+**Before you close the tab**
+
+14. **Prove nothing live was touched, and nothing leaked.**
+    - In the Stripe dashboard, switch to **live mode** and confirm no
+      customer, subscription, invoice or checkout session was created during
+      the run. Everything must exist only in test mode.
+    - Grep the backend log for the run: no `sk_`, no `whsec_`, no `rk_`, no
+      bearer token, no full card number. The only Stripe identifiers that may
+      appear are object ids (`cus_`, `sub_`, `cs_test_`, `evt_`).
+    - Check the HTTP responses the frontend received the same way. A secret in
+      a 500 body is a secret in a browser's network tab.
+
+Record the result in the PR, including the step-14 outcome. A change to
+checkout, the portal or subscription state that has not been through this list
+is not ready to merge.
 
 This remains a manual boundary by choice — reaching the live API from CI would
 trade a real dependency and real flakiness for coverage of somebody else's
