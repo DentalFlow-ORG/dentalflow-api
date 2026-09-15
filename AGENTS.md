@@ -366,14 +366,38 @@ prisma migrate resolve --rolled-back 20260604230209_remove_internal_leads
 prisma migrate deploy
 ```
 
-### One known divergence
+### The retired public lead capture (closed)
 
-`website_leads` is created by `20260520173818_add_website_leads` and has never
-been modelled in `schema.prisma` or referenced by any code, so the migrated
-schema has one table the Prisma client does not know about. It holds captured
-public leads — name, phone, consent — so dropping it is a data decision for a
-human, not a cleanup. `scripts/check-migrations.ts` allows exactly this one
-divergence and fails on any other.
+Between 2026-05-20 and 2026-06-04 the marketing site carried a site-wide chat
+widget that posted to `POST /api/public/leads`, backed by a `website_leads`
+table: name, phone, clinic name, preferred time, an LGPD consent flag and
+timestamp, and a SHA-256 hash of the caller's IP.
+
+The feature was retired deliberately and on both sides within three minutes.
+The frontend went first — `dentalflow-web` `93807fe` at 23:25 removed the
+widget, its hooks, its service and its tests — and the backend followed in
+`0be00ef` at 23:28, removing the module, the route and the `WebsiteLead`
+model. Because the frontend stopped calling before the endpoint disappeared,
+there was never a window in which the live site posted to a dead route.
+
+`20260604230209_remove_internal_leads` deliberately left the table standing,
+and its header still says so: it was dropping the *internal* CRM tables and
+did not want to take captured public leads with them. That left the migration
+history building a table `schema.prisma` does not model.
+
+Production was then checked with read-only queries and has **no**
+`website_leads` table — a search of `information_schema.tables` and
+`pg_tables` for any table containing "lead" returns nothing. With no data
+anywhere to preserve, `20260605000001_drop_orphaned_website_leads` removes the
+orphan from the chain. It is guarded with `IF EXISTS`, so it is a no-op
+wherever the table is already absent.
+
+**There is no longer a drift allow-list.** `scripts/check-migrations.ts`
+requires migrations and `schema.prisma` to agree exactly, and additionally
+asks PostgreSQL whether any `%lead%` table survived the chain — a check
+against the catalog rather than against `schema.prisma`, because this orphan
+was missing from `schema.prisma` and from the code for three months while the
+migrations kept building it.
 
 ---
 

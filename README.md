@@ -143,6 +143,13 @@ bun run test:db:down        # derruba e apaga o volume
 a URL em `test/support/test-database.ts` e se recusam a rodar contra qualquer
 coisa que não seja um banco local descartável (AGENTS.md §8).
 
+Não há exceções na verificação de drift: `bun run test:migrations` exige que
+as migrations e o `schema.prisma` coincidam exatamente. A tabela órfã
+`website_leads`, resquício da captação pública de leads desativada em
+2026-06-04, foi removida por `20260605000001_drop_orphaned_website_leads`
+depois de confirmar por consulta somente-leitura que a produção não a possui
+(AGENTS.md §8).
+
 O schema de teste é aplicado com `prisma migrate deploy`, nunca com
 `db push`. `db push` lê o `schema.prisma` e jamais abre `prisma/migrations`,
 então não prova nada sobre o histórico — foi assim que uma cadeia quebrada
