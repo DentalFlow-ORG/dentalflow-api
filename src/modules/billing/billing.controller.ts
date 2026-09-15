@@ -48,6 +48,7 @@ export class BillingController {
   }
 
   @Post('checkout-session')
+  @HttpCode(HttpStatus.OK)
   createCheckoutSession(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateCheckoutSessionDto,
@@ -68,24 +69,28 @@ export class BillingController {
   }
 
   @Post('trial/start')
+  @HttpCode(HttpStatus.OK)
   startTrial(@CurrentUser() user: AuthUser, @Body() dto: StartTrialDto) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.billingService.startTrial(clinicId, dto);
   }
 
   @Post('portal-session')
+  @HttpCode(HttpStatus.OK)
   createPortalSession(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.billingService.createPortalSession(clinicId);
   }
 
   @Post('subscription/cancel')
+  @HttpCode(HttpStatus.OK)
   cancelSubscription(@CurrentUser() user: AuthUser) {
     const clinicId = this.accessPolicy.assertOwnerAccess(user);
     return this.billingService.cancelSubscription(clinicId);
   }
 
   @Post('subscription/change-plan')
+  @HttpCode(HttpStatus.OK)
   changeSubscriptionPlan(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangeSubscriptionPlanDto,
