@@ -59,7 +59,10 @@ function splitCsvLine(line: string): string[] {
 }
 
 function dataFields(csv: string): string[] {
-  const rows = csv.replace(/^\uFEFF/, '').split('\r\n').slice(1);
+  const rows = csv
+    .replace(/^\uFEFF/, '')
+    .split('\r\n')
+    .slice(1);
   return rows.filter((row) => row.length > 0).flatMap(splitCsvLine);
 }
 
