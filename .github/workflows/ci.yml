@@ -34,6 +34,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Advisory, non-blocking: surfaces known-vulnerable dependencies (OWASP
+      # A03 Software Supply-Chain Failures) in the run log without failing the
+      # build on advisories that only affect dev/build tooling. Review the log
+      # and act on anything reaching a shipped runtime dependency.
+      - name: Dependency audit (advisory)
+        run: bun audit || true
+
       - name: Generate Prisma client
         run: bunx prisma generate
 
