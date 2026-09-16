@@ -71,7 +71,10 @@ export function configureApp(app: INestApplication): void {
         return;
       }
 
-      callback(new Error('Origem nao permitida pelo CORS.'));
+      // Deny without throwing: a rejected origin simply receives no
+      // Access-Control-Allow-Origin header (the browser blocks it), instead of
+      // an unhandled callback error surfacing as a 500.
+      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -99,6 +102,22 @@ export function configureApp(app: INestApplication): void {
       noSniff: true,
       referrerPolicy: { policy: 'no-referrer' },
     }),
+  );
+
+  // ── No-store ─────────────────────────────────────────────────────────────────
+  // Every API response is authenticated JSON or a public catalogue; none of it
+  // belongs in a browser disk cache or a shared/proxy cache where another user
+  // of the machine could read it. `no-store` is the conservative default for an
+  // API and costs nothing here (no cacheable assets are served from this app).
+  app.use(
+    (
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      res.setHeader('Cache-Control', 'no-store');
+      next();
+    },
   );
 
   // ── Body parsers ─────────────────────────────────────────────────────────────

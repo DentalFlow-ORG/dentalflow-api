@@ -17,6 +17,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: authConfig.jwtSecret,
+      // Pin the accepted algorithm. The secret is an HMAC string, so
+      // passport-jwt already refuses asymmetric/`none` tokens, but stating
+      // HS256 explicitly forecloses any future algorithm-confusion regression.
+      algorithms: ['HS256'],
     });
   }
 

@@ -98,6 +98,24 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const statusCode = exception.getStatus();
     const response = exception.getResponse();
 
+    // Malformed-JSON request bodies surface as a 400 whose message is the raw
+    // parser error (e.g. "Unexpected token 'n' … is not valid JSON"). That
+    // echoes attacker-supplied input and names the parser, so replace it with a
+    // neutral message while keeping the 400 status.
+    if (statusCode === (HttpStatus.BAD_REQUEST as number)) {
+      const candidate =
+        typeof response === 'string'
+          ? response
+          : ((response as { message?: unknown })?.message ?? exception.message);
+      if (isJsonParseMessage(candidate)) {
+        return this.generic(
+          HttpStatus.BAD_REQUEST,
+          'Corpo da requisicao invalido.',
+          request,
+        );
+      }
+    }
+
     if (typeof response === 'string') {
       return this.generic(statusCode, response, request);
     }
@@ -192,6 +210,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       prismaCode,
     });
   }
+}
+
+function isJsonParseMessage(message: unknown): boolean {
+  if (typeof message !== 'string') return false;
+  return (
+    /is not valid JSON/i.test(message) ||
+    /Unexpected token/i.test(message) ||
+    /in JSON at position/i.test(message) ||
+    /Unexpected end of JSON/i.test(message)
+  );
 }
 
 function redactSensitive(value: string): string {

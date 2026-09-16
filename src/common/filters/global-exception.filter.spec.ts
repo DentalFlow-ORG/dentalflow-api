@@ -48,6 +48,33 @@ describe('GlobalExceptionFilter', () => {
 
   // ── PayloadTooLargeError (body-parser name) → 413 ────────────────────────
 
+  it('normalises a malformed-JSON 400 so it does not echo input or name the parser', () => {
+    const err = new BadRequestException(
+      `Unexpected token 'n', "not json{" is not valid JSON`,
+    );
+    const { host, statusFn, jsonFn } = buildHost();
+    filter.catch(err, host);
+
+    expect(statusFn).toHaveBeenCalledWith(400);
+    const body = jsonFn.mock.calls[0][0] as {
+      statusCode: number;
+      message: string;
+    };
+    expect(body.statusCode).toBe(400);
+    expect(body.message).toBe('Corpo da requisicao invalido.');
+    expect(body.message).not.toMatch(/Unexpected token/i);
+    expect(body.message).not.toMatch(/not json/i);
+  });
+
+  it('leaves genuine validation messages verbatim (not over-normalised)', () => {
+    const err = new BadRequestException(['email must be an email']);
+    const { host, jsonFn } = buildHost();
+    filter.catch(err, host);
+
+    const body = jsonFn.mock.calls[0][0] as { message: string | string[] };
+    expect(body.message).toEqual(['email must be an email']);
+  });
+
   it('returns 413 for a PayloadTooLargeError thrown by body-parser', () => {
     const err = Object.assign(new Error('request entity too large'), {
       name: 'PayloadTooLargeError',

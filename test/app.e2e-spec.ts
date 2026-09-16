@@ -77,6 +77,12 @@ describe('Application bootstrap (e2e)', () => {
       expect(res.headers['x-powered-by']).toBeUndefined();
     });
 
+    it('marks responses no-store so no cache can retain them', async () => {
+      const res = await request(server()).get(`/${prefix}/health`);
+
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
     it('withholds HSTS outside production, where it would pin plain HTTP clients', async () => {
       const res = await request(server()).get(`/${prefix}/health`);
 
@@ -109,6 +115,9 @@ describe('Application bootstrap (e2e)', () => {
         .set('Origin', 'https://attacker.example');
 
       expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      // Denied cleanly: the browser blocks it for lack of the ACAO header, and
+      // the server does not turn a rejected origin into a 500.
+      expect(res.status).not.toBe(500);
     });
 
     it('allows a request with no Origin at all, such as a health probe', async () => {
