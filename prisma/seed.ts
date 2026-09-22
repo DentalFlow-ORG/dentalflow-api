@@ -1,3 +1,4 @@
+import { assertLocalDemoSeed } from '../src/config/seed-safety';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -356,11 +357,17 @@ async function seed(prisma: PrismaClient): Promise<void> {
   for (const tpl of NOTIFICATION_TEMPLATES) {
     await prisma.notificationTemplate.upsert({
       where: { slug: tpl.slug },
-      update: { bodyPt: tpl.bodyPt, variables: tpl.variables, isActive: tpl.isActive },
+      update: {
+        bodyPt: tpl.bodyPt,
+        variables: tpl.variables,
+        isActive: tpl.isActive,
+      },
       create: tpl,
     });
   }
-  console.log(`  - ${NOTIFICATION_TEMPLATES.length} notification templates upserted`);
+  console.log(
+    `  - ${NOTIFICATION_TEMPLATES.length} notification templates upserted`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -369,6 +376,7 @@ async function main(): Promise<void> {
     throw new Error('DATABASE_URL is not set');
   }
 
+  assertLocalDemoSeed(process.env.NODE_ENV, connectionString);
   const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
 

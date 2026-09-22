@@ -16,6 +16,9 @@ const BASE_REQUIRED = {
 
 const PRODUCTION_REQUIRED = {
   ...BASE_REQUIRED,
+  JWT_SECRET: 'test-only-random-signing-key-with-32-characters',
+  RESEND_API_KEY: 're_test',
+  MAIL_FROM: 'DentalFlow <test@example.invalid>',
   DIRECT_URL: 'postgresql://localhost:5432/db',
   FRONTEND_ORIGIN: 'https://app.dentalflow.com.br',
   FRONTEND_URL: 'https://app.dentalflow.com.br',
@@ -369,4 +372,31 @@ describe('validateEnv', () => {
       ).not.toThrow();
     });
   });
+});
+
+describe('production hardening environment', () => {
+  it.each(['RESEND_API_KEY', 'MAIL_FROM'])(
+    'requires %s for production recovery',
+    (key) => {
+      expect(
+        runValidation({
+          NODE_ENV: 'production',
+          ...PRODUCTION_REQUIRED,
+          [key]: undefined,
+        }),
+      ).toThrow(key);
+    },
+  );
+  it.each(['secret', 'replace_with_a_strong_random_secret'])(
+    'rejects weak JWT secret %s in production',
+    (secret) => {
+      expect(
+        runValidation({
+          NODE_ENV: 'production',
+          ...PRODUCTION_REQUIRED,
+          JWT_SECRET: secret,
+        }),
+      ).toThrow('JWT_SECRET');
+    },
+  );
 });

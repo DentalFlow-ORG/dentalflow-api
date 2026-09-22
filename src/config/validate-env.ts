@@ -83,13 +83,13 @@ const rules: EnvRule[] = [
   },
   {
     key: 'RESEND_API_KEY',
-    required: false,
+    required: isProduction,
     description:
-      'Resend API key for transactional email (optional — omit to use stub logging in dev/test)',
+      'Resend API key for transactional email (required in production; optional in dev/test)',
   },
   {
     key: 'MAIL_FROM',
-    required: false,
+    required: isProduction,
     description:
       'Sender address for transactional email, required when RESEND_API_KEY is set (e.g. "DentalFlow <no-reply@your-domain.com>")',
   },
@@ -123,6 +123,17 @@ export function validateEnv(): void {
   }
 
   if (isProduction) {
+    const jwtSecret = process.env.JWT_SECRET ?? '';
+    if (
+      jwtSecret.length < 32 ||
+      /change.?me|your.?secret|example|placeholder|replace[_ -]?with/i.test(
+        jwtSecret,
+      )
+    ) {
+      throw new Error(
+        'JWT_SECRET must be a strong, non-placeholder secret of at least 32 characters in production.',
+      );
+    }
     // OPENAI_API_KEY is only required when AI assistant is enabled.
     // Set OPENAI_AI_ASSISTANT_ENABLED=false to disable AI features and skip this check.
     const aiEnabled = process.env.OPENAI_AI_ASSISTANT_ENABLED !== 'false';
