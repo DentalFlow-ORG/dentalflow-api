@@ -30,6 +30,7 @@
     "test:db:reset": "bun run test:db:down && bun run test:db:up",
     "test:db:migrate": "ts-node --project tsconfig.json scripts/migrate-test-database.ts",
     "test:migrations": "ts-node --project tsconfig.json scripts/check-migrations.ts",
+    "patients:backfill": "ts-node --project tsconfig.json scripts/backfill-patient-identity.ts",
     "test:integration": "bun run test:db:migrate && jest --config ./test/jest-integration.json",
     "postinstall": "prisma generate",
     "preinstall": "node -e \"const ua = process.env.npm_config_user_agent; if (ua && !ua.startsWith('bun')) { console.error('\\nError: use Bun as the package manager.\\nRun: bun install\\n'); process.exit(1) }\"",
