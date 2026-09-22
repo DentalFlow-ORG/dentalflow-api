@@ -10,6 +10,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getPlanFeatures, PlanFeature } from '../billing/plan-feature.types';
 import {
   brazilCurrentIsoMonth,
   getBrazilMonthRange,
@@ -44,7 +45,7 @@ const AI_PLAN_LIMITS: Record<string, PlanLimits> = {
       ABNORMAL_CONSUMPTION_COPILOT: 10,
       EXPENSE_CLASSIFICATION: 30,
       MONTHLY_FINANCE_DIAGNOSIS: 5,
-      CLINICAL_DICTATION: 10,
+      CLINICAL_DICTATION: 0,
     },
   },
   premium: {
@@ -87,11 +88,18 @@ export class AiQuotaService {
     const limits = planKey
       ? (AI_PLAN_LIMITS[planKey] ?? DEFAULT_LIMITS)
       : DEFAULT_LIMITS;
-    const monthlyLimit = limits.typeOverrides?.[type] ?? limits.perTypeMonthly;
-    const remaining = limits.allowed ? Math.max(0, monthlyLimit - used) : 0;
+    const featureAllowed =
+      type !== AiAssistantAnalysisType.CLINICAL_DICTATION ||
+      getPlanFeatures(planKey).has(PlanFeature.CLINICAL_DICTATION);
+    const effectiveLimits = featureAllowed ? limits : DEFAULT_LIMITS;
+    const monthlyLimit =
+      effectiveLimits.typeOverrides?.[type] ?? effectiveLimits.perTypeMonthly;
+    const remaining = effectiveLimits.allowed
+      ? Math.max(0, monthlyLimit - used)
+      : 0;
 
     let blockedReason: string | null = null;
-    if (!limits.allowed) {
+    if (!effectiveLimits.allowed) {
       blockedReason =
         'O assistente de IA não está disponível no seu plano atual. Faça upgrade para o plano Premium.';
     } else if (remaining === 0) {
@@ -99,7 +107,7 @@ export class AiQuotaService {
     }
 
     return {
-      allowed: limits.allowed,
+      allowed: effectiveLimits.allowed,
       planKey,
       used,
       remaining,
