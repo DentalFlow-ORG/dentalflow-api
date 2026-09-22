@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   BadRequestException,
   ConflictException,
@@ -146,6 +147,7 @@ describe('AppointmentsService scheduling concurrency', () => {
       prismaMock as never,
       calendarIntegrationsMock as never,
       auditLogMock as never,
+      createPatientResolverMock() as never,
     );
   });
 
@@ -369,6 +371,7 @@ describe('AppointmentsService status and payment guards', () => {
       prismaMock as never,
       calendarIntegrationsMock as never,
       auditLogMock as never,
+      createPatientResolverMock() as never,
     );
   });
 

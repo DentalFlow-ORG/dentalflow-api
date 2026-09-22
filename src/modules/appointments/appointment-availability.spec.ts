@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   ConflictException,
   ForbiddenException,
@@ -73,6 +74,7 @@ function buildService() {
     prisma as never,
     { deleteAppointmentEvent: jest.fn() } as never,
     { log: jest.fn() } as never,
+    createPatientResolverMock() as never,
   );
 
   return { service, prisma };

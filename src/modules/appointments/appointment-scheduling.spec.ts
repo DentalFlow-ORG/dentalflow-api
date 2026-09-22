@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   NotFoundException,
   UnprocessableEntityException,
@@ -70,6 +71,7 @@ describe('AppointmentsService — scheduling rules', () => {
         deleteAppointmentEvent: jest.fn().mockResolvedValue(undefined),
       } as never,
       { log: jest.fn().mockResolvedValue(undefined) } as never,
+      createPatientResolverMock() as never,
     );
   });
 

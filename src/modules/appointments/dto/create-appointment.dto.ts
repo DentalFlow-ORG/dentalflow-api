@@ -39,6 +39,19 @@ export class CreateAppointmentDto {
   @IsSafeId()
   patientUserId?: string;
 
+  /**
+   * Stable clinical identity of the person being booked.
+   *
+   * Sent when the operator picked an existing patient. When it is absent the
+   * booking falls back to the legacy contact-matching path, which reuses a
+   * patient only if exactly one matches and otherwise records a new one.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ID_LENGTH)
+  @IsSafeId()
+  patientId?: string;
+
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )

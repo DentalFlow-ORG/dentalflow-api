@@ -16,6 +16,8 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizePatientEmailForWrite } from '../../common/utils/patient-identity';
+import { PatientResolverService } from '../../common/services/patient-resolver.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -72,7 +74,50 @@ export class AppointmentsService {
     private readonly prisma: PrismaService,
     private readonly calendarIntegrations: CalendarIntegrationsService,
     private readonly auditLog: AuditLogService,
+    private readonly patientResolver: PatientResolverService,
   ) {}
+
+  /**
+   * Decides which patient a booking belongs to, inside the booking's own
+   * transaction so a patient is never recorded without its appointment.
+   *
+   * An explicit patientId selects a tenant-owned Patient. Without one this is
+   * a new-patient booking intent: create a separate identity, even when contacts
+   * match. The availability lock/check happens before creation in this transaction,
+   * so a concurrent same-slot retry cannot leave a duplicate Patient behind.
+   */
+  private async resolveAppointmentPatient(
+    clinicId: string,
+    dto: {
+      patientId?: string;
+      patientName: string;
+      patientEmail?: string;
+      patientPhone: string;
+    },
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    if (dto.patientId) {
+      const patient = await this.patientResolver.requirePatient(
+        clinicId,
+        dto.patientId,
+        tx,
+      );
+      return patient.id;
+    }
+
+    // Booking without a selected Patient is explicit creation intent. Contact
+    // equality must never reuse another household member's clinical identity.
+    const created = await this.patientResolver.createPatient(
+      clinicId,
+      {
+        name: dto.patientName,
+        email: dto.patientEmail,
+        phone: dto.patientPhone,
+      },
+      tx,
+    );
+    return created.id;
+  }
 
   async listAppointments(
     clinicId: string,
@@ -192,14 +237,19 @@ export class AppointmentsService {
         tx,
       );
 
+      const patientId = await this.resolveAppointmentPatient(clinicId, dto, tx);
+
       return tx.appointment.create({
         data: {
           clinicId,
           profileId: profile.id,
           serviceId: service?.id,
           patientUserId: dto.patientUserId,
+          patientId,
           patientName: dto.patientName,
-          patientEmail: dto.patientEmail,
+          // Normalized on write so one patient cannot end up with a separate
+          // identity per email spelling. See common/utils/patient-identity.
+          patientEmail: normalizePatientEmailForWrite(dto.patientEmail),
           patientPhone: dto.patientPhone,
           appointmentDate,
           startTime,
@@ -301,7 +351,9 @@ export class AppointmentsService {
           serviceId: dto.serviceId,
           patientUserId: dto.patientUserId,
           patientName: dto.patientName,
-          patientEmail: dto.patientEmail,
+          // Normalized on write so one patient cannot end up with a separate
+          // identity per email spelling. See common/utils/patient-identity.
+          patientEmail: normalizePatientEmailForWrite(dto.patientEmail),
           patientPhone: dto.patientPhone,
           appointmentDate,
           startTime,
