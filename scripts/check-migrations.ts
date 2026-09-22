@@ -44,7 +44,9 @@ function redact(url: string): string {
   return url.replace(/\/\/[^@]*@/, '//***@');
 }
 
-async function withAdminClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+async function withAdminClient<T>(
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
   const client = new Client({ connectionString: baseUrl });
   await client.connect();
   try {
@@ -161,7 +163,9 @@ async function main(): Promise<void> {
     // An environment that already ran the chain must be able to receive a
     // later corrective migration without losing anything. Simulated by
     // planting a row, forgetting the corrective migrations, and re-deploying.
-    console.log('  3. replaying corrective migrations over an existing database');
+    console.log(
+      '  3. replaying corrective migrations over an existing database',
+    );
 
     const corrective = [
       '20260604230208_repair_lead_removal_prerequisites',
@@ -187,7 +191,9 @@ async function main(): Promise<void> {
     );
     if (!replayed.includes('All migrations have been successfully applied')) {
       console.error(replayed);
-      fail('the corrective migrations cannot be replayed over an existing database');
+      fail(
+        'the corrective migrations cannot be replayed over an existing database',
+      );
     }
 
     await withScratchClient(dbName, async (client) => {
@@ -224,12 +230,17 @@ async function main(): Promise<void> {
            (SELECT count(*) FROM pg_constraint
              WHERE conname = 'users_role_clinic_scope_check') AS role_check`,
       );
-      const row = invariants.rows[0] as { owner_index: string; role_check: string };
+      const row = invariants.rows[0] as {
+        owner_index: string;
+        role_check: string;
+      };
       if (Number(row.owner_index) !== 1 || Number(row.role_check) !== 1) {
         // These two are raw SQL that schema.prisma cannot express, so `db push`
         // never creates them. If they are missing, the suites are running
         // against a weaker schema than production.
-        fail('the raw-SQL tenancy invariants are missing from the built schema');
+        fail(
+          'the raw-SQL tenancy invariants are missing from the built schema',
+        );
       }
     });
 

@@ -25,7 +25,9 @@ import { resolveTestDatabaseUrl } from '../test/support/test-database';
 const url = resolveTestDatabaseUrl();
 
 const redacted = url.replace(/\/\/[^@]*@/, '//***@');
-console.log(`Applying migration history to disposable test database: ${redacted}`);
+console.log(
+  `Applying migration history to disposable test database: ${redacted}`,
+);
 
 const result = spawnSync(
   'bunx prisma migrate deploy --schema=prisma/schema.prisma',
