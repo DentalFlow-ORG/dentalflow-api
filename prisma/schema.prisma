@@ -258,6 +258,7 @@ model Clinic {
   notificationQuotas    NotificationQuota[]
   notificationMessages  NotificationMessage[]
   patientAvatars        PatientAvatar[]
+  patients              Patient[]
 
   @@map("clinics")
 }
@@ -506,6 +507,10 @@ model Appointment {
   clinicId           String
   profileId          String
   patientUserId      String?
+  // Identity. Nullable during migration; legacy rows resolve through the
+  // compatibility path until an operator assigns one. The patient* columns
+  // below stay as the point-in-time snapshot of what was recorded.
+  patientId          String?
   serviceId          String?
   patientName        String
   patientEmail       String?
@@ -536,6 +541,7 @@ model Appointment {
   clinic  Clinic  @relation(fields: [clinicId], references: [id])
   profile Profile  @relation(fields: [profileId], references: [id])
   patient User?    @relation("PatientAppointments", fields: [patientUserId], references: [id])
+  patientRecord Patient? @relation(fields: [patientId], references: [id])
   service Service? @relation(fields: [serviceId], references: [id])
   financialTransactions FinancialTransaction[]
   serviceInvoices ServiceInvoice[]
@@ -545,6 +551,8 @@ model Appointment {
   @@index([clinicId])
   @@index([profileId])
   @@index([patientUserId])
+  @@index([patientId])
+  @@index([clinicId, patientId])
   @@index([appointmentDate])
   @@index([status])
   @@index([clinicId, appointmentDate])
@@ -947,6 +955,10 @@ model ClinicalRecord {
   clinicId         String
   appointmentId    String?              @unique
   profileId        String
+  // Identity. Nullable during migration; legacy rows resolve through the
+  // compatibility path until an operator assigns one. The patient* columns
+  // below stay as the point-in-time snapshot of what was recorded.
+  patientId        String?
   patientName      String
   patientEmail     String?
   patientPhone     String?
@@ -974,6 +986,7 @@ model ClinicalRecord {
   clinic        Clinic                    @relation(fields: [clinicId], references: [id])
   appointment   Appointment?              @relation(fields: [appointmentId], references: [id])
   profile       Profile                   @relation(fields: [profileId], references: [id])
+  patientRecord Patient?                  @relation(fields: [patientId], references: [id])
   createdByUser User                      @relation("ClinicalRecordCreatedBy", fields: [createdByUserId], references: [id])
   updatedByUser User?                     @relation("ClinicalRecordUpdatedBy", fields: [updatedByUserId], references: [id])
   events        ClinicalRecordEvent[]
@@ -983,6 +996,7 @@ model ClinicalRecord {
   @@index([clinicId, status])
   @@index([clinicId, patientEmail])
   @@index([clinicId, patientName])
+  @@index([clinicId, patientId])
   @@index([profileId])
   @@index([createdAt])
   @@map("clinical_records")
@@ -1054,6 +1068,10 @@ model ClinicalTemplate {
 model OdontogramRecord {
   id              String   @id @default(cuid())
   clinicId        String
+  // Identity. Nullable during migration; legacy rows resolve through the
+  // compatibility path until an operator assigns one. The patient* columns
+  // below stay as the point-in-time snapshot of what was recorded.
+  patientId       String?
   patientEmail    String?
   patientName     String
   data            Json
@@ -1062,11 +1080,13 @@ model OdontogramRecord {
   updatedAt       DateTime @updatedAt
 
   clinic        Clinic @relation(fields: [clinicId], references: [id])
+  patientRecord Patient? @relation(fields: [patientId], references: [id])
   createdByUser User   @relation("OdontogramRecordCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([clinicId])
   @@index([clinicId, patientEmail])
   @@index([clinicId, patientName])
+  @@index([clinicId, patientId])
   @@map("odontogram_records")
 }
 
@@ -1442,6 +1462,45 @@ model NotificationTemplate {
 // DOMAIN — PATIENT AVATARS
 // ================================================================
 
+// ================================================================
+// PATIENT IDENTITY
+// ================================================================
+
+// The canonical clinical identity for a person treated by a clinic.
+//
+// `id` IS the identity. name/email/phone are demographic attributes that may
+// change, may be blank, and may legitimately be shared by two different people
+// (a parent and child on one household address, partners on one phone, two
+// people with the same full name). They are therefore deliberately NOT unique,
+// and nothing may reconstruct identity by matching them.
+//
+// NOTE: `ServiceInvoice.patientId` is unrelated to this model — it is a
+// nullable FK to `User` kept for the fiscal API contract. Do not confuse them.
+model Patient {
+  id        String    @id @default(cuid())
+  clinicId  String
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  appointments      Appointment[]
+  clinicalRecords   ClinicalRecord[]
+  odontogramRecords OdontogramRecord[]
+  avatars           PatientAvatar[]
+
+  // Lookup only. None of these is a uniqueness claim.
+  @@index([clinicId])
+  @@index([clinicId, email])
+  @@index([clinicId, phone])
+  @@index([clinicId, name])
+  @@map("patients")
+}
+
 // Stores patient profile photos keyed by clinic + patient identifier.
 // Patients are not User records — they are identified by email (preferred)
 // or name in the appointments table. avatarUrl stores a compressed base64
@@ -1449,14 +1508,20 @@ model NotificationTemplate {
 model PatientAvatar {
   id         String   @id @default(cuid())
   clinicId   String
+  // Identity. Nullable during migration; legacy rows resolve through the
+  // compatibility path until an operator assigns one. The patient* columns
+  // below stay as the point-in-time snapshot of what was recorded.
+  patientId  String?
   identifier String   // patient email (preferred) or name when no email
   avatarUrl  String?  @db.Text
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientRecord Patient? @relation(fields: [patientId], references: [id])
 
   @@unique([clinicId, identifier])
+  @@unique([clinicId, patientId])
   @@index([clinicId])
   @@map("patient_avatars")
 }
