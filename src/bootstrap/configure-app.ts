@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   INestApplication,
   RequestMethod,
@@ -79,6 +80,7 @@ export function configureApp(app: INestApplication): void {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['X-Request-ID'],
     maxAge: 600,
   });
 
@@ -111,10 +113,12 @@ export function configureApp(app: INestApplication): void {
   // API and costs nothing here (no cacheable assets are served from this app).
   app.use(
     (
-      _req: express.Request,
+      req: express.Request & { requestId?: string },
       res: express.Response,
       next: express.NextFunction,
     ) => {
+      req.requestId = randomUUID();
+      res.setHeader('X-Request-ID', req.requestId);
       res.setHeader('Cache-Control', 'no-store');
       next();
     },

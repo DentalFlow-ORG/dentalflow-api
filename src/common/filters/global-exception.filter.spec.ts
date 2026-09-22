@@ -180,3 +180,17 @@ describe('GlobalExceptionFilter', () => {
     expect(logSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('query-string privacy regression', () => {
+  it('does not reflect or log reset tokens from request URLs', () => {
+    const filter = new GlobalExceptionFilter();
+    const log = jest.spyOn(filter['logger'], 'error').mockImplementation();
+    const { host, jsonFn } = buildHost(
+      '/api/auth/reset?token=private-reset-token',
+    );
+    filter.catch(new Error('database unavailable'), host);
+    expect(jsonFn.mock.calls[0][0].path).toBe('/api/auth/reset');
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private-reset-token');
+    log.mockRestore();
+  });
+});

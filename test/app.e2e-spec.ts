@@ -54,6 +54,21 @@ describe('Application bootstrap (e2e)', () => {
     await app.close();
   });
 
+  it('assigns a server-generated request ID to success and error responses', async () => {
+    const ok = await request(server())
+      .get(`/${prefix}/health`)
+      .set('X-Request-ID', 'untrusted');
+    const error = await request(server())
+      .get(`/${prefix}/patients`)
+      .set('Origin', ALLOWED_ORIGIN);
+    expect(ok.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    expect(error.headers['x-request-id']).not.toBe(ok.headers['x-request-id']);
+    expect(error.body.requestId).toBe(error.headers['x-request-id']);
+    expect(error.headers['access-control-expose-headers']).toContain(
+      'X-Request-ID',
+    );
+  });
+
   // ── Security headers ───────────────────────────────────────────────────────
 
   describe('security headers', () => {

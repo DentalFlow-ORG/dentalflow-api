@@ -14,6 +14,7 @@ type ErrorResponseBody = {
   message: string | string[];
   error?: string;
   timestamp: string;
+  requestId?: string;
   path: string;
 };
 
@@ -33,7 +34,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.error({
         statusCode: 500,
         method: request.method,
-        path: request.url,
+        path: request.url.split('?')[0],
         errorName:
           exception instanceof Error ? exception.name : typeof exception,
         errorMessage:
@@ -43,6 +44,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     const body = this.buildResponseBody(exception, request);
+    body.requestId = (request as Request & { requestId?: string }).requestId;
 
     this.logException(exception, request, body.statusCode);
 
@@ -131,7 +133,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message: responseBody.message ?? exception.message,
         ...(responseBody.error ? { error: responseBody.error } : {}),
         timestamp: new Date().toISOString(),
-        path: request.url,
+        path: request.url.split('?')[0],
       };
     }
 
@@ -174,7 +176,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode,
       message,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: request.url.split('?')[0],
     };
   }
 
@@ -204,10 +206,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     this.logger.error({
       statusCode,
       method: request.method,
-      path: request.url,
+      path: request.url.split('?')[0],
       errorName,
       errorMessage,
       prismaCode,
+      requestId: (request as Request & { requestId?: string }).requestId,
+      clinicId: (request.user as { clinicId?: string } | undefined)?.clinicId,
     });
   }
 }
