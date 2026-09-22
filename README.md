@@ -2,6 +2,25 @@
 
 API multi-tenant do DentalFlow, um SaaS de gestão para clínicas odontológicas.
 
+Este repositório e [dentalflow-web](../dentalflow-web/README.md) formam o mesmo produto.
+Documentação canônica: [índice](../dentalflow-web/docs/README.md),
+[setup dos dois projetos](../dentalflow-web/docs/development/workspace.md),
+[arquitetura](../dentalflow-web/docs/architecture/system.md),
+[RF/RN/RNF](../dentalflow-web/docs/requirements/functional.md),
+[contratos e todas as rotas](../dentalflow-web/docs/integrations/source-reference.md),
+[produção](../dentalflow-web/docs/deployment/production-readiness.md) e
+[auditoria atual](../dentalflow-web/docs/audit-report.md).
+Links relativos pressupõem checkouts irmãos; os detalhes operacionais específicos
+continuam neste repositório. Relatos históricos abaixo não comprovam o estado
+atual de bancos ou ambientes em nuvem.
+
+**Limites atuais:** pacientes são agregados de agendamentos por nome/e-mail;
+PATIENT é onboarding Google, não portal; fiscal é simulação local;
+WhatsApp tem envio manual, não agendador; falhas de processamento Stripe são
+registradas mas respondidas com HTTP 200. Consulte os riscos antes de publicar.
+Não execute o seed de demonstração em produção: ele inclui credenciais conhecidas
+para contas de exemplo, inclusive ADMIN, e IDs Stripe específicos de um ambiente.
+
 Para regras de desenvolvimento, testes e contribuição, leia
 **[AGENTS.md](./AGENTS.md)** — é o documento normativo do repositório.
 
@@ -242,3 +261,7 @@ HTTPS em `FRONTEND_URL` e em todas as origens de `FRONTEND_ORIGIN` (curinga
 ## 📌 Status
 
 🚧 Em desenvolvimento ativo.
+
+## Production hardening status
+
+Current cross-repository findings, validated changes and release decision are in the frontend's [production-hardening report](../dentalflow-web/docs/deployment/production-hardening.md). The original audit remains historical; do not infer readiness from a green build alone. [File manifest](../dentalflow-web/docs/deployment/hardening-files.md).

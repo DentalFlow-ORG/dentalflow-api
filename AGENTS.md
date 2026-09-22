@@ -522,21 +522,13 @@ billing.
 
 ---
 
-## 12. Local session context (optional)
+## 12. Product workspace and documentation
 
-Moved here from `README.md`, where it did not belong: these notes live on one
-maintainer's machine, so skip this section silently if the path does not exist.
-
-At the start of a session, read:
-
-```
-D:\Obsidian\Cérebro Claude\Cérebro Claude\01 - Projects\Active Projects\DentalFlow\
-  DentalFlow — Next Step.md
-  DentalFlow — Roadmap Master.md
-  DentalFlow — Database Schema.md
-  DentalFlow — Backend Analysis.md
-  DentalFlow — Architecture Patterns.md
-```
-
-Then say what to implement this session and ask whether to start inspecting
-the code.
+The frontend is the sibling repository `../dentalflow-web`; inspect its services
+and types before changing API contracts. The canonical product documentation is
+[../dentalflow-web/docs/README.md](../dentalflow-web/docs/README.md), including
+requirements, current architecture, integration reference and release risks.
+Update relevant RF/RN/RNF and contract documentation with behavior changes.
+Do not duplicate backend rules in frontend code or add personal filesystem paths.
+Local private notes are optional context, never implementation authority.
+Historical validation statements in this file must be reverified for each release.

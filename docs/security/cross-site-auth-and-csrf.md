@@ -1,6 +1,6 @@
 # Cross-site auth, refresh cookie, and CSRF posture
 
-**Updated:** 2026-06-12
+**Updated:** 2026-09-20 (source review; deployment topology below is a configuration reference, not a live verification).
 
 ## Deployment topology (why this matters)
 
@@ -32,7 +32,7 @@ Set in `src/modules/auth/auth.controller.ts` (`refreshCookieOptions`):
 | `HttpOnly` | yes | yes | Not readable by JS (XSS can't steal it). |
 | `Secure` | yes | no | Required by `SameSite=None`; dev is HTTP localhost. |
 | `SameSite` | `None` | `Lax` | **Cross-site** in prod: a `Lax`/`Strict` cookie is **not** sent on the cross-site `fetch` to `/api/auth/refresh`, so silent refresh would break. `None` lets the browser send it. |
-| `Path` | `/api/auth` | `/api/auth` | Cookie only travels to the two routes that need it. |
+| `Path` | `/api/auth` | `/api/auth` | Cookie travels to the auth path prefix; only refresh/logout consume it. |
 
 > ⚠️ **Do not change `SameSite` to `Strict` or `Lax` while the API and SPA are on
 > different domains.** It will silently break refresh (users get logged out when
@@ -63,7 +63,7 @@ header (not the cookie) and is therefore CSRF-immune regardless of SameSite.
 
 ## CORS
 
-`src/main.ts` allow-lists exact origins from `FRONTEND_ORIGIN` (no wildcard),
+`src/bootstrap/configure-app.ts` allow-lists exact origins from `FRONTEND_ORIGIN` (no wildcard),
 sets `credentials: true`, and restricts methods/headers. `validate-env.ts`
 enforces HTTPS-only, non-`*` origins in production. The allow-list backing CORS
 is the same one backing the CSRF `Origin` check.
@@ -88,3 +88,15 @@ Production fails fast (`validate-env.ts`) if any of these are missing:
 `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`,
 `GOOGLE_CALENDAR_CLIENT_ID/SECRET/REDIRECT_URI/TOKEN_SECRET`, and `OPENAI_API_KEY`
 (unless `OPENAI_AI_ASSISTANT_ENABLED=false`).
+
+## Release limitations
+
+HttpOnly blocks JavaScript reading the cookie; XSS can still act as the user.
+SameSite=None does not override browser third-party-cookie blocking. Verify
+reload and expiry on supported browsers; consider same-site custom domains.
+The cookie Path follows API_PREFIX and covers the whole auth prefix.
+WHATSAPP_VERIFY_TOKEN is also required at boot; enabled real production WhatsApp
+requires provider settings and WHATSAPP_APP_SECRET (or its legacy alias).
+Logout also requires a valid Bearer token. Current findings and release checks:
+[security](../../../dentalflow-web/docs/security/security-hardening-report.md)
+and [production](../../../dentalflow-web/docs/deployment/production-readiness.md).
