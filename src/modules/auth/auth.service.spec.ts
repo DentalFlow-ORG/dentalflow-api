@@ -40,7 +40,7 @@ const txMock = {
     deleteMany: jest.fn(),
   },
   termsAcceptance: { create: jest.fn() },
-  passwordResetToken: { update: jest.fn() },
+  passwordResetToken: { updateMany: jest.fn() },
 };
 
 const prismaMock = {
@@ -696,7 +696,7 @@ describe('AuthService', () => {
     beforeEach(() => {
       prismaMock.passwordResetToken.findUnique.mockResolvedValue(storedRecord);
       (bcrypt.hash as jest.Mock).mockResolvedValue('new-hashed-password');
-      txMock.passwordResetToken.update.mockResolvedValue(undefined);
+      txMock.passwordResetToken.updateMany.mockResolvedValue({ count: 1 });
       txMock.user.update.mockResolvedValue(undefined);
       txMock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
     });
@@ -747,9 +747,13 @@ describe('AuthService', () => {
     it('marks the reset token as used inside the transaction', async () => {
       await service.resetPassword(dto);
 
-      expect(txMock.passwordResetToken.update).toHaveBeenCalledWith(
+      expect(txMock.passwordResetToken.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: storedRecord.id },
+          where: {
+            id: storedRecord.id,
+            usedAt: null,
+            expiresAt: { gt: expect.any(Date) },
+          },
           data: expect.objectContaining({ usedAt: expect.any(Date) }),
         }),
       );

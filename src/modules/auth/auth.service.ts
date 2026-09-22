@@ -845,7 +845,7 @@ export class AuthService {
     if (
       !record ||
       record.usedAt !== null ||
-      record.expiresAt < new Date() ||
+      record.expiresAt <= new Date() ||
       !record.user.isActive ||
       record.user.deletedAt !== null
     ) {
@@ -855,10 +855,13 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.passwordResetToken.update({
-        where: { id: record.id },
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
         data: { usedAt: new Date() },
       });
+      if (claimed.count !== 1) {
+        throw new UnprocessableEntityException(RESET_ERROR_MESSAGE);
+      }
 
       await tx.user.update({
         where: { id: record.userId },
