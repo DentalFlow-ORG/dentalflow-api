@@ -17,7 +17,13 @@ const stripeMock = {
 };
 
 const prismaMock = {
-  stripeEvent: { upsert: jest.fn(), update: jest.fn() },
+  stripeEvent: {
+    upsert: jest.fn(),
+    update: jest.fn(),
+    findUniqueOrThrow: jest.fn().mockResolvedValue({ processed: false }),
+  },
+  $executeRaw: jest.fn(),
+  plan: { findFirst: jest.fn().mockResolvedValue({ id: 'plan-1' }) },
   subscription: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
@@ -58,7 +64,23 @@ describe('WebhookService', () => {
     jest.clearAllMocks();
     stripeMock.getClient.mockReturnValue(stripeClientMock);
     stripeMock.getWebhookSecret.mockReturnValue('whsec_test');
-    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.$transaction.mockImplementation(
+      (work: (tx: typeof prismaMock) => Promise<unknown>) => work(prismaMock),
+    );
+    stripeClientMock.subscriptions.retrieve.mockImplementation(() => {
+      const event =
+        stripeClientMock.webhooks.constructEvent.mock.results.at(-1)?.value;
+      return Promise.resolve(
+        event.type === 'invoice.payment_failed'
+          ? {
+              id: 'sub_test',
+              customer: 'cus_test',
+              status: 'past_due',
+              items: { data: [] },
+            }
+          : event.data.object,
+      );
+    });
     prismaMock.subscriptionItem.deleteMany.mockResolvedValue({});
     service = buildService();
   });
@@ -123,7 +145,7 @@ describe('WebhookService', () => {
       );
     });
 
-    it('stores errorMessage without re-throwing when dispatch fails', async () => {
+    it('stores errorMessage and rejects when dispatch fails', async () => {
       stripeClientMock.webhooks.constructEvent.mockReturnValue(
         makeStripeEvent('customer.subscription.updated', {
           id: 'sub_test',
@@ -141,9 +163,9 @@ describe('WebhookService', () => {
       );
       prismaMock.stripeEvent.update.mockResolvedValue({});
 
-      await expect(
-        service.handleWebhook(RAW_BODY, SIGNATURE),
-      ).resolves.toBeUndefined();
+      await expect(service.handleWebhook(RAW_BODY, SIGNATURE)).rejects.toThrow(
+        'Falha temporária',
+      );
 
       expect(prismaMock.stripeEvent.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -168,7 +190,9 @@ describe('WebhookService', () => {
       prismaMock.subscription.findFirst.mockRejectedValue(new Error('timeout'));
       prismaMock.stripeEvent.update.mockResolvedValue({});
 
-      await service.handleWebhook(RAW_BODY, SIGNATURE);
+      await expect(service.handleWebhook(RAW_BODY, SIGNATURE)).rejects.toThrow(
+        'Falha temporária',
+      );
 
       const updateCall = prismaMock.stripeEvent.update.mock.calls[0][0] as {
         data: Record<string, unknown>;

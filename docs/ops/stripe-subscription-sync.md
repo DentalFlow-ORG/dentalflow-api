@@ -39,3 +39,7 @@ bunx ts-node -r tsconfig-paths/register scripts/ops/sync-stripe-subscription.ts 
 ```
 
 Se houver ambiguidade entre cliente Stripe, assinatura e clínica local, o script interrompe a execução e pede um seletor mais específico.
+
+## Hardening follow-up
+
+Webhook failures now return 503, and local event/subscription/item writes share a PostgreSQL transaction/advisory lock. Update/invoice events retrieve current Stripe state. This does not certify every checkout ordering case: parallel active checkouts and historical checkout metadata still require explicit reconciliation tests and the test-mode checklist above. See the canonical [hardening report](../../../dentalflow-web/docs/deployment/production-hardening.md) before approving a release. Do not force local ACTIVE status to bypass a provider failure.

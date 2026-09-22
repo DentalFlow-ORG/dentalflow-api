@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
 import type StripeConstructor from 'stripe';
 
@@ -76,11 +81,23 @@ export class WebhookService {
 
     // 4. Dispatch to the appropriate handler
     try {
-      this.logger.log(`Processing Stripe event type=${event.type}`);
-      await this.dispatch(event);
-      await this.prisma.stripeEvent.update({
-        where: { id: event.id },
-        data: { processed: true, processedAt: new Date(), errorMessage: null },
+      this.logger.log(
+        `Processing Stripe event id=${event.id} type=${event.type}`,
+      );
+      await this.withBillingTransaction(async (scoped) => {
+        const current = await scoped.prisma.stripeEvent.findUniqueOrThrow({
+          where: { id: event.id },
+        });
+        if (current.processed) return;
+        await scoped.dispatch(event);
+        await scoped.prisma.stripeEvent.update({
+          where: { id: event.id },
+          data: {
+            processed: true,
+            processedAt: new Date(),
+            errorMessage: null,
+          },
+        });
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -91,9 +108,10 @@ export class WebhookService {
         where: { id: event.id },
         data: { errorMessage: message },
       });
-      // Do NOT re-throw: return 200 to Stripe to prevent infinite retries.
-      // Failed events are stored with errorMessage and visible in the admin
-      // finance dashboard for manual inspection and replay.
+      // Preserve failure evidence but let Stripe retry; do not acknowledge lost work.
+      throw new ServiceUnavailableException(
+        'Falha temporária ao processar evento de cobrança.',
+      );
     }
   }
 
@@ -105,7 +123,23 @@ export class WebhookService {
       .getClient()
       .checkout.sessions.retrieve(sessionId);
 
-    await this.onCheckoutSessionCompleted(session, expectedClinicId);
+    await this.withBillingTransaction((scoped) =>
+      scoped.onCheckoutSessionCompleted(session, expectedClinicId),
+    );
+  }
+
+  private async withBillingTransaction(
+    work: (scoped: WebhookService) => Promise<void>,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        // Low-volume billing synchronization: one transaction-scoped lock, also across replicas.
+        // This includes provider reads; keep bounded Stripe timeouts and monitor contention.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(74192026)`;
+        await work(new WebhookService(tx as PrismaService, this.stripe));
+      },
+      { maxWait: 10000, timeout: 30000 },
+    );
   }
 
   // -------------------------------------------------------------------
@@ -122,7 +156,11 @@ export class WebhookService {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
         await this.onSubscriptionUpserted(
-          event.data.object as StripeSubscription,
+          await this.stripe
+            .getClient()
+            .subscriptions.retrieve(
+              (event.data.object as StripeSubscription).id,
+            ),
         );
         break;
       case 'customer.subscription.deleted':
@@ -141,7 +179,11 @@ export class WebhookService {
         break;
       case 'customer.subscription.trial_will_end':
         await this.onSubscriptionUpserted(
-          event.data.object as StripeSubscription,
+          await this.stripe
+            .getClient()
+            .subscriptions.retrieve(
+              (event.data.object as StripeSubscription).id,
+            ),
         );
         break;
       default:
@@ -197,10 +239,17 @@ export class WebhookService {
 
     // Cancel the previous Stripe subscription if the clinic had one with a different ID.
     // This prevents billing the customer for two active subscriptions simultaneously.
-    // We do this before the upsert so if cancel fails we still activate the new sub.
+    // Cancel before changing the mapping; failure leaves local state retryable.
     const prevSub = await this.prisma.subscription.findUnique({
       where: { clinicId },
     });
+    // A canceled historical checkout must not replace/cancel the clinic's current subscription.
+    if (
+      prevSub?.stripeSubscriptionId &&
+      prevSub.stripeSubscriptionId !== stripeSubscriptionId &&
+      ['canceled', 'incomplete_expired'].includes(stripeSubscription.status)
+    )
+      return;
     if (
       prevSub?.stripeSubscriptionId &&
       prevSub.stripeSubscriptionId !== stripeSubscriptionId &&
@@ -214,12 +263,16 @@ export class WebhookService {
           `Canceled previous Stripe subscription ${prevSub.stripeSubscriptionId} for clinic ${clinicId} — replaced by ${stripeSubscriptionId}`,
         );
       } catch (cancelErr) {
-        // Already canceled in Stripe or not found — safe to ignore.
-        const msg =
-          cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
-        this.logger.warn(
-          `Could not cancel previous Stripe subscription ${prevSub.stripeSubscriptionId}: ${msg}`,
-        );
+        // Do not lose the old mapping while it might still be charging.
+        if (
+          !(
+            typeof cancelErr === 'object' &&
+            cancelErr !== null &&
+            'code' in cancelErr &&
+            cancelErr.code === 'resource_missing'
+          )
+        )
+          throw cancelErr;
       }
     }
 
@@ -296,10 +349,32 @@ export class WebhookService {
     const items = sub.items?.data ?? [];
     const firstItem = items[0];
     const mappedStatus = this.mapStripeStatus(sub.status);
+    const priceId = firstItem?.price.id;
+    const plan = priceId
+      ? await this.prisma.plan.findFirst({
+          where: {
+            OR: [
+              { stripePriceIdMonthly: priceId },
+              { stripePriceIdYearly: priceId },
+            ],
+          },
+          select: { id: true },
+        })
+      : null;
+    if (priceId && !plan)
+      throw new Error('Stripe price is not mapped to a local plan.');
     await this.prisma.subscription.update({
       where: { id: existing.id },
       data: {
         stripeSubscriptionId: sub.id,
+        ...(plan
+          ? {
+              planId: plan.id,
+              billingInterval: mapStripePriceInterval(
+                firstItem.price.recurring?.interval,
+              ),
+            }
+          : {}),
         status: mappedStatus,
         currentPeriodStart: firstItem
           ? new Date(firstItem.current_period_start * 1000)
@@ -375,18 +450,7 @@ export class WebhookService {
       return;
     }
 
-    const existing = await this.findLocalSubscription(null, stripeCustomerId);
-    if (!existing || existing.status === SubscriptionStatus.CANCELED) return;
-
-    await this.prisma.subscription.update({
-      where: { id: existing.id },
-      data: { status: SubscriptionStatus.ACTIVE },
-    });
-    this.logSubscriptionSync('invoice.payment_succeeded', {
-      stripeSubscriptionId: existing.stripeSubscriptionId,
-      clinicId: existing.clinicId,
-      status: SubscriptionStatus.ACTIVE,
-    });
+    // A customer's unrelated one-off invoice is not subscription evidence.
   }
 
   /**
@@ -397,23 +461,12 @@ export class WebhookService {
     const stripeSubscriptionId = this.resolveId(
       invoice.parent?.subscription_details?.subscription ?? null,
     );
-    if (!stripeCustomerId && !stripeSubscriptionId) return;
-
-    const existing = await this.findLocalSubscription(
-      stripeSubscriptionId,
-      stripeCustomerId,
-    );
-    if (!existing) return;
-
-    await this.prisma.subscription.update({
-      where: { id: existing.id },
-      data: { status: SubscriptionStatus.PAST_DUE },
-    });
-    this.logSubscriptionSync('invoice.payment_failed', {
-      stripeSubscriptionId: existing.stripeSubscriptionId,
-      clinicId: existing.clinicId,
-      status: SubscriptionStatus.PAST_DUE,
-    });
+    if (!stripeCustomerId || !stripeSubscriptionId) return;
+    // A late failure must not undo a recovered payment or cancellation.
+    const subscription = await this.stripe
+      .getClient()
+      .subscriptions.retrieve(stripeSubscriptionId);
+    await this.onSubscriptionUpserted(subscription);
   }
 
   // -------------------------------------------------------------------
@@ -450,11 +503,11 @@ export class WebhookService {
     items: StripeSubscriptionItem[],
   ): Promise<void> {
     const itemIds = items.map((item) => item.id);
-    const operations = items.map((item) => {
+    for (const item of items) {
       const price = item.price;
       const quantity = item.quantity ?? 1;
 
-      return this.prisma.subscriptionItem.upsert({
+      await this.prisma.subscriptionItem.upsert({
         where: { stripeSubscriptionItemId: item.id },
         create: {
           subscriptionId,
@@ -482,24 +535,22 @@ export class WebhookService {
           quantity,
         },
       });
-    });
+    }
 
-    await this.prisma.$transaction([
-      ...operations,
-      this.prisma.subscriptionItem.deleteMany({
-        where: {
-          subscriptionId,
-          ...(itemIds.length > 0
-            ? { stripeSubscriptionItemId: { notIn: itemIds } }
-            : {}),
-        },
-      }),
-    ]);
+    await this.prisma.subscriptionItem.deleteMany({
+      where: {
+        subscriptionId,
+        ...(itemIds.length > 0
+          ? { stripeSubscriptionItemId: { notIn: itemIds } }
+          : {}),
+      },
+    });
   }
 
   /**
    * Looks up the local Subscription by Stripe subscription ID first,
-   * then falls back to Stripe customer ID.
+   * with matching customer when present. Customer-only lookup is used only
+   * when no subscription ID exists; old subscriptions must not mutate replacements.
    */
   private async findLocalSubscription(
     stripeSubscriptionId: string | null | undefined,
@@ -509,10 +560,12 @@ export class WebhookService {
 
     return this.prisma.subscription.findFirst({
       where: {
-        OR: [
-          ...(stripeSubscriptionId ? [{ stripeSubscriptionId }] : []),
-          ...(stripeCustomerId ? [{ stripeCustomerId }] : []),
-        ],
+        ...(stripeSubscriptionId
+          ? {
+              stripeSubscriptionId,
+              ...(stripeCustomerId ? { stripeCustomerId } : {}),
+            }
+          : { stripeCustomerId }),
       },
       orderBy: { updatedAt: 'desc' },
     });

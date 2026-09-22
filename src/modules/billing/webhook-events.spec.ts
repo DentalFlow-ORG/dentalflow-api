@@ -31,6 +31,7 @@ function createPrisma() {
   return {
     stripeEvent: {
       upsert: jest.fn().mockResolvedValue({ processed: false }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ processed: false }),
       update: jest.fn().mockResolvedValue({}),
     },
     subscription: {
@@ -43,7 +44,9 @@ function createPrisma() {
       upsert: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({}),
     },
-    $transaction: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn(),
+    plan: { findFirst: jest.fn().mockResolvedValue({ id: 'plan-1' }) },
+    $transaction: jest.fn(),
   };
 }
 
@@ -110,6 +113,18 @@ describe('WebhookService — event handlers', () => {
       getClient: () => stripeClient,
       getWebhookSecret: () => 'whsec_test',
     };
+    prisma.$transaction.mockImplementation(
+      (work: (tx: typeof prisma) => Promise<unknown>) => work(prisma),
+    );
+    stripeClient.subscriptions.retrieve.mockImplementation(() => {
+      const event =
+        stripeClient.webhooks.constructEvent.mock.results.at(-1)?.value;
+      return Promise.resolve(
+        event?.type === 'invoice.payment_failed'
+          ? stripeSubscription({ status: 'past_due' })
+          : event?.data.object,
+      );
+    });
     service = new WebhookService(prisma as never, stripe as never);
     jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
     jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
@@ -117,14 +132,20 @@ describe('WebhookService — event handlers', () => {
   });
 
   /** Delivers an event through the full verified path. */
-  async function deliver(type: string, object: Record<string, unknown>) {
+  async function deliver(
+    type: string,
+    object: Record<string, unknown>,
+    fails = false,
+  ) {
     stripeClient.webhooks.constructEvent.mockReturnValue({
       id: 'evt_1',
       type,
       created: 1_780_000_000,
       data: { object },
     });
-    await service.handleWebhook(Buffer.from('{}'), 'sig');
+    const delivery = service.handleWebhook(Buffer.from('{}'), 'sig');
+    if (fails) await expect(delivery).rejects.toThrow('Falha temporária');
+    else await delivery;
   }
 
   /** The errorMessage recorded when a handler threw, or null. */
@@ -225,6 +246,7 @@ describe('WebhookService — event handlers', () => {
         await deliver(
           'checkout.session.completed',
           checkoutSession({ metadata }),
+          true,
         );
 
         expect(prisma.subscription.upsert).not.toHaveBeenCalled();
@@ -242,6 +264,7 @@ describe('WebhookService — event handlers', () => {
             billingInterval: 'WEEKLY',
           },
         }),
+        true,
       );
 
       expect(prisma.subscription.upsert).not.toHaveBeenCalled();
@@ -268,6 +291,7 @@ describe('WebhookService — event handlers', () => {
       await deliver(
         'checkout.session.completed',
         checkoutSession({ metadata: null }),
+        true,
       );
       expect(prisma.subscription.upsert).not.toHaveBeenCalled();
     });
@@ -276,6 +300,7 @@ describe('WebhookService — event handlers', () => {
       await deliver(
         'checkout.session.completed',
         checkoutSession({ subscription: null }),
+        true,
       );
       expect(prisma.subscription.upsert).not.toHaveBeenCalled();
     });
@@ -315,7 +340,7 @@ describe('WebhookService — event handlers', () => {
       expect(stripeClient.subscriptions.cancel).not.toHaveBeenCalled();
     });
 
-    it('still activates the new subscription when cancelling the old one fails', async () => {
+    it('keeps the existing mapping and retries when prior cancellation fails', async () => {
       // Already gone in Stripe is the common case and must not block access.
       prisma.subscription.findUnique.mockResolvedValue({
         stripeSubscriptionId: 'sub_old',
@@ -325,10 +350,9 @@ describe('WebhookService — event handlers', () => {
         new Error('No such subscription'),
       );
 
-      await deliver('checkout.session.completed', checkoutSession());
-
-      expect(prisma.subscription.upsert).toHaveBeenCalled();
-      expect(recordedFailure()).toBeNull();
+      await deliver('checkout.session.completed', checkoutSession(), true);
+      expect(prisma.subscription.upsert).not.toHaveBeenCalled();
+      expect(recordedFailure()).toBe('No such subscription');
     });
   });
 
@@ -393,7 +417,7 @@ describe('WebhookService — event handlers', () => {
       expect(prisma.subscription.update).toHaveBeenCalled();
     });
 
-    it('looks the subscription up by Stripe id first, then customer id', async () => {
+    it('requires both subscription and customer identity when present', async () => {
       prisma.subscription.findFirst.mockResolvedValue({
         id: 'local-1',
         clinicId: CLINIC,
@@ -401,10 +425,10 @@ describe('WebhookService — event handlers', () => {
 
       await deliver('customer.subscription.updated', stripeSubscription());
 
-      expect(prisma.subscription.findFirst.mock.calls[0][0].where.OR).toEqual([
-        { stripeSubscriptionId: 'sub_stripe_1' },
-        { stripeCustomerId: 'cus_1' },
-      ]);
+      expect(prisma.subscription.findFirst.mock.calls[0][0].where).toEqual({
+        stripeSubscriptionId: 'sub_stripe_1',
+        stripeCustomerId: 'cus_1',
+      });
     });
 
     it('ignores an event with no resolvable customer', async () => {
@@ -619,7 +643,7 @@ describe('WebhookService — event handlers', () => {
       expect(prisma.subscription.update).toHaveBeenCalled();
     });
 
-    it('reactivates by customer alone when the invoice names no subscription', async () => {
+    it('ignores unrelated invoices without a subscription', async () => {
       prisma.subscription.findFirst.mockResolvedValue({
         id: 'local-1',
         clinicId: CLINIC,
@@ -629,9 +653,7 @@ describe('WebhookService — event handlers', () => {
 
       await deliver('invoice.paid', { customer: 'cus_1', parent: null });
 
-      expect(prisma.subscription.update.mock.calls[0][0].data).toEqual({
-        status: SubscriptionStatus.ACTIVE,
-      });
+      expect(prisma.subscription.update).not.toHaveBeenCalled();
     });
 
     it('does not resurrect a canceled subscription', async () => {
@@ -788,5 +810,35 @@ describe('WebhookService — event handlers', () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe('Late checkout protection', () => {
+  it('does not cancel a newer subscription for a delayed canceled checkout', async () => {
+    const prisma = createPrisma();
+    prisma.$transaction.mockImplementation(
+      (work: (tx: typeof prisma) => Promise<unknown>) => work(prisma),
+    );
+    prisma.subscription.findUnique.mockResolvedValue({
+      stripeSubscriptionId: 'sub_new',
+      status: 'ACTIVE',
+    });
+    const client = createStripeClient();
+    client.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_late_checkout',
+      type: 'checkout.session.completed',
+      created: 1,
+      data: { object: checkoutSession() },
+    });
+    client.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription({ status: 'canceled' }),
+    );
+    const service = new WebhookService(
+      prisma as never,
+      { getClient: () => client, getWebhookSecret: () => 'test' } as never,
+    );
+    await service.handleWebhook(Buffer.from('{}'), 'test');
+    expect(client.subscriptions.cancel).not.toHaveBeenCalled();
+    expect(prisma.subscription.upsert).not.toHaveBeenCalled();
   });
 });

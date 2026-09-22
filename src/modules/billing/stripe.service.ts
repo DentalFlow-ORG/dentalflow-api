@@ -16,6 +16,8 @@ export class StripeService {
       this.client = new Stripe(stripeConfig.secretKey, {
         // API version bundled with stripe@22.0.2. Update when upgrading the package.
         apiVersion: '2026-03-25.dahlia',
+        timeout: 5000,
+        maxNetworkRetries: 1,
       });
     } else {
       this.logger.warn(
