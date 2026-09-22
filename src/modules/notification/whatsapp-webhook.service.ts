@@ -48,7 +48,11 @@ export class WhatsAppWebhookService {
     return challenge as string;
   }
 
-  receive(payload: unknown, rawBody?: Buffer, signature?: string): void {
+  receive(
+    payload: unknown,
+    rawBody?: Buffer,
+    signature?: string,
+  ): Promise<void> {
     this.verifySignature(rawBody, signature);
 
     const events = normalizeEvents(payload);
@@ -61,11 +65,7 @@ export class WhatsAppWebhookService {
       )
       .map((event) => event.update);
 
-    if (statusUpdates.length > 0) {
-      void this.processStatusUpdates(statusUpdates).catch(() => {
-        this.logger.warn('WhatsApp webhook status processing failed.');
-      });
-    }
+    return this.processStatusUpdates(statusUpdates);
   }
 
   private verifySignature(rawBody?: Buffer, signature?: string): void {
@@ -73,7 +73,14 @@ export class WhatsAppWebhookService {
       process.env.WHATSAPP_APP_SECRET ??
       process.env.WHATSAPP_WEBHOOK_APP_SECRET;
 
-    if (!appSecret) return;
+    if (!appSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new UnauthorizedException(
+          'Webhook signature verification is not configured.',
+        );
+      }
+      return;
+    }
 
     if (!rawBody || !signature) {
       throw new UnauthorizedException('Invalid webhook signature.');

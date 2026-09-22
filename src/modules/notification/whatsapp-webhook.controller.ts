@@ -32,11 +32,11 @@ export class WhatsAppWebhookController {
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  receive(
+  async receive(
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-hub-signature-256') signature?: string,
-  ): { status: 'ok' } {
-    this.webhookService.receive(req.body, req.rawBody, signature);
+  ): Promise<{ status: 'ok' }> {
+    await this.webhookService.receive(req.body, req.rawBody, signature);
     return { status: 'ok' };
   }
 }

@@ -190,9 +190,7 @@ describe('WhatsAppWebhookService', () => {
   describe('status callbacks', () => {
     /** Runs a callback and returns the update written, if any. */
     async function deliver(status: Record<string, unknown>) {
-      service.receive(statusPayload(status), undefined, undefined);
-      // processStatusUpdates is dispatched without awaiting.
-      await new Promise((resolve) => setImmediate(resolve));
+      await service.receive(statusPayload(status), undefined, undefined);
       return prisma.notificationMessage.updateMany.mock.calls[0]?.[0] as
         | { where: { providerRef: string }; data: Record<string, unknown> }
         | undefined;
@@ -286,21 +284,13 @@ describe('WhatsAppWebhookService', () => {
       expect(prisma.notificationMessage.updateMany).not.toHaveBeenCalled();
     });
 
-    it('does not let a database failure escape the webhook', async () => {
+    it('rejects a failed write so Meta can retry delivery', async () => {
       prisma.notificationMessage.updateMany.mockRejectedValue(
         new Error('connection lost'),
       );
-
-      // Meta retries on a non-200, so an unhandled rejection here turns one
-      // bad write into a redelivery storm.
-      expect(() =>
-        service.receive(
-          statusPayload({ id: 'wamid.1', status: 'sent' }),
-          undefined,
-          undefined,
-        ),
-      ).not.toThrow();
-      await new Promise((resolve) => setImmediate(resolve));
+      await expect(
+        service.receive(statusPayload({ id: 'wamid.1', status: 'sent' })),
+      ).rejects.toThrow('connection lost');
     });
   });
 });
