@@ -994,7 +994,7 @@ export class CalendarIntegrationsService {
       description: [
         'Evento sincronizado pelo DentalFlow.',
         `Profissional: ${appointment.profileName}`,
-        'Dados do paciente ficam disponiveis apenas no DentalFlow.',
+        'O título compartilha nome do paciente e serviço com este calendário. Prontuário e contatos permanecem no DentalFlow.',
       ].join('\n'),
       start: { dateTime: `${date}T${startTime}:00`, timeZone },
       end: { dateTime: `${date}T${endTime}:00`, timeZone },

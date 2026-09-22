@@ -397,7 +397,7 @@ describe('CalendarIntegrationsService — synchronisation', () => {
       // name; the description must not add contact details or notes.
       expect(body.description).toContain('Dra. Ana');
       expect(body.description).toContain(
-        'Dados do paciente ficam disponiveis apenas no DentalFlow.',
+        'O título compartilha nome do paciente e serviço com este calendário. Prontuário e contatos permanecem no DentalFlow.',
       );
     });
 
