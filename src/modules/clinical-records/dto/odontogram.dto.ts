@@ -1,6 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsString, MaxLength, ValidateBy } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateBy,
+} from 'class-validator';
 import { trimValue } from '../../../common/utils/transform.helpers';
 
 const MAX_ODONTOGRAM_JSON_DEPTH = 8;
@@ -56,6 +62,18 @@ function IsPlainJsonObject() {
 }
 
 export class UpsertOdontogramDto {
+  /**
+   * Stable clinical identity. When present it is authoritative and
+   * `identifier` is ignored. `identifier` remains only so an older frontend
+   * keeps working during the migration; it resolves through the legacy
+   * contact-matching path, which refuses ambiguous matches.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
   @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()

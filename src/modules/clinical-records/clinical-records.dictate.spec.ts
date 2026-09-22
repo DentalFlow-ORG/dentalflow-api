@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import 'reflect-metadata';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ClinicalRecordStatus } from '@prisma/client';
@@ -154,7 +155,14 @@ describe('ClinicalRecordsService.validateRecordForDictation', () => {
         ClinicalRecordsService: typeof ClinicalRecordsService;
       };
     /* eslint-enable @typescript-eslint/no-require-imports */
-    return new Svc(mockPrisma as never);
+    return new Svc(
+      mockPrisma as never,
+      {
+        assertUnambiguousIdentity: jest.fn().mockResolvedValue(undefined),
+        isAmbiguousIdentity: jest.fn().mockResolvedValue(false),
+      } as never,
+      createPatientResolverMock() as never,
+    );
   }
 
   beforeEach(() => {

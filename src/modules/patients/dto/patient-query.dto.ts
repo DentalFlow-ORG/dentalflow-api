@@ -11,6 +11,16 @@ export class ListPatientsQueryDto {
 }
 
 export class PatientHistoryQueryDto {
+  /**
+   * Stable clinical identity. Authoritative when present; `identifier` is the
+   * compatibility fallback for clients that have not migrated yet.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
   @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
@@ -19,6 +29,16 @@ export class PatientHistoryQueryDto {
 }
 
 export class PatientAvatarQueryDto {
+  /**
+   * Stable clinical identity. Authoritative when present; `identifier` is the
+   * compatibility fallback for clients that have not migrated yet.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
   @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()

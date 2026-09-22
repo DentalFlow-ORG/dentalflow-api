@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   AppointmentPaymentStatus,
   AppointmentStatus,
@@ -31,9 +32,9 @@ function createPrisma() {
     $queryRaw: jest.fn().mockResolvedValue([]),
     appointment: { findMany: jest.fn().mockResolvedValue([]) },
     patientAvatar: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn().mockResolvedValue([]),
-      upsert: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({}),
     },
     notificationConsent: { findMany: jest.fn().mockResolvedValue([]) },
   };
@@ -61,7 +62,10 @@ describe('PatientsService', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(TODAY);
     prisma = createPrisma();
-    service = new PatientsService(prisma as never);
+    service = new PatientsService(
+      prisma as never,
+      createPatientResolverMock() as never,
+    );
   });
 
   afterEach(() => {
@@ -89,6 +93,7 @@ describe('PatientsService', () => {
       const result = await service.listPatients(CLINIC);
 
       expect(result.data[0]).toEqual({
+        patientId: null,
         identifier: 'maria@example.test',
         patientName: 'Maria',
         patientEmail: 'maria@example.test',
@@ -172,12 +177,23 @@ describe('PatientsService', () => {
     it('keys the avatar on clinic and identifier together', async () => {
       await service.getPatientAvatar(CLINIC, 'maria@example.test');
 
-      expect(prisma.patientAvatar.findUnique.mock.calls[0][0].where).toEqual({
-        clinicId_identifier: {
-          clinicId: CLINIC,
-          identifier: 'maria@example.test',
-        },
+      // Without a patientId the lookup stays on the legacy identifier, and is
+      // restricted to rows that have not been given an identity yet.
+      expect(prisma.patientAvatar.findFirst.mock.calls[0][0].where).toEqual({
+        clinicId: CLINIC,
+        patientId: null,
+        identifier: { equals: 'maria@example.test', mode: 'insensitive' },
       });
+    });
+
+    it('finds an avatar stored under a different email casing', async () => {
+      // Rows written before identity normalization hold the address exactly as
+      // it was typed, so an exact match would lose the patient's photo.
+      await service.getPatientAvatar(CLINIC, 'maria@example.test');
+
+      expect(
+        prisma.patientAvatar.findFirst.mock.calls[0][0].where.identifier.mode,
+      ).toBe('insensitive');
     });
 
     it('stores a null avatar when clearing one', async () => {
@@ -187,13 +203,25 @@ describe('PatientsService', () => {
         undefined,
       );
 
-      const args = prisma.patientAvatar.upsert.mock.calls[0][0];
-      expect(args.create.avatarUrl).toBeNull();
-      expect(args.update.avatarUrl).toBeNull();
+      expect(
+        prisma.patientAvatar.create.mock.calls[0][0].data.avatarUrl,
+      ).toBeNull();
+    });
+
+    it('updates the existing row rather than adding one per email casing', async () => {
+      prisma.patientAvatar.findFirst.mockResolvedValue({ id: 'avatar-1' });
+
+      await service.upsertPatientAvatar(CLINIC, 'Maria@Example.test', 'data:1');
+
+      expect(prisma.patientAvatar.update).toHaveBeenCalledWith({
+        where: { id: 'avatar-1' },
+        data: { avatarUrl: 'data:1' },
+      });
+      expect(prisma.patientAvatar.create).not.toHaveBeenCalled();
     });
 
     it('returns an entry for every requested identifier, null where absent', async () => {
-      prisma.patientAvatar.findMany.mockResolvedValue([
+      prisma.$queryRaw.mockResolvedValue([
         { identifier: 'a@x.test', avatarUrl: 'data:1' },
       ]);
 
@@ -211,9 +239,8 @@ describe('PatientsService', () => {
         'b@x.test',
       ]);
 
-      expect(
-        prisma.patientAvatar.findMany.mock.calls[0][0].where.identifier.in,
-      ).toEqual(['a@x.test', 'b@x.test']);
+      // One raw query, carrying each distinct identifier exactly once.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     });
 
     it('skips the query entirely when every identifier is blank', async () => {
@@ -222,7 +249,7 @@ describe('PatientsService', () => {
       ).resolves.toEqual({
         avatars: {},
       });
-      expect(prisma.patientAvatar.findMany).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 
@@ -234,7 +261,21 @@ describe('PatientsService', () => {
 
       expect(prisma.appointment.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientEmail: 'maria@example.test',
+        patientId: null,
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
+      });
+    });
+
+    it('finds the whole history when the email casing varied across visits', async () => {
+      // Regression: an exact match returned only the appointments whose email
+      // happened to be spelled the way the caller typed it, silently hiding
+      // the rest of the patient's history.
+      await service.getPatientHistory(CLINIC, ' Maria@Example.TEST ');
+
+      expect(prisma.appointment.findMany.mock.calls[0][0].where).toEqual({
+        clinicId: CLINIC,
+        patientId: null,
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
       });
     });
 
@@ -245,7 +286,8 @@ describe('PatientsService', () => {
 
       expect(prisma.appointment.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientName: 'Maria Silva',
+        patientId: null,
+        patientName: { equals: 'Maria Silva', mode: 'insensitive' },
         patientEmail: null,
       });
     });
@@ -254,7 +296,7 @@ describe('PatientsService', () => {
       await service.getPatientHistory(CLINIC, 'maria@');
 
       expect(prisma.appointment.findMany.mock.calls[0][0].where).toMatchObject({
-        patientName: 'maria@',
+        patientName: { equals: 'maria@', mode: 'insensitive' },
       });
     });
 

@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   BadRequestException,
   ForbiddenException,
@@ -78,7 +79,14 @@ describe('ClinicalRecordsService — attachments, templates and views', () => {
 
   beforeEach(() => {
     prisma = createPrisma();
-    service = new ClinicalRecordsService(prisma as never);
+    service = new ClinicalRecordsService(
+      prisma as never,
+      {
+        assertUnambiguousIdentity: jest.fn().mockResolvedValue(undefined),
+        isAmbiguousIdentity: jest.fn().mockResolvedValue(false),
+      } as never,
+      createPatientResolverMock() as never,
+    );
   });
 
   // ── Attachments ────────────────────────────────────────────────────────────
@@ -453,7 +461,8 @@ describe('ClinicalRecordsService — attachments, templates and views', () => {
 
       expect(prisma.clinicalRecord.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientEmail: 'maria@example.test',
+        patientId: null,
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
       });
     });
 
@@ -469,7 +478,8 @@ describe('ClinicalRecordsService — attachments, templates and views', () => {
       // of every other patient who happens to share the name.
       expect(prisma.clinicalRecord.findMany.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientName: 'Maria Silva',
+        patientId: null,
+        patientName: { equals: 'Maria Silva', mode: 'insensitive' },
         patientEmail: null,
       });
     });
@@ -588,7 +598,8 @@ describe('ClinicalRecordsService — attachments, templates and views', () => {
 
       expect(prisma.odontogramRecord.findFirst.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientEmail: 'maria@example.test',
+        patientId: null,
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
       });
     });
 
@@ -638,7 +649,8 @@ describe('ClinicalRecordsService — attachments, templates and views', () => {
 
       expect(prisma.clinicalRecord.findFirst.mock.calls[0][0].where).toEqual({
         clinicId: CLINIC,
-        patientName: 'Maria Silva',
+        patientId: null,
+        patientName: { equals: 'Maria Silva', mode: 'insensitive' },
         patientEmail: null,
         profile: { userId: DENTIST_USER },
       });

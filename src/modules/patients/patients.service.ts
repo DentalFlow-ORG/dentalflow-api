@@ -6,9 +6,16 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PatientResolverService } from '../../common/services/patient-resolver.service';
 import { brazilTodayIso } from '../../common/utils/brazil-timezone';
+import {
+  normalizePatientEmail,
+  patientIdentifierFor,
+  patientIdentityKey,
+} from '../../common/utils/patient-identity';
 
 interface PatientRow {
+  patientId: string | null;
   identifier: string;
   patientName: string;
   patientEmail: string | null;
@@ -30,6 +37,7 @@ export type AttentionReason =
 export type AttentionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface AttentionItem {
+  patientId: string | null;
   identifier: string;
   patientName: string;
   patientEmail: string | null;
@@ -46,37 +54,80 @@ export interface AttentionItem {
 
 @Injectable()
 export class PatientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly patientResolver: PatientResolverService,
+  ) {}
 
   async listPatients(clinicId: string, search?: string) {
     const searchFilter = search?.trim()
-      ? Prisma.sql`AND ("patientName" ILIKE ${`%${search.trim()}%`} OR "patientEmail" ILIKE ${`%${search.trim()}%`})`
+      ? Prisma.sql`AND (n.norm_name ILIKE ${`%${search.trim()}%`} OR n.norm_email ILIKE ${`%${search.trim()}%`} OR p.name ILIKE ${`%${search.trim()}%`} OR p.email ILIKE ${`%${search.trim()}%`})`
       : Prisma.sql``;
 
+    // Appointments group on `patientId` once they have one, so a patient who
+    // changed email or was typed differently stays a single row, and two people
+    // who share every contact value stay separate rows.
+    //
+    // Rows that predate the identity migration have no patientId, so they fall
+    // back to the normalized contact key — the legacy behaviour, kept only so
+    // historical appointments remain visible until an operator assigns them an
+    // identity. Contact values never group a row that already has a patientId.
     const rows = await this.prisma.$queryRaw<PatientRow[]>(
       Prisma.sql`
+        WITH n AS (
+          SELECT
+            a."clinicId",
+            a.status,
+            a."appointmentDate",
+            a."patientPhone",
+            a."patientId",
+            NULLIF(LOWER(TRIM(a."patientEmail")), '') AS norm_email,
+            TRIM(a."patientName") AS norm_name,
+            COALESCE(
+              a."patientId",
+              NULLIF(LOWER(TRIM(a."patientEmail")), ''),
+              LOWER(TRIM(a."patientName"))
+            ) AS identity_key
+          FROM appointments a
+          WHERE a."clinicId" = ${clinicId}
+        )
         SELECT
-          COALESCE(a."patientEmail", a."patientName") AS identifier,
-          a."patientName",
-          a."patientEmail",
-          MAX(a."patientPhone") AS "patientPhone",
+          n."patientId" AS "patientId",
+          COALESCE(MAX(p.email), MAX(n.norm_email), MAX(n.norm_name)) AS identifier,
+          COALESCE(MAX(p.name), MAX(n.norm_name)) AS "patientName",
+          COALESCE(MAX(p.email), MAX(n.norm_email)) AS "patientEmail",
+          COALESCE(MAX(p.phone), MAX(n."patientPhone")) AS "patientPhone",
           COUNT(*)::bigint AS "totalAppointments",
-          COUNT(CASE WHEN a.status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
-          COUNT(CASE WHEN a.status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
-          MAX(a."appointmentDate") AS "lastVisit",
-          MAX(pa."avatarUrl") AS "avatarUrl"
-        FROM appointments a
-        LEFT JOIN patient_avatars pa
-          ON pa."clinicId" = a."clinicId"
-          AND pa.identifier = COALESCE(a."patientEmail", a."patientName")
-        WHERE a."clinicId" = ${clinicId}
+          COUNT(CASE WHEN n.status::text = 'COMPLETED' THEN 1 END)::bigint AS "completedAppointments",
+          COUNT(CASE WHEN n.status::text = 'CANCELED' THEN 1 END)::bigint AS "canceledAppointments",
+          MAX(n."appointmentDate") AS "lastVisit",
+          MAX(COALESCE(pid."avatarUrl", pa."avatarUrl")) AS "avatarUrl"
+        FROM n
+        LEFT JOIN patients p
+          ON p.id = n."patientId"
+          AND p."clinicId" = n."clinicId"
+          AND p."deletedAt" IS NULL
+        LEFT JOIN patient_avatars pid
+          ON pid."clinicId" = n."clinicId"
+          AND pid."patientId" = n."patientId"
+        LEFT JOIN (
+          SELECT "clinicId", LOWER(TRIM(identifier)) AS identifier, MAX("avatarUrl") AS "avatarUrl"
+          FROM patient_avatars
+          WHERE "clinicId" = ${clinicId} AND "patientId" IS NULL
+          GROUP BY "clinicId", LOWER(TRIM(identifier))
+        ) pa
+          ON pa."clinicId" = n."clinicId"
+          AND n."patientId" IS NULL
+          AND pa.identifier = n.identity_key
+        WHERE TRUE
         ${searchFilter}
-        GROUP BY COALESCE(a."patientEmail", a."patientName"), a."patientName", a."patientEmail"
-        ORDER BY MAX(a."appointmentDate") DESC NULLS LAST
+        GROUP BY n.identity_key, n."patientId"
+        ORDER BY MAX(n."appointmentDate") DESC NULLS LAST
       `,
     );
 
     const data = rows.map((row) => ({
+      patientId: row.patientId ?? null,
       identifier: row.identifier,
       patientName: row.patientName,
       patientEmail: row.patientEmail,
@@ -93,9 +144,30 @@ export class PatientsService {
     return { data, total: data.length };
   }
 
-  async getPatientAvatar(clinicId: string, identifier: string) {
-    const row = await this.prisma.patientAvatar.findUnique({
-      where: { clinicId_identifier: { clinicId, identifier } },
+  async getPatientAvatar(
+    clinicId: string,
+    identifier: string,
+    patientId?: string,
+  ) {
+    const resolved = await this.patientResolver.resolveReference(
+      clinicId,
+      identifier,
+      patientId,
+    );
+    patientId = resolved?.id;
+    // A patientId keeps two people who share an address on separate avatars.
+    // Without one, the legacy identifier is matched case-insensitively so
+    // avatars stored before normalization still resolve.
+    const row = await this.prisma.patientAvatar.findFirst({
+      where: {
+        clinicId,
+        ...(patientId
+          ? { patientId }
+          : {
+              patientId: null,
+              identifier: { equals: identifier.trim(), mode: 'insensitive' },
+            }),
+      },
       select: { avatarUrl: true },
     });
     return { avatarUrl: row?.avatarUrl ?? null };
@@ -114,15 +186,51 @@ export class PatientsService {
 
     if (identifiers.length === 0) return { avatars: {} };
 
-    const rows = await this.prisma.patientAvatar.findMany({
-      where: { clinicId, identifier: { in: identifiers } },
-      select: { identifier: true, avatarUrl: true },
-    });
+    // Compatibility resolution must also guard the legacy batch entry point.
+    const references = await Promise.all(
+      identifiers.map((identifier) =>
+        this.patientResolver.resolveReference(clinicId, identifier),
+      ),
+    );
+    if (references.some(Boolean)) {
+      const entries = await Promise.all(
+        identifiers.map(async (identifier, index) => {
+          const avatar = await this.getPatientAvatar(
+            clinicId,
+            identifier,
+            references[index]?.id,
+          );
+          return [identifier, avatar.avatarUrl] as const;
+        }),
+      );
+      return { avatars: Object.fromEntries(entries) };
+    }
+
+    // Case-insensitive lookup keeps avatars stored under a pre-normalization
+    // spelling reachable from the normalized identifiers clients now send.
+    const keys = identifiers.map((id) => id.toLowerCase());
+    const rows = await this.prisma.$queryRaw<
+      { identifier: string; avatarUrl: string | null }[]
+    >(
+      Prisma.sql`
+        SELECT identifier, "avatarUrl"
+        FROM patient_avatars
+        WHERE "clinicId" = ${clinicId}
+          AND "patientId" IS NULL
+          AND LOWER(TRIM(identifier)) IN (${Prisma.join(keys)})
+      `,
+    );
+
+    const byKey = new Map<string, string | null>();
+    for (const row of rows) {
+      byKey.set(row.identifier.trim().toLowerCase(), row.avatarUrl ?? null);
+    }
 
     // Build result: every requested identifier gets an entry (null if absent).
     const avatars: Record<string, string | null> = {};
-    for (const id of identifiers) avatars[id] = null;
-    for (const row of rows) avatars[row.identifier] = row.avatarUrl ?? null;
+    for (const id of identifiers) {
+      avatars[id] = byKey.get(id.toLowerCase()) ?? null;
+    }
 
     return { avatars };
   }
@@ -131,23 +239,75 @@ export class PatientsService {
     clinicId: string,
     identifier: string,
     avatarBase64: string | null | undefined,
+    patientId?: string,
   ) {
-    await this.prisma.patientAvatar.upsert({
-      where: { clinicId_identifier: { clinicId, identifier } },
-      create: { clinicId, identifier, avatarUrl: avatarBase64 ?? null },
-      update: { avatarUrl: avatarBase64 ?? null },
+    // The patient must be addressable by this clinic before anything is
+    // written against it. Without this check a clinic could create an avatar
+    // row pointing at another tenant's patient id.
+    const resolved = await this.patientResolver.resolveReference(
+      clinicId,
+      identifier,
+      patientId,
+    );
+    patientId = resolved?.id;
+
+    // With a patientId the row belongs to that patient alone, enforced by the
+    // (clinicId, patientId) unique index. Without one, reuse a row that differs
+    // only by casing or padding so a patient does not accumulate one avatar per
+    // spelling of their email.
+    const existing = await this.prisma.patientAvatar.findFirst({
+      where: {
+        clinicId,
+        ...(patientId
+          ? { patientId }
+          : {
+              patientId: null,
+              identifier: { equals: identifier.trim(), mode: 'insensitive' },
+            }),
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      await this.prisma.patientAvatar.update({
+        where: { id: existing.id },
+        data: { avatarUrl: avatarBase64 ?? null },
+      });
+      return;
+    }
+
+    await this.prisma.patientAvatar.create({
+      data: {
+        clinicId,
+        patientId: patientId ?? null,
+        // `identifier` predates stable identity and still carries a
+        // (clinicId, identifier) unique index, which two patients sharing an
+        // address would collide on. Once a row has a patientId that column is
+        // the identity, so the legacy key is set to it to keep the old index
+        // satisfied without letting contact values group two people.
+        identifier: patientId ?? identifier.trim(),
+        avatarUrl: avatarBase64 ?? null,
+      },
     });
   }
 
-  async getPatientHistory(clinicId: string, identifier: string) {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-
+  async getPatientHistory(
+    clinicId: string,
+    identifier: string,
+    patientId?: string,
+  ) {
+    // A supplied patientId is identity: no contact value takes part in the
+    // lookup, so two people sharing every attribute keep separate histories.
+    // Without one, legacy contact matching still serves un-migrated rows.
+    const patientWhere = await this.patientResolver.scopeWhere(
+      clinicId,
+      identifier,
+      patientId,
+    );
     const appointments = await this.prisma.appointment.findMany({
       where: {
         clinicId,
-        ...(isEmail
-          ? { patientEmail: identifier }
-          : { patientName: identifier, patientEmail: null }),
+        ...patientWhere,
       },
       include: {
         service: { select: { id: true, name: true } },
@@ -172,6 +332,7 @@ export class PatientsService {
     const appointments = await this.prisma.appointment.findMany({
       where: { clinicId },
       select: {
+        patientId: true,
         patientName: true,
         patientEmail: true,
         patientPhone: true,
@@ -191,6 +352,7 @@ export class PatientsService {
     const groupMap = new Map<
       string,
       {
+        patientId: string | null;
         identifier: string;
         patientName: string;
         patientEmail: string | null;
@@ -200,15 +362,19 @@ export class PatientsService {
     >();
 
     for (const appt of appointments) {
-      const key =
-        appt.patientEmail?.toLowerCase().trim() ??
-        appt.patientName.trim().toLowerCase();
+      // Same key and same emitted identifier as the patient list and the
+      // history lookup, so the attention queue cannot disagree with them
+      // about who a patient is.
+      const key = appt.patientId
+        ? `patient:${appt.patientId}`
+        : `legacy:${patientIdentityKey(appt)}`;
 
       if (!groupMap.has(key)) {
         groupMap.set(key, {
-          identifier: appt.patientEmail ?? appt.patientName,
-          patientName: appt.patientName,
-          patientEmail: appt.patientEmail,
+          patientId: appt.patientId ?? null,
+          identifier: patientIdentifierFor(appt),
+          patientName: appt.patientName.trim(),
+          patientEmail: normalizePatientEmail(appt.patientEmail),
           patientPhone: null,
           appointments: [],
         });
@@ -294,6 +460,7 @@ export class PatientsService {
             : 'LOW';
 
       items.push({
+        patientId: group.patientId,
         identifier: group.identifier,
         patientName: group.patientName,
         patientEmail: group.patientEmail,

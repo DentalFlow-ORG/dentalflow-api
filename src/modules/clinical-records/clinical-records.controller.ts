@@ -110,6 +110,7 @@ export class ClinicalRecordsController {
       user.id,
       user.role,
       query.identifier,
+      query.patientId,
     );
   }
 
@@ -129,6 +130,7 @@ export class ClinicalRecordsController {
       user.id,
       user.role,
       query.identifier,
+      query.patientId,
     );
   }
 
@@ -146,6 +148,7 @@ export class ClinicalRecordsController {
       dto.identifier,
       dto.patientName,
       dto.data,
+      dto.patientId,
     );
   }
 

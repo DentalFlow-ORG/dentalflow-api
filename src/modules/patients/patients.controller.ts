@@ -36,7 +36,11 @@ export class PatientsController {
     @Query() query: PatientAvatarQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
-    return this.patientsService.getPatientAvatar(clinicId, query.identifier);
+    return this.patientsService.getPatientAvatar(
+      clinicId,
+      query.identifier,
+      query.patientId,
+    );
   }
 
   @Post('avatars/batch')
@@ -61,6 +65,7 @@ export class PatientsController {
       clinicId,
       dto.identifier,
       dto.avatarBase64,
+      dto.patientId,
     );
   }
 
@@ -76,6 +81,10 @@ export class PatientsController {
     @Query() query: PatientHistoryQueryDto,
   ) {
     const clinicId = this.accessPolicy.assertClinicMember(user);
-    return this.patientsService.getPatientHistory(clinicId, query.identifier);
+    return this.patientsService.getPatientHistory(
+      clinicId,
+      query.identifier,
+      query.patientId,
+    );
   }
 }

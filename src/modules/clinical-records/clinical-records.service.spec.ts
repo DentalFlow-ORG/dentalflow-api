@@ -1,3 +1,4 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import {
   BadRequestException,
   ForbiddenException,
@@ -89,7 +90,14 @@ describe('ClinicalRecordsService', () => {
 
   beforeEach(() => {
     prisma = createPrisma();
-    service = new ClinicalRecordsService(prisma as never);
+    service = new ClinicalRecordsService(
+      prisma as never,
+      {
+        assertUnambiguousIdentity: jest.fn().mockResolvedValue(undefined),
+        isAmbiguousIdentity: jest.fn().mockResolvedValue(false),
+      } as never,
+      createPatientResolverMock() as never,
+    );
   });
 
   // ── Reading ────────────────────────────────────────────────────────────────
@@ -313,7 +321,7 @@ describe('ClinicalRecordsService', () => {
         prisma.odontogramRecord.findFirst.mock.calls[0][0].where,
       ).toMatchObject({
         clinicId: CLINIC,
-        patientEmail: 'maria@example.test',
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
       });
     });
 
@@ -327,7 +335,7 @@ describe('ClinicalRecordsService', () => {
       expect(
         prisma.odontogramRecord.findFirst.mock.calls[0][0].where,
       ).toMatchObject({
-        patientName: 'Maria Silva',
+        patientName: { equals: 'Maria Silva', mode: 'insensitive' },
         patientEmail: null,
       });
     });
@@ -641,7 +649,7 @@ describe('ClinicalRecordsService', () => {
         prisma.odontogramRecord.findFirst.mock.calls[0][0].where,
       ).toMatchObject({
         clinicId: CLINIC,
-        patientEmail: 'maria@example.test',
+        patientEmail: { equals: 'maria@example.test', mode: 'insensitive' },
       });
     });
 
@@ -651,7 +659,7 @@ describe('ClinicalRecordsService', () => {
       expect(
         prisma.odontogramRecord.findFirst.mock.calls[0][0].where,
       ).toMatchObject({
-        patientName: 'Maria Silva',
+        patientName: { equals: 'Maria Silva', mode: 'insensitive' },
         patientEmail: null,
       });
     });

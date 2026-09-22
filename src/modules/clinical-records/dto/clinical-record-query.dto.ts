@@ -23,6 +23,18 @@ export class ListClinicalRecordsQueryDto {
 }
 
 export class ClinicalIdentifierQueryDto {
+  /**
+   * Stable clinical identity. When present it is authoritative and
+   * `identifier` is ignored. `identifier` remains only so an older frontend
+   * keeps working during the migration; it resolves through the legacy
+   * contact-matching path, which refuses ambiguous matches.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
   @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()

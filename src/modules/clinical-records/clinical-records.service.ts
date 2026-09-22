@@ -7,6 +7,13 @@ import {
 } from '@nestjs/common';
 import { ClinicalRecordStatus, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PatientIdentityService } from '../../common/services/patient-identity.service';
+import { PatientResolverService } from '../../common/services/patient-resolver.service';
+import {
+  isEmailIdentifier,
+  normalizePatientEmailForWrite,
+  patientIdentityFilter,
+} from '../../common/utils/patient-identity';
 import { CreateClinicalRecordDto } from './dto/create-clinical-record.dto';
 import { UpdateClinicalRecordDto } from './dto/update-clinical-record.dto';
 import { CreateClinicalTemplateDto } from './dto/create-clinical-template.dto';
@@ -30,7 +37,38 @@ const RECORD_INCLUDE = {
 
 @Injectable()
 export class ClinicalRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly patientIdentity: PatientIdentityService,
+    private readonly patientResolver: PatientResolverService,
+  ) {}
+
+  /**
+   * Builds the patient filter for a clinical query.
+   *
+   * A supplied `patientId` is identity: it is checked against the caller's
+   * clinic and then used directly, so no contact value takes part in the
+   * lookup and two people sharing every attribute stay separate.
+   *
+   * Without one the query falls back to legacy contact matching, which keeps
+   * the ambiguity guard: rows that cannot be attributed to a single person are
+   * refused rather than merged. Legacy rows are reachable this way until they
+   * are given a patientId.
+   */
+  private async patientScopeWhere(
+    clinicId: string,
+    identifier: string,
+    patientId?: string,
+  ): Promise<
+    { patientId: string | null } & ReturnType<typeof patientIdentityFilter>
+  > {
+    if (!patientId)
+      await this.patientIdentity.assertUnambiguousIdentity(
+        clinicId,
+        identifier,
+      );
+    return this.patientResolver.scopeWhere(clinicId, identifier, patientId);
+  }
 
   // ----------------------------------------------------------------
   // Clinical Records — CRUD
@@ -116,13 +154,45 @@ export class ClinicalRecordsService {
       patientPhone = patientPhone ?? appointment.patientPhone ?? undefined;
     }
 
+    // Identity comes from the appointment's FK when the record is attached to
+    // one — a structural relationship, not a contact match. Otherwise it is
+    // resolved from the identifier through the single resolver, which refuses
+    // to choose between two candidates.
+    const patientId = appointment
+      ? appointment.patientId
+      : dto.patientId
+        ? (
+            await this.patientResolver.resolveReference(
+              clinicId,
+              patientEmail ?? patientName,
+              dto.patientId,
+            )
+          )?.id
+        : (
+            await this.patientResolver.createPatient(clinicId, {
+              name: patientName,
+              email: patientEmail,
+              phone: patientPhone,
+            })
+          ).id;
+    if (
+      dto.patientId &&
+      appointment &&
+      dto.patientId !== appointment.patientId
+    ) {
+      throw new BadRequestException(
+        'O paciente não corresponde à consulta selecionada.',
+      );
+    }
+
     const record = await this.prisma.clinicalRecord.create({
       data: {
         clinicId,
         appointmentId: dto.appointmentId,
+        patientId,
         profileId: profile.id,
         patientName,
-        patientEmail,
+        patientEmail: normalizePatientEmailForWrite(patientEmail),
         patientPhone,
         chiefComplaint: dto.chiefComplaint,
         anamnesis: dto.anamnesis,
@@ -200,16 +270,26 @@ export class ClinicalRecordsService {
     // This is best-effort: if no odontogram exists or the fetch fails for any
     // reason, completion proceeds and odontogramSnapshot remains null.
     const identifier = existing.patientEmail ?? existing.patientName;
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
     let snapshotData: Prisma.InputJsonValue | undefined;
 
     try {
+      // Skip the snapshot when the identifier covers more than one person:
+      // embedding another patient's dental chart into this record would be a
+      // permanent, hard-to-detect clinical error. The throw is caught below.
+      const patientWhere = existing.patientId
+        ? {
+            patientId: (
+              await this.patientResolver.requirePatient(
+                clinicId,
+                existing.patientId,
+              )
+            ).id,
+          }
+        : await this.patientScopeWhere(clinicId, identifier);
       const odontogramRecord = await this.prisma.odontogramRecord.findFirst({
         where: {
           clinicId,
-          ...(isEmail
-            ? { patientEmail: identifier }
-            : { patientName: identifier, patientEmail: null }),
+          ...patientWhere,
         },
         orderBy: { updatedAt: 'desc' },
         select: { data: true },
@@ -401,15 +481,18 @@ export class ClinicalRecordsService {
     userId: string,
     role: UserRole,
     identifier: string,
+    patientId?: string,
   ) {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const patientWhere = await this.patientScopeWhere(
+      clinicId,
+      identifier,
+      patientId,
+    );
 
     const records = await this.prisma.clinicalRecord.findMany({
       where: {
         clinicId,
-        ...(isEmail
-          ? { patientEmail: identifier }
-          : { patientName: identifier, patientEmail: null }),
+        ...patientWhere,
         ...(role === 'DENTIST' ? { profile: { userId } } : {}),
       },
       include: RECORD_INCLUDE,
@@ -596,22 +679,25 @@ export class ClinicalRecordsService {
     userId: string,
     role: UserRole,
     identifier: string,
+    patientId?: string,
   ) {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const patientWhere = await this.patientScopeWhere(
+      clinicId,
+      identifier,
+      patientId,
+    );
+
     await this.assertDentistOdontogramAccess(
       clinicId,
       userId,
       role,
-      identifier,
-      isEmail,
+      patientWhere,
     );
 
     return await this.prisma.odontogramRecord.findFirst({
       where: {
         clinicId,
-        ...(isEmail
-          ? { patientEmail: identifier }
-          : { patientName: identifier, patientEmail: null }),
+        ...patientWhere,
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -624,22 +710,25 @@ export class ClinicalRecordsService {
     identifier: string,
     patientName: string,
     data: Prisma.InputJsonValue,
+    patientId?: string,
   ) {
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    const patientWhere = await this.patientScopeWhere(
+      clinicId,
+      identifier,
+      patientId,
+    );
+
     await this.assertDentistOdontogramAccess(
       clinicId,
       userId,
       role,
-      identifier,
-      isEmail,
+      patientWhere,
     );
 
     const existing = await this.prisma.odontogramRecord.findFirst({
       where: {
         clinicId,
-        ...(isEmail
-          ? { patientEmail: identifier }
-          : { patientName: identifier, patientEmail: null }),
+        ...patientWhere,
       },
     });
 
@@ -653,7 +742,10 @@ export class ClinicalRecordsService {
     return this.prisma.odontogramRecord.create({
       data: {
         clinicId,
-        patientEmail: isEmail ? identifier : null,
+        patientId: patientWhere.patientId,
+        patientEmail: isEmailIdentifier(identifier)
+          ? identifier.trim().toLowerCase()
+          : null,
         patientName,
         data,
         createdByUserId: userId,
@@ -719,6 +811,7 @@ export class ClinicalRecordsService {
       // without a second lookup that forgets the clinic scope.
       select: {
         id: true,
+        patientId: true,
         patientName: true,
         patientEmail: true,
         patientPhone: true,
@@ -756,17 +849,16 @@ export class ClinicalRecordsService {
     clinicId: string,
     userId: string,
     role: UserRole,
-    identifier: string,
-    isEmail: boolean,
+    patientWhere:
+      | { patientId: string | null }
+      | ReturnType<typeof patientIdentityFilter>,
   ): Promise<void> {
     if (role !== 'DENTIST') return;
 
     const record = await this.prisma.clinicalRecord.findFirst({
       where: {
         clinicId,
-        ...(isEmail
-          ? { patientEmail: identifier }
-          : { patientName: identifier, patientEmail: null }),
+        ...patientWhere,
         profile: { userId },
       },
       select: { id: true },

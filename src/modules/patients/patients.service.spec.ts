@@ -1,19 +1,29 @@
+import { createPatientResolverMock } from '../../../test/support/patient-resolver.mock';
 import { PatientsService } from './patients.service';
 
 // ── Prisma mock ───────────────────────────────────────────────────────────────
 
 const prismaMock = {
-  patientAvatar: {
-    findMany: jest.fn(),
-  },
+  // Avatars are matched on LOWER(TRIM(identifier)) so rows written before
+  // patient-identity normalization stay reachable, which needs raw SQL.
+  $queryRaw: jest.fn(),
 };
+
+/** Bound parameters of the raw avatar query: [clinicId, ...identity keys]. */
+function queryValues(call = 0): unknown[] {
+  return (prismaMock.$queryRaw.mock.calls[call][0] as { values: unknown[] })
+    .values;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const CLINIC_ID = 'clinic-abc';
 
 function createService() {
-  return new PatientsService(prismaMock as any);
+  return new PatientsService(
+    prismaMock as any,
+    createPatientResolverMock() as never,
+  );
 }
 
 // ── batchGetPatientAvatars ────────────────────────────────────────────────────
@@ -22,7 +32,7 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('returns an avatar map for multiple identifiers', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([
+    prismaMock.$queryRaw.mockResolvedValue([
       { identifier: 'a@test.com', avatarUrl: 'base64a' },
       { identifier: 'b@test.com', avatarUrl: 'base64b' },
     ]);
@@ -39,7 +49,7 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   });
 
   it('returns null for identifiers that have no saved avatar', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([
+    prismaMock.$queryRaw.mockResolvedValue([
       { identifier: 'a@test.com', avatarUrl: 'base64a' },
     ]);
 
@@ -53,7 +63,7 @@ describe('PatientsService.batchGetPatientAvatars', () => {
   });
 
   it('deduplicates identifiers before querying so each is sent once', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
 
     await createService().batchGetPatientAvatars(CLINIC_ID, [
       'dup@test.com',
@@ -61,45 +71,36 @@ describe('PatientsService.batchGetPatientAvatars', () => {
       'dup@test.com',
     ]);
 
-    const { where } = prismaMock.patientAvatar.findMany.mock.calls[0][0] as {
-      where: { identifier: { in: string[] }; clinicId: string };
-    };
-    expect(where.identifier.in).toHaveLength(1);
-    expect(where.identifier.in).toEqual(['dup@test.com']);
+    // clinicId plus exactly one identity key — the duplicates collapsed.
+    expect(queryValues()).toEqual([CLINIC_ID, 'dup@test.com']);
   });
 
   it('trims leading/trailing whitespace from identifiers', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
 
     await createService().batchGetPatientAvatars(CLINIC_ID, [
       '  spaced@test.com  ',
     ]);
 
-    const { where } = prismaMock.patientAvatar.findMany.mock.calls[0][0] as {
-      where: { identifier: { in: string[] }; clinicId: string };
-    };
-    expect(where.identifier.in).toContain('spaced@test.com');
-    expect(where.identifier.in).not.toContain('  spaced@test.com  ');
+    expect(queryValues()).toContain('spaced@test.com');
+    expect(queryValues()).not.toContain('  spaced@test.com  ');
   });
 
   it('scopes the query to the provided clinicId (tenant isolation)', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockResolvedValue([]);
 
     await createService().batchGetPatientAvatars('clinic-other', [
       'x@test.com',
     ]);
 
-    const { where } = prismaMock.patientAvatar.findMany.mock.calls[0][0] as {
-      where: { clinicId: string; identifier: { in: string[] } };
-    };
-    expect(where.clinicId).toBe('clinic-other');
+    expect(queryValues()[0]).toBe('clinic-other');
   });
 
   it('returns an empty avatars map and skips the DB call when identifiers is empty', async () => {
     const result = await createService().batchGetPatientAvatars(CLINIC_ID, []);
 
     expect(result.avatars).toEqual({});
-    expect(prismaMock.patientAvatar.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('returns an empty avatars map and skips DB when all identifiers are blank after trim', async () => {
@@ -109,11 +110,11 @@ describe('PatientsService.batchGetPatientAvatars', () => {
     ]);
 
     expect(result.avatars).toEqual({});
-    expect(prismaMock.patientAvatar.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('handles a row with avatarUrl: null gracefully', async () => {
-    prismaMock.patientAvatar.findMany.mockResolvedValue([
+    prismaMock.$queryRaw.mockResolvedValue([
       { identifier: 'noimg@test.com', avatarUrl: null },
     ]);
 

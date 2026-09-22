@@ -12,6 +12,16 @@ import {
 export const MAX_AVATAR_BASE64_LENGTH = 200_000;
 
 export class UpsertPatientAvatarDto {
+  /**
+   * Stable clinical identity. Authoritative when present; `identifier` is the
+   * compatibility fallback for clients that have not migrated yet.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(320)

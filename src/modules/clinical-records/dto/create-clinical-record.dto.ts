@@ -12,6 +12,12 @@ const CLINICAL_TEXT_MAX_LENGTH = 10_000;
 export class CreateClinicalRecordDto {
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  patientId?: string;
+
+  @IsOptional()
+  @IsString()
   appointmentId?: string;
 
   @IsString()
