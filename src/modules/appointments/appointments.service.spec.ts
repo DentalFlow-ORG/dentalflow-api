@@ -30,7 +30,7 @@ const availabilityRange = {
 };
 
 const txMock = {
-  $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
   appointment: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -159,7 +159,7 @@ describe('AppointmentsService scheduling concurrency', () => {
       createDto(),
     );
 
-    expect(txMock.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(txMock.$executeRaw).toHaveBeenCalledTimes(1);
     expect(txMock.appointment.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         clinicId: CLINIC_ID,
@@ -168,10 +168,10 @@ describe('AppointmentsService scheduling concurrency', () => {
       }),
       select: { id: true },
     });
-    expect(txMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(txMock.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       txMock.appointment.findFirst.mock.invocationCallOrder[0],
     );
-    expect(txMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(txMock.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       txMock.appointment.create.mock.invocationCallOrder[0],
     );
   });
@@ -227,7 +227,7 @@ describe('AppointmentsService scheduling concurrency', () => {
       { startTime: '10:00', durationMinutes: 30 },
     );
 
-    expect(txMock.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(txMock.$executeRaw).toHaveBeenCalledTimes(1);
     expect(txMock.appointment.findFirst).toHaveBeenNthCalledWith(2, {
       where: expect.objectContaining({
         clinicId: CLINIC_ID,
@@ -236,10 +236,10 @@ describe('AppointmentsService scheduling concurrency', () => {
       }),
       select: { id: true },
     });
-    expect(txMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(txMock.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       txMock.appointment.findFirst.mock.invocationCallOrder[1],
     );
-    expect(txMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(txMock.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       txMock.appointment.update.mock.invocationCallOrder[0],
     );
   });

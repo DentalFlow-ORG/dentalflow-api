@@ -1167,7 +1167,9 @@ export class AppointmentsService {
     appointmentDate: Date,
   ) {
     const lockKey = `${clinicId}:${profileId}:${formatDateInputValue(appointmentDate)}`;
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    // Serialize the availability check and insert for this clinic/profile/day.
+    // executeRaw preserves the transaction lock without deserializing PostgreSQL void.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
   }
 
   private async assertProfileAvailability(

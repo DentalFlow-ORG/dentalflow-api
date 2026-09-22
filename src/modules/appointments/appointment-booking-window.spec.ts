@@ -36,7 +36,7 @@ const FROZEN_NOW = new Date('2026-06-01T12:00:00.000Z');
 
 function createHarness() {
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue([]),
     appointment: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'appointment-1' }),
