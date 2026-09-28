@@ -16,10 +16,16 @@ import {
   trimValue,
 } from '../../../common/utils/transform.helpers';
 import { MAX_ID_LENGTH } from '../../../common/validators/input-validation.decorators';
-
-const personNamePattern = /^[\p{L}\s.'-]+$/u;
-const brPhonePattern = /^\d{10,11}$/;
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import {
+  BR_PHONE_DIGITS_PATTERN,
+  PERSON_NAME_PATTERN,
+  personNameMessage,
+  SLUG_PATTERN,
+} from '../../../common/validators/br-field-patterns';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_COMPLEXITY_REGEX,
+} from '../../../common/validators/password-policy';
 
 export class CreateMemberDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))
@@ -27,9 +33,8 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, {
-    message:
-      'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  @Matches(PERSON_NAME_PATTERN, {
+    message: personNameMessage('O nome'),
   })
   firstName!: string;
 
@@ -38,9 +43,8 @@ export class CreateMemberDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, {
-    message:
-      'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  @Matches(PERSON_NAME_PATTERN, {
+    message: personNameMessage('O sobrenome'),
   })
   lastName!: string;
 
@@ -52,6 +56,7 @@ export class CreateMemberDto {
   @IsString()
   @MinLength(8)
   @MaxLength(72)
+  @Matches(PASSWORD_COMPLEXITY_REGEX, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password!: string;
 
   @IsIn(['DENTIST', 'ASSISTANT'])
@@ -60,7 +65,7 @@ export class CreateMemberDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, {
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
     message:
       'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos',
   })
@@ -82,7 +87,7 @@ export class CreateMemberDto {
   @IsString()
   @MinLength(3)
   @MaxLength(60)
-  @Matches(slugPattern, {
+  @Matches(SLUG_PATTERN, {
     message: 'slug must contain only lowercase letters, numbers, and hyphens',
   })
   slug?: string;

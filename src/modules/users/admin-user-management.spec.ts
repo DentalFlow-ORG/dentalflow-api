@@ -22,6 +22,7 @@ import { UsersService } from './users.service';
  */
 
 const USER = 'user-1';
+const ADMIN = 'admin-1';
 const CLINIC = 'clinic-1';
 
 function currentUser(overrides: Record<string, unknown> = {}) {
@@ -85,7 +86,7 @@ describe('UsersService — admin editing a user', () => {
         );
 
         await expect(
-          h.service.adminUpdate(USER, { role } as never),
+          h.service.adminUpdate(USER, { role } as never, ADMIN),
         ).rejects.toThrow(BadRequestException);
         expect(h.prisma.$transaction).not.toHaveBeenCalled();
       },
@@ -95,7 +96,7 @@ describe('UsersService — admin editing a user', () => {
       'refuses %s carrying a clinic',
       async (role) => {
         await expect(
-          h.service.adminUpdate(USER, { role } as never),
+          h.service.adminUpdate(USER, { role } as never, ADMIN),
         ).rejects.toThrow(BadRequestException);
         expect(h.prisma.$transaction).not.toHaveBeenCalled();
       },
@@ -107,10 +108,14 @@ describe('UsersService — admin editing a user', () => {
       noEmailConflict();
 
       await expect(
-        h.service.adminUpdate(USER, {
-          role: 'ADMIN',
-          clinicId: null,
-        } as never),
+        h.service.adminUpdate(
+          USER,
+          {
+            role: 'ADMIN',
+            clinicId: null,
+          } as never,
+          ADMIN,
+        ),
       ).resolves.toBeDefined();
     });
 
@@ -123,10 +128,14 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce(null);
 
       await expect(
-        h.service.adminUpdate(USER, {
-          role: 'DENTIST',
-          clinicId: CLINIC,
-        } as never),
+        h.service.adminUpdate(
+          USER,
+          {
+            role: 'DENTIST',
+            clinicId: CLINIC,
+          } as never,
+          ADMIN,
+        ),
       ).resolves.toBeDefined();
     });
 
@@ -134,7 +143,7 @@ describe('UsersService — admin editing a user', () => {
       noEmailConflict();
 
       await expect(
-        h.service.adminUpdate(USER, { role: 'ASSISTANT' } as never),
+        h.service.adminUpdate(USER, { role: 'ASSISTANT' } as never, ADMIN),
       ).resolves.toBeDefined();
       expect(h.prisma.clinic.findFirst.mock.calls[0][0].where.id).toBe(CLINIC);
     });
@@ -143,13 +152,13 @@ describe('UsersService — admin editing a user', () => {
       h.prisma.user.findFirst.mockResolvedValue(null);
 
       await expect(
-        h.service.adminUpdate('ghost', { firstName: 'x' } as never),
+        h.service.adminUpdate('ghost', { firstName: 'x' } as never, ADMIN),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('ignores a soft-deleted user', async () => {
       await h.service
-        .adminUpdate(USER, { firstName: 'x' } as never)
+        .adminUpdate(USER, { firstName: 'x' } as never, ADMIN)
         .catch(() => undefined);
 
       expect(h.prisma.user.findFirst.mock.calls[0][0].where).toEqual({
@@ -163,7 +172,11 @@ describe('UsersService — admin editing a user', () => {
       h.prisma.clinic.findFirst.mockResolvedValue(null);
 
       await expect(
-        h.service.adminUpdate(USER, { clinicId: 'ghost-clinic' } as never),
+        h.service.adminUpdate(
+          USER,
+          { clinicId: 'ghost-clinic' } as never,
+          ADMIN,
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(h.prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -178,7 +191,11 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce({ id: 'someone-else' });
 
       await expect(
-        h.service.adminUpdate(USER, { email: 'taken@example.test' } as never),
+        h.service.adminUpdate(
+          USER,
+          { email: 'taken@example.test' } as never,
+          ADMIN,
+        ),
       ).rejects.toThrow(ConflictException);
       expect(h.prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -186,9 +203,13 @@ describe('UsersService — admin editing a user', () => {
     it('excludes the account being edited from that check', async () => {
       noEmailConflict();
 
-      await h.service.adminUpdate(USER, {
-        email: 'same@example.test',
-      } as never);
+      await h.service.adminUpdate(
+        USER,
+        {
+          email: 'same@example.test',
+        } as never,
+        ADMIN,
+      );
 
       // Otherwise saving a user without changing their address would collide
       // with themselves.
@@ -199,7 +220,7 @@ describe('UsersService — admin editing a user', () => {
     });
 
     it('runs no conflict check when the address is not being changed', async () => {
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
 
       expect(h.prisma.user.findFirst).toHaveBeenCalledTimes(1);
     });
@@ -213,10 +234,14 @@ describe('UsersService — admin editing a user', () => {
         currentUser({ clinicId: null, role: 'PATIENT' }),
       );
 
-      await h.service.adminUpdate(USER, {
-        role: 'DENTIST',
-        clinicId: CLINIC,
-      } as never);
+      await h.service.adminUpdate(
+        USER,
+        {
+          role: 'DENTIST',
+          clinicId: CLINIC,
+        } as never,
+        ADMIN,
+      );
 
       expect(h.planCapabilities.assertUserLimitAvailable).toHaveBeenCalledWith(
         CLINIC,
@@ -228,7 +253,7 @@ describe('UsersService — admin editing a user', () => {
         currentUser({ isActive: false }),
       );
 
-      await h.service.adminUpdate(USER, { isActive: true } as never);
+      await h.service.adminUpdate(USER, { isActive: true } as never, ADMIN);
 
       expect(h.planCapabilities.assertUserLimitAvailable).toHaveBeenCalled();
     });
@@ -238,7 +263,11 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce(currentUser({ clinicId: 'clinic-old' }))
         .mockResolvedValueOnce(null);
 
-      await h.service.adminUpdate(USER, { clinicId: 'clinic-new' } as never);
+      await h.service.adminUpdate(
+        USER,
+        { clinicId: 'clinic-new' } as never,
+        ADMIN,
+      );
 
       expect(h.planCapabilities.assertUserLimitAvailable).toHaveBeenCalledWith(
         'clinic-new',
@@ -248,7 +277,7 @@ describe('UsersService — admin editing a user', () => {
     it('is not checked when the member already counted against it', async () => {
       // Renaming someone does not add a seat, and charging one would block
       // edits on a clinic sitting exactly on its limit.
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
 
       expect(
         h.planCapabilities.assertUserLimitAvailable,
@@ -256,7 +285,7 @@ describe('UsersService — admin editing a user', () => {
     });
 
     it('is not checked when the user is being deactivated', async () => {
-      await h.service.adminUpdate(USER, { isActive: false } as never);
+      await h.service.adminUpdate(USER, { isActive: false } as never, ADMIN);
 
       expect(
         h.planCapabilities.assertUserLimitAvailable,
@@ -268,7 +297,7 @@ describe('UsersService — admin editing a user', () => {
         currentUser({ clinicId: null, role: 'PATIENT' }),
       );
 
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
 
       expect(
         h.planCapabilities.assertUserLimitAvailable,
@@ -284,10 +313,14 @@ describe('UsersService — admin editing a user', () => {
       );
 
       await expect(
-        h.service.adminUpdate(USER, {
-          role: 'DENTIST',
-          clinicId: CLINIC,
-        } as never),
+        h.service.adminUpdate(
+          USER,
+          {
+            role: 'DENTIST',
+            clinicId: CLINIC,
+          } as never,
+          ADMIN,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(h.prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -305,7 +338,7 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce(currentUser())
         .mockResolvedValueOnce(null);
 
-      await h.service.adminUpdate(USER, dto as never);
+      await h.service.adminUpdate(USER, dto as never, ADMIN);
 
       // Both halves matter: the token version invalidates access tokens
       // already issued, and revoking refresh tokens stops new ones.
@@ -320,7 +353,31 @@ describe('UsersService — admin editing a user', () => {
     });
 
     it('survive an edit that changes no privilege', async () => {
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
+
+      const data = h.tx.user.update.mock.calls[0][0].data as Record<
+        string,
+        unknown
+      >;
+      expect(data).not.toHaveProperty('tokenVersion');
+      expect(h.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('survive a save that resends the unchanged role, clinic and status', async () => {
+      h.prisma.user.findFirst
+        .mockResolvedValueOnce(currentUser())
+        .mockResolvedValueOnce(null);
+
+      await h.service.adminUpdate(
+        USER,
+        {
+          firstName: 'Ana',
+          role: 'DENTIST',
+          clinicId: CLINIC,
+          isActive: true,
+        } as never,
+        ADMIN,
+      );
 
       const data = h.tx.user.update.mock.calls[0][0].data as Record<
         string,
@@ -335,7 +392,7 @@ describe('UsersService — admin editing a user', () => {
         currentUser({ isActive: false }),
       );
 
-      await h.service.adminUpdate(USER, { isActive: true } as never);
+      await h.service.adminUpdate(USER, { isActive: true } as never, ADMIN);
 
       // `isActive: false` in the DTO is the documented trigger; reactivation
       // reaches the same branch only through role or clinic, so this pins the
@@ -352,7 +409,7 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce(currentUser())
         .mockResolvedValueOnce(null);
 
-      await h.service.adminUpdate(USER, { role: 'ASSISTANT' } as never);
+      await h.service.adminUpdate(USER, { role: 'ASSISTANT' } as never, ADMIN);
 
       // A revocation that survives a failed update, or an update whose
       // revocation fails, both leave a live session on stale privileges.
@@ -361,11 +418,87 @@ describe('UsersService — admin editing a user', () => {
     });
   });
 
+  describe('an admin editing their own account', () => {
+    function editingSelf(overrides: Record<string, unknown> = {}) {
+      h.prisma.user.findFirst.mockResolvedValue(
+        currentUser({ id: ADMIN, role: 'ADMIN', clinicId: null, ...overrides }),
+      );
+    }
+
+    it.each([
+      ['change their own role', { role: 'OWNER' }],
+      ['deactivate their own account', { isActive: false }],
+      ['move their own account to a clinic', { clinicId: CLINIC }],
+    ])('cannot %s', async (_name, dto) => {
+      editingSelf();
+
+      await expect(
+        h.service.adminUpdate(ADMIN, dto as never, ADMIN),
+      ).rejects.toThrow(BadRequestException);
+      expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('can still edit their own name', async () => {
+      editingSelf();
+
+      await h.service.adminUpdate(ADMIN, { firstName: 'Ana' } as never, ADMIN);
+
+      expect(h.tx.user.update.mock.calls[0][0].data).toEqual({
+        firstName: 'Ana',
+      });
+    });
+
+    it('may resend the role they already hold', async () => {
+      editingSelf();
+
+      await expect(
+        h.service.adminUpdate(ADMIN, { role: 'ADMIN' } as never, ADMIN),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('sessions after a login e-mail change', () => {
+    it('are invalidated when the e-mail changes', async () => {
+      h.prisma.user.findFirst
+        .mockResolvedValueOnce(currentUser({ email: 'old@example.test' }))
+        .mockResolvedValueOnce(null);
+
+      await h.service.adminUpdate(
+        USER,
+        { email: 'new@example.test' } as never,
+        ADMIN,
+      );
+
+      const data = h.tx.user.update.mock.calls[0][0].data as {
+        tokenVersion: unknown;
+      };
+      expect(data.tokenVersion).toEqual({ increment: 1 });
+      expect(h.tx.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: USER, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('survive when the e-mail sent is the one already stored', async () => {
+      h.prisma.user.findFirst
+        .mockResolvedValueOnce(currentUser({ email: 'same@example.test' }))
+        .mockResolvedValueOnce(null);
+
+      await h.service.adminUpdate(
+        USER,
+        { email: 'same@example.test' } as never,
+        ADMIN,
+      );
+
+      expect(h.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   // ── What actually gets written ─────────────────────────────────────────────
 
   describe('the write itself', () => {
     it('sets only the fields the caller sent', async () => {
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
 
       expect(h.tx.user.update.mock.calls[0][0].data).toEqual({
         firstName: 'Ana',
@@ -377,12 +510,16 @@ describe('UsersService — admin editing a user', () => {
         .mockResolvedValueOnce(currentUser())
         .mockResolvedValueOnce(null);
 
-      await h.service.adminUpdate(USER, {
-        firstName: 'Ana',
-        lastName: 'Souza',
-        email: 'ana@example.test',
-        phone: '11999999999',
-      } as never);
+      await h.service.adminUpdate(
+        USER,
+        {
+          firstName: 'Ana',
+          lastName: 'Souza',
+          email: 'ana@example.test',
+          phone: '11999999999',
+        } as never,
+        ADMIN,
+      );
 
       expect(h.tx.user.update.mock.calls[0][0].data).toMatchObject({
         firstName: 'Ana',
@@ -392,8 +529,14 @@ describe('UsersService — admin editing a user', () => {
       });
     });
 
+    it('clears the phone when null is sent', async () => {
+      await h.service.adminUpdate(USER, { phone: null } as never, ADMIN);
+
+      expect(h.tx.user.update.mock.calls[0][0].data).toEqual({ phone: null });
+    });
+
     it('returns the safe projection rather than the raw row', async () => {
-      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never);
+      await h.service.adminUpdate(USER, { firstName: 'Ana' } as never, ADMIN);
 
       const select = h.tx.user.update.mock.calls[0][0].select as Record<
         string,

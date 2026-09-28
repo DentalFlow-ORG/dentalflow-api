@@ -212,8 +212,14 @@ export class UsersService {
       await this.planCapabilities.assertUserLimitAvailable(clinicId);
     }
 
+    // Sessions end only when access actually changes: deactivation, a new role
+    // or a new login e-mail. Forms resend unchanged values on every save, so
+    // comparing against the stored member keeps a plain name or phone edit
+    // from logging the member out.
     const requiresInvalidation =
-      dto.isActive === false || dto.role !== undefined;
+      (dto.isActive === false && member.isActive) ||
+      (dto.role !== undefined && dto.role !== member.role) ||
+      (dto.email !== undefined && dto.email !== member.email);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -531,12 +537,38 @@ export class UsersService {
     });
   }
 
-  async adminUpdate(userId: string, dto: AdminUpdateUserDto) {
+  async adminUpdate(userId: string, dto: AdminUpdateUserDto, actorId: string) {
     const current = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
-      select: { id: true, role: true, clinicId: true, isActive: true },
+      select: {
+        id: true,
+        role: true,
+        clinicId: true,
+        isActive: true,
+        email: true,
+      },
     });
     if (!current) throw new NotFoundException('Usuário não encontrado');
+
+    // An admin cannot lock themselves out: demoting, moving or deactivating
+    // their own account would leave the platform without that access.
+    if (userId === actorId) {
+      if (dto.role !== undefined && dto.role !== current.role) {
+        throw new BadRequestException(
+          'Você não pode alterar o seu próprio papel.',
+        );
+      }
+      if (dto.isActive === false) {
+        throw new BadRequestException(
+          'Você não pode desativar a sua própria conta.',
+        );
+      }
+      if (dto.clinicId !== undefined && dto.clinicId !== current.clinicId) {
+        throw new BadRequestException(
+          'Você não pode alterar a clínica da sua própria conta.',
+        );
+      }
+    }
 
     // Resolve the effective role and clinicId after the update
     const effectiveRole = dto.role ?? current.role;
@@ -590,10 +622,13 @@ export class UsersService {
       }
     }
 
+    // Same rule as clinic members: compare against the stored account so that
+    // resending unchanged role/clinic/status values does not end sessions.
     const requiresInvalidation =
-      dto.isActive === false ||
-      dto.role !== undefined ||
-      dto.clinicId !== undefined;
+      (dto.isActive === false && current.isActive) ||
+      (dto.role !== undefined && dto.role !== current.role) ||
+      (dto.clinicId !== undefined && dto.clinicId !== current.clinicId) ||
+      (dto.email !== undefined && dto.email !== current.email);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.user.update({
@@ -624,7 +659,13 @@ export class UsersService {
     return updated;
   }
 
-  async adminDelete(userId: string) {
+  async adminDelete(userId: string, actorId: string) {
+    if (userId === actorId) {
+      throw new BadRequestException(
+        'Você não pode desativar a sua própria conta.',
+      );
+    }
+
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       select: { id: true },
@@ -676,7 +717,7 @@ export class UsersService {
         role: { in: ['DENTIST', 'ASSISTANT'] },
         deletedAt: null,
       },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, email: true, role: true },
     });
     if (!member) throw new NotFoundException('Usuário não encontrado');
     return member;

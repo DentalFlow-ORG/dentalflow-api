@@ -71,7 +71,7 @@ export class AdminUsersController {
     @Body() dto: AdminUpdateUserDto,
   ) {
     this.accessPolicy.assertPlatformAdmin(user);
-    return this.usersService.adminUpdate(userId, dto);
+    return this.usersService.adminUpdate(userId, dto, user.id);
   }
 
   @Patch(':id/password')
@@ -89,6 +89,6 @@ export class AdminUsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@CurrentUser() user: AuthUser, @Param('id') userId: string) {
     this.accessPolicy.assertPlatformAdmin(user);
-    return this.usersService.adminDelete(userId);
+    return this.usersService.adminDelete(userId, user.id);
   }
 }

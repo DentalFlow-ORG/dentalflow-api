@@ -9,9 +9,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { normalizePhone } from '../../../common/utils/transform.helpers';
-
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const brPhonePattern = /^\d{10,11}$/;
+import {
+  BR_PHONE_DIGITS_PATTERN,
+  SLUG_PATTERN,
+} from '../../../common/validators/br-field-patterns';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -32,7 +33,7 @@ export class UpdateProfileDto {
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(60)
-  @Matches(slugPattern, {
+  @Matches(SLUG_PATTERN, {
     message: 'slug must contain only lowercase letters, numbers, and hyphens',
   })
   slug?: string;
@@ -55,7 +56,7 @@ export class UpdateProfileDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, {
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
     message:
       'Telefone deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos',
   })
@@ -64,7 +65,7 @@ export class UpdateProfileDto {
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(brPhonePattern, {
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
     message:
       'WhatsApp deve ser um número brasileiro válido com DDD e 10 ou 11 dígitos',
   })

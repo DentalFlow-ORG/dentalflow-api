@@ -209,6 +209,83 @@ describe('UsersService — member and platform user management', () => {
       expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
     });
 
+    it('leaves sessions alone when the form resends the unchanged role, status and e-mail', async () => {
+      // Membership lookup and the post-update read return the stored member;
+      // the e-mail uniqueness check in between finds no other account.
+      const stored = {
+        id: MEMBER,
+        isActive: true,
+        role: 'DENTIST',
+        email: 'membro@clinica.com',
+      };
+      prisma.user.findFirst
+        .mockResolvedValueOnce(stored)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(stored);
+
+      await service.updateMember(CLINIC, MEMBER, {
+        firstName: 'Novo',
+        role: 'DENTIST',
+        isActive: true,
+        email: 'membro@clinica.com',
+      } as never);
+
+      expect(tx.user.update.mock.calls[0][0].data.tokenVersion).toBeUndefined();
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('revokes tokens when a member’s login e-mail changes', async () => {
+      prisma.user.findFirst
+        // membership check, then the uniqueness check, then the re-read
+        .mockResolvedValueOnce({
+          id: MEMBER,
+          isActive: true,
+          email: 'old@example.test',
+        })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: MEMBER });
+
+      await service.updateMember(CLINIC, MEMBER, {
+        email: 'new@example.test',
+      } as never);
+
+      expect(tx.user.update.mock.calls[0][0].data.tokenVersion).toEqual({
+        increment: 1,
+      });
+      expect(tx.refreshToken.updateMany.mock.calls[0][0].where).toEqual({
+        userId: MEMBER,
+        revokedAt: null,
+      });
+    });
+
+    it('keeps sessions when the e-mail sent is the one already stored', async () => {
+      prisma.user.findFirst
+        // membership check, then the uniqueness check, then the re-read
+        .mockResolvedValueOnce({
+          id: MEMBER,
+          isActive: true,
+          email: 'same@example.test',
+        })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: MEMBER });
+
+      await service.updateMember(CLINIC, MEMBER, {
+        email: 'same@example.test',
+      } as never);
+
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('clears the phone when null is sent, and leaves it alone when omitted', async () => {
+      existingMember();
+
+      await service.updateMember(CLINIC, MEMBER, { phone: null } as never);
+      await service.updateMember(CLINIC, MEMBER, { firstName: 'Ana' } as never);
+
+      expect(tx.user.update.mock.calls[0][0].data).toEqual({ phone: null });
+      expect(tx.user.update.mock.calls[1][0].data).not.toHaveProperty('phone');
+    });
+
     it('does not invalidate sessions merely because a member is reactivated', async () => {
       existingMember({ isActive: false });
 
@@ -617,7 +694,7 @@ describe('UsersService — member and platform user management', () => {
     it('soft-deletes and logs out a user it removes', async () => {
       prisma.user.findFirst.mockResolvedValue({ id: 'u1' });
 
-      await service.adminDelete('u1');
+      await service.adminDelete('u1', 'admin-1');
 
       expect(tx.user.update.mock.calls[0][0].data).toMatchObject({
         isActive: false,
@@ -625,8 +702,17 @@ describe('UsersService — member and platform user management', () => {
       expect(tx.refreshToken.updateMany).toHaveBeenCalled();
     });
 
+    it('refuses to let an admin remove their own account', async () => {
+      prisma.user.findFirst.mockResolvedValue({ id: 'admin-1' });
+
+      await expect(service.adminDelete('admin-1', 'admin-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
     it('refuses to delete a user that does not exist', async () => {
-      await expect(service.adminDelete('ghost')).rejects.toThrow(
+      await expect(service.adminDelete('ghost', 'admin-1')).rejects.toThrow(
         NotFoundException,
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();

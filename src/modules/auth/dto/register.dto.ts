@@ -17,9 +17,11 @@ import {
   PASSWORD_COMPLEXITY_MESSAGE,
   PASSWORD_COMPLEXITY_REGEX,
 } from '../../../common/validators/password-policy';
-
-const safeTextPattern = /^[\p{L}\p{N}\s.'-]+$/u;
-const personNamePattern = /^[\p{L}\s.'-]+$/u;
+import {
+  PERSON_NAME_PATTERN,
+  personNameMessage,
+  SAFE_TEXT_PATTERN,
+} from '../../../common/validators/br-field-patterns';
 
 export class RegisterDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))
@@ -27,8 +29,9 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(100)
-  @Matches(safeTextPattern, {
-    message: 'clinicName contains unsupported characters',
+  @Matches(SAFE_TEXT_PATTERN, {
+    message:
+      'O nome da clínica deve conter apenas letras, números, espaços, apóstrofos, pontos e hífens.',
   })
   clinicName!: string;
 
@@ -48,9 +51,8 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, {
-    message:
-      'firstName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  @Matches(PERSON_NAME_PATTERN, {
+    message: personNameMessage('O nome'),
   })
   firstName!: string;
 
@@ -59,9 +61,8 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(personNamePattern, {
-    message:
-      'lastName must contain only letters, spaces, accents, apostrophes, dots and hyphens',
+  @Matches(PERSON_NAME_PATTERN, {
+    message: personNameMessage('O sobrenome'),
   })
   lastName!: string;
 
