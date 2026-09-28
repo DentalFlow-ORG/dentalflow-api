@@ -5,12 +5,14 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
 import {
   IsSafeId,
   MAX_ID_LENGTH,
+  MAX_STOCK_QUANTITY,
 } from '../../../common/validators/input-validation.decorators';
 import { trimValue } from '../../../common/utils/transform.helpers';
 
@@ -36,14 +38,26 @@ export class CreateStockMovementDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber(
+    { maxDecimalPlaces: 3 },
+    { message: 'Quantidade deve ter no máximo 3 casas decimais.' },
+  )
   @Min(0)
+  @Max(MAX_STOCK_QUANTITY, {
+    message: 'Quantidade deve ser no máximo 9.999.999,999.',
+  })
   quantity?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber(
+    { maxDecimalPlaces: 3 },
+    { message: 'Quantidade deve ter no máximo 3 casas decimais.' },
+  )
   @Min(0)
+  @Max(MAX_STOCK_QUANTITY, {
+    message: 'Quantidade deve ser no máximo 9.999.999,999.',
+  })
   newQuantity?: number;
 
   @IsOptional()

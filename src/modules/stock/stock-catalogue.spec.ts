@@ -559,6 +559,31 @@ describe('StockService — catalogue', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('clears optional fields on null and resets the minimum to zero', async () => {
+      await service.updateProduct(CLINIC, PRODUCT, {
+        supplier: null,
+        description: null,
+        notes: null,
+        purchasePrice: null,
+        expiresAt: null,
+        minQuantity: null,
+      } as never);
+
+      const data = prisma.stockProduct.update.mock.calls[0][0].data as Record<
+        string,
+        unknown
+      >;
+      expect(data).toMatchObject({
+        supplier: null,
+        description: null,
+        notes: null,
+        purchasePrice: null,
+        expiresAt: null,
+      });
+      // minQuantity is non-nullable: null means "no minimum", stored as 0.
+      expect(String(data.minQuantity)).toBe('0');
+    });
+
     it('refuses to edit an inactive product', async () => {
       prisma.stockProduct.findFirst.mockResolvedValue(
         productRow({ isActive: false }),

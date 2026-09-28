@@ -194,4 +194,18 @@ describe('finance DTO backend-owned fields', () => {
 
     expect(errors).toHaveLength(0);
   });
+
+  it('refuses a blank or null category name on update', async () => {
+    for (const name of ['   ', null]) {
+      const errors = await validateDto(UpdateFinancialCategoryDto, { name });
+      expect(errors.some((error) => error.property === 'name')).toBe(true);
+    }
+  });
+
+  it('still allows an update that does not touch the name', async () => {
+    const errors = await validateDto(UpdateFinancialCategoryDto, {
+      color: '#10B981',
+    });
+    expect(errors).toHaveLength(0);
+  });
 });

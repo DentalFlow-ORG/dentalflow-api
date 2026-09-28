@@ -213,7 +213,7 @@ export class StockService {
           ? { currentQuantity: new Prisma.Decimal(dto.currentQuantity) }
           : {}),
         ...(dto.minQuantity !== undefined
-          ? { minQuantity: new Prisma.Decimal(dto.minQuantity) }
+          ? { minQuantity: new Prisma.Decimal(dto.minQuantity ?? 0) }
           : {}),
         purchasePrice: dto.purchasePrice,
         supplier: dto.supplier,
@@ -262,7 +262,7 @@ export class StockService {
           : {}),
         ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
         ...(dto.minQuantity !== undefined
-          ? { minQuantity: new Prisma.Decimal(dto.minQuantity) }
+          ? { minQuantity: new Prisma.Decimal(dto.minQuantity ?? 0) }
           : {}),
         ...(dto.purchasePrice !== undefined
           ? { purchasePrice: dto.purchasePrice }

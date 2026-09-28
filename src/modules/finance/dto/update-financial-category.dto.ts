@@ -1,13 +1,21 @@
 import { Transform } from 'class-transformer';
 import { FinancialTransactionType } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { IsOptionalButNotNull } from '../../../common/validators/input-validation.decorators';
 
 export class UpdateFinancialCategoryDto {
-  @IsOptional()
+  @IsOptionalButNotNull()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
+  @IsNotEmpty({ message: 'O nome da categoria é obrigatório.' })
   @MaxLength(80)
   name?: string;
 
