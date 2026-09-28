@@ -1,9 +1,11 @@
-import { ValidateBy } from 'class-validator';
+import { ValidateBy, ValidateIf } from 'class-validator';
 
 export const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const MAX_ID_LENGTH = 64;
 export const MAX_MONEY_AMOUNT = 99_999_999.99;
 export const MAX_CENTS_AMOUNT = 999_999_999;
+/** Largest value a Decimal(10, 3) quantity column can hold. */
+export const MAX_STOCK_QUANTITY = 9_999_999.999;
 
 export function IsSafeId() {
   return ValidateBy({
@@ -64,4 +66,13 @@ export function IsClockTime() {
       },
     },
   });
+}
+
+/**
+ * Like `@IsOptional()`, but only an absent field (undefined) skips
+ * validation. `null` is still validated, so a PATCH cannot null out a field
+ * whose column or business rule requires a value.
+ */
+export function IsOptionalButNotNull() {
+  return ValidateIf((_object: object, value: unknown) => value !== undefined);
 }
