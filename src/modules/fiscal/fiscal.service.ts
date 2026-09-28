@@ -1,3 +1,4 @@
+import { toCanonicalBrazilianPhone } from '../../common/utils/transform.helpers';
 import {
   BadRequestException,
   ConflictException,
@@ -10,7 +11,6 @@ import {
 import {
   AppointmentPaymentStatus,
   AppointmentStatus,
-  FiscalProvider,
   FiscalProviderMode,
   Prisma,
   ServiceInvoiceStatus,
@@ -26,7 +26,24 @@ import {
   ListInvoicesDto,
   UpdateServiceInvoiceDto,
 } from './dto/invoice.dto';
+import {
+  BRAZILIAN_UFS,
+  CEP_DIGITS_PATTERN,
+} from '../../common/validators/br-field-patterns';
 import { UpsertFiscalProfileDto } from './dto/upsert-fiscal-profile.dto';
+
+type FiscalProfileFields = Pick<
+  UpsertFiscalProfileDto,
+  | 'legalName'
+  | 'documentNumber'
+  | 'taxRegime'
+  | 'addressStreet'
+  | 'addressNumber'
+  | 'addressNeighborhood'
+  | 'addressCity'
+  | 'addressState'
+  | 'addressZipCode'
+>;
 import { FISCAL_INVOICE_PROVIDER } from './fiscal.tokens';
 import { FiscalInvoiceProvider } from './providers/fiscal-invoice-provider.interface';
 
@@ -63,10 +80,13 @@ export class FiscalService {
   }
 
   async upsertFiscalProfile(clinicId: string, dto: UpsertFiscalProfileDto) {
-    const fiscalProvider = dto.fiscalProvider ?? FiscalProvider.LOCAL;
-    const fiscalProviderMode =
-      dto.fiscalProviderMode ?? FiscalProviderMode.LOCAL;
-    const isConfigured = this.isFiscalProfileConfigured(dto);
+    const isConfigured =
+      this.missingFiscalProfileFields({
+        ...dto,
+        documentNumber: this.onlyDigits(dto.documentNumber),
+        addressZipCode: this.onlyDigits(dto.addressZipCode),
+        addressState: dto.addressState.toUpperCase(),
+      }).length === 0;
 
     return this.prisma.clinicFiscalProfile.upsert({
       where: { clinicId },
@@ -76,8 +96,10 @@ export class FiscalService {
         documentNumber: this.onlyDigits(dto.documentNumber),
         addressZipCode: this.onlyDigits(dto.addressZipCode),
         addressState: dto.addressState.toUpperCase(),
-        fiscalProvider,
-        fiscalProviderMode,
+        // Provider routing is server configuration, never client input: a new
+        // profile starts on the configured provider, and updates leave it as is.
+        fiscalProvider: fiscalConfig.provider,
+        fiscalProviderMode: fiscalConfig.providerMode,
         isConfigured,
       },
       update: {
@@ -85,8 +107,6 @@ export class FiscalService {
         documentNumber: this.onlyDigits(dto.documentNumber),
         addressZipCode: this.onlyDigits(dto.addressZipCode),
         addressState: dto.addressState.toUpperCase(),
-        fiscalProvider,
-        fiscalProviderMode,
         isConfigured,
       },
     });
@@ -133,7 +153,8 @@ export class FiscalService {
         0,
       ),
       configurationPending: !profile?.isConfigured,
-      providerMode: profile?.fiscalProviderMode ?? FiscalProviderMode.LOCAL,
+      // Same source as getFiscalProfile: routing is server configuration.
+      providerMode: fiscalConfig.providerMode,
       realIssuingEnabled: false,
     };
   }
@@ -230,7 +251,9 @@ export class FiscalService {
           ? this.onlyDigits(dto.customerDocument)
           : null,
         customerEmail: dto.customerEmail,
-        customerPhone: dto.customerPhone,
+        customerPhone: dto.customerPhone
+          ? (toCanonicalBrazilianPhone(dto.customerPhone) ?? dto.customerPhone)
+          : dto.customerPhone,
         serviceDescription: dto.serviceDescription.trim(),
         serviceCode: dto.serviceCode ?? profile?.serviceCode,
         amountCents: dto.amountCents,
@@ -307,7 +330,12 @@ export class FiscalService {
         ? { customerEmail: dto.customerEmail }
         : {}),
       ...(dto.customerPhone !== undefined
-        ? { customerPhone: dto.customerPhone }
+        ? {
+            customerPhone: dto.customerPhone
+              ? (toCanonicalBrazilianPhone(dto.customerPhone) ??
+                dto.customerPhone)
+              : dto.customerPhone,
+          }
         : {}),
       ...(dto.serviceDescription !== undefined
         ? { serviceDescription: dto.serviceDescription.trim() }
@@ -629,9 +657,20 @@ export class FiscalService {
       where: { id: invoiceId, clinicId },
     });
 
-    if (!profile?.isConfigured) {
+    if (!profile) {
       throw new BadRequestException(
         'Configure os dados fiscais da clínica antes de continuar.',
+      );
+    }
+    // Re-derived from the stored fields rather than trusting the flag alone:
+    // a draft may have been saved incomplete, and the list tells the user
+    // exactly what to fill in.
+    const missing = this.missingFiscalProfileFields(profile);
+    if (missing.length > 0 || !profile.isConfigured) {
+      throw new BadRequestException(
+        `Complete os dados fiscais da clínica antes de continuar. Falta: ${
+          missing.length > 0 ? missing.join(', ') : 'revisar o perfil fiscal'
+        }.`,
       );
     }
     if (!invoice) throw new NotFoundException('Nota fiscal não encontrada.');
@@ -711,23 +750,37 @@ export class FiscalService {
     });
   }
 
-  private isFiscalProfileConfigured(dto: UpsertFiscalProfileDto) {
-    const required = [
-      dto.legalName,
-      dto.documentNumber,
-      dto.taxRegime,
-      dto.addressStreet,
-      dto.addressNumber,
-      dto.addressNeighborhood,
-      dto.addressCity,
-      dto.addressState,
-      dto.addressZipCode,
-    ];
+  /**
+   * Required fiscal fields that are still missing or invalid. A profile may be
+   * saved as an incomplete draft; this list gates `isConfigured` and is
+   * re-checked before an invoice is marked ready or simulated.
+   */
+  private missingFiscalProfileFields(profile: FiscalProfileFields): string[] {
+    const filled = (value: string | null | undefined) =>
+      (value ?? '').trim().length > 0;
+    const missing: string[] = [];
 
-    return (
-      required.every((value) => String(value ?? '').trim().length > 0) &&
-      this.isValidCpfOrCnpj(dto.documentNumber)
-    );
+    if (!filled(profile.legalName)) missing.push('razão social');
+    if (!this.isValidCpfOrCnpj(String(profile.documentNumber ?? ''))) {
+      missing.push('CNPJ/CPF válido');
+    }
+    if (!filled(profile.taxRegime)) missing.push('regime tributário');
+    if (!filled(profile.addressStreet)) missing.push('rua');
+    if (!filled(profile.addressNumber)) missing.push('número');
+    if (!filled(profile.addressNeighborhood)) missing.push('bairro');
+    if (!filled(profile.addressCity)) missing.push('cidade');
+    if (
+      !(BRAZILIAN_UFS as readonly string[]).includes(
+        String(profile.addressState ?? ''),
+      )
+    ) {
+      missing.push('UF');
+    }
+    if (!CEP_DIGITS_PATTERN.test(String(profile.addressZipCode ?? ''))) {
+      missing.push('CEP');
+    }
+
+    return missing;
   }
 
   private competenceDateRange(from?: string, to?: string) {

@@ -342,6 +342,24 @@ describe('FiscalService — drafting an invoice', () => {
       ).not.toHaveProperty('serviceDescription');
     });
 
+    it('clears the optional contact fields, service code and notes on null', async () => {
+      await service.updateInvoice(CLINIC, OWNER, 'invoice-1', {
+        customerDocument: null,
+        customerEmail: null,
+        customerPhone: null,
+        serviceCode: null,
+        notes: null,
+      } as never);
+
+      expect(prisma.serviceInvoice.update.mock.calls[0][0].data).toMatchObject({
+        customerDocument: null,
+        customerEmail: null,
+        customerPhone: null,
+        serviceCode: null,
+        notes: null,
+      });
+    });
+
     it('records who made the change', async () => {
       await service.updateInvoice(CLINIC, OWNER, 'invoice-1', {
         notes: 'x',

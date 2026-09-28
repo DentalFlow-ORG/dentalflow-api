@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ServiceInvoiceStatus, UserRole } from '@prisma/client';
 
+import { fiscalConfig } from '../../config/fiscal.config';
 import { FiscalService } from './fiscal.service';
 
 /**
@@ -30,6 +31,24 @@ const INVOICE = 'invoice-1';
 /** A valid CPF and CNPJ, check digits included. */
 const VALID_CPF = '52998224725';
 const VALID_CNPJ = '11222333000181';
+
+// A stored profile as upsert writes it: digits, upper-case UF, all required
+// fields filled. The issue boundary re-checks these fields, not only the flag.
+function configuredProfile(overrides: Record<string, unknown> = {}) {
+  return {
+    isConfigured: true,
+    legalName: 'Clínica Sorriso LTDA',
+    documentNumber: VALID_CNPJ,
+    taxRegime: 'SIMPLES_NACIONAL',
+    addressStreet: 'Rua A',
+    addressNumber: '100',
+    addressNeighborhood: 'Centro',
+    addressCity: 'São Paulo',
+    addressState: 'SP',
+    addressZipCode: '01310100',
+    ...overrides,
+  };
+}
 
 function invoice(overrides: Record<string, unknown> = {}) {
   return {
@@ -62,7 +81,7 @@ function createPrisma() {
       aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 0 } }),
     },
     clinicFiscalProfile: {
-      findUnique: jest.fn().mockResolvedValue({ isConfigured: true }),
+      findUnique: jest.fn().mockResolvedValue(configuredProfile()),
       upsert: jest.fn().mockResolvedValue({}),
     },
     fiscalInvoiceEvent: { create: jest.fn().mockResolvedValue({}) },
@@ -190,15 +209,31 @@ describe('FiscalService — invoice lifecycle', () => {
       );
     });
 
-    it('refuses when the fiscal profile is incomplete', async () => {
+    it('refuses when the stored profile flag says it is not configured', async () => {
       prisma.serviceInvoice.findFirst.mockResolvedValue(invoice());
-      prisma.clinicFiscalProfile.findUnique.mockResolvedValue({
-        isConfigured: false,
-      });
+      prisma.clinicFiscalProfile.findUnique.mockResolvedValue(
+        configuredProfile({ isConfigured: false }),
+      );
 
       await expect(service.markReady(CLINIC, OWNER, INVOICE)).rejects.toThrow(
-        /Configure os dados fiscais/,
+        /Complete os dados fiscais/,
       );
+    });
+
+    it('lists the missing fields of a draft profile saved without CEP and UF', async () => {
+      prisma.serviceInvoice.findFirst.mockResolvedValue(invoice());
+      prisma.clinicFiscalProfile.findUnique.mockResolvedValue(
+        configuredProfile({
+          isConfigured: false,
+          addressState: '',
+          addressZipCode: '',
+        }),
+      );
+
+      await expect(service.markReady(CLINIC, OWNER, INVOICE)).rejects.toThrow(
+        'Complete os dados fiscais da clínica antes de continuar. Falta: UF, CEP.',
+      );
+      expect(prisma.serviceInvoice.update).not.toHaveBeenCalled();
     });
 
     it('refuses an invoice with a blank customer name', async () => {
@@ -252,6 +287,18 @@ describe('FiscalService — invoice lifecycle', () => {
       prisma.serviceInvoice.findFirst.mockResolvedValue(
         invoice({ status: ServiceInvoiceStatus.READY_TO_ISSUE }),
       );
+
+    it('refuses to simulate while the fiscal profile is an incomplete draft', async () => {
+      ready();
+      prisma.clinicFiscalProfile.findUnique.mockResolvedValue(
+        configuredProfile({ addressZipCode: '', addressStreet: ' ' }),
+      );
+
+      await expect(
+        service.simulateIssue(CLINIC, OWNER, INVOICE),
+      ).rejects.toThrow(/Falta: rua, CEP\./);
+      expect(provider.issueServiceInvoice).not.toHaveBeenCalled();
+    });
 
     it('refuses an invoice that has not been marked ready', async () => {
       prisma.serviceInvoice.findFirst.mockResolvedValue(invoice());
@@ -474,6 +521,30 @@ describe('FiscalService — invoice lifecycle', () => {
       expect(
         prisma.clinicFiscalProfile.upsert.mock.calls[0][0].create.isConfigured,
       ).toBe(true);
+    });
+
+    it('saves a draft with blank CEP and UF as an unconfigured profile', async () => {
+      await service.upsertFiscalProfile(CLINIC, {
+        ...(completeProfile as object),
+        addressState: '',
+        addressZipCode: '',
+      } as never);
+
+      const created = prisma.clinicFiscalProfile.upsert.mock.calls[0][0].create;
+      expect(created.addressState).toBe('');
+      expect(created.addressZipCode).toBe('');
+      expect(created.isConfigured).toBe(false);
+    });
+
+    it('sets provider routing from server configuration and never on update', async () => {
+      await service.upsertFiscalProfile(CLINIC, completeProfile);
+
+      const { create, update } =
+        prisma.clinicFiscalProfile.upsert.mock.calls[0][0];
+      expect(create.fiscalProvider).toBe(fiscalConfig.provider);
+      expect(create.fiscalProviderMode).toBe(fiscalConfig.providerMode);
+      expect(update).not.toHaveProperty('fiscalProvider');
+      expect(update).not.toHaveProperty('fiscalProviderMode');
     });
 
     it('writes the same values on create and on update', async () => {
