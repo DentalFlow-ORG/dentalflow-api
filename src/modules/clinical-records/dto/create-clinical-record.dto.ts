@@ -1,3 +1,4 @@
+import { normalizePhoneSnapshot } from '../../../common/utils/transform.helpers';
 import { Transform } from 'class-transformer';
 import {
   IsEmail,
@@ -37,6 +38,7 @@ export class CreateClinicalRecordDto {
   @MaxLength(254)
   patientEmail?: string;
 
+  @Transform(({ value }: { value: unknown }) => normalizePhoneSnapshot(value))
   @IsOptional()
   @IsString()
   @MaxLength(20)

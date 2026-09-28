@@ -1,3 +1,4 @@
+import { toCanonicalBrazilianPhone } from '../../common/utils/transform.helpers';
 import {
   BadRequestException,
   ConflictException,
@@ -193,7 +194,9 @@ export class ClinicalRecordsService {
         profileId: profile.id,
         patientName,
         patientEmail: normalizePatientEmailForWrite(patientEmail),
-        patientPhone,
+        patientPhone: patientPhone
+          ? (toCanonicalBrazilianPhone(patientPhone) ?? patientPhone)
+          : patientPhone,
         chiefComplaint: dto.chiefComplaint,
         anamnesis: dto.anamnesis,
         clinicalEvolution: dto.clinicalEvolution,

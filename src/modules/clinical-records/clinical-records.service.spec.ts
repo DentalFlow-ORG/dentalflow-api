@@ -764,7 +764,7 @@ describe('ClinicalRecordsService', () => {
       id: 'appointment-1',
       patientName: 'Maria Silva',
       patientEmail: 'maria@example.test',
-      patientPhone: '11999999999',
+      patientPhone: '(11) 99999-9999',
     };
 
     it('fills the contact details in from the appointment when the caller omits them', async () => {
