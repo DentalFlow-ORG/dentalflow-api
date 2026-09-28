@@ -12,18 +12,13 @@ import {
   NotificationChannel,
   NotificationScope,
 } from '@prisma/client';
-
-const phonePattern = /^\d{10,11}$/;
-
-function normalizePhone(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  return value.replace(/\D/g, '');
-}
+import { normalizePhone } from '../../../common/utils/transform.helpers';
+import { BR_PHONE_DIGITS_PATTERN } from '../../../common/validators/br-field-patterns';
 
 export class CreateConsentDto {
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(phonePattern, {
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
     message:
       'Telefone deve ser um número brasileiro válido com DDD (10 ou 11 dígitos)',
   })

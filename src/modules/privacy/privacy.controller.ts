@@ -32,7 +32,8 @@ class RespondDto {
   @Transform(({ value }: { value: unknown }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(5000)
+  // Same column and limit as UpdatePrivacyRequestStatusDto.responseNotes.
+  @MaxLength(2000)
   responseNotes!: string;
 }
 
