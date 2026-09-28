@@ -57,6 +57,11 @@ const txMock = {
   user: {
     findFirst: jest.fn(),
   },
+  // Settled charges sync a finance transaction inside the same transaction.
+  financialCategory: {
+    findFirst: jest.fn().mockResolvedValue({ id: 'category-1' }),
+    upsert: jest.fn().mockResolvedValue({ id: 'category-1' }),
+  },
 };
 
 const prismaMock = {
@@ -519,6 +524,254 @@ describe('AppointmentsService status and payment guards', () => {
           paymentStatus: AppointmentPaymentStatus.PAID,
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+});
+
+describe('AppointmentsService edits and PATCH clears', () => {
+  let service: AppointmentsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    txMock.profile.findFirst.mockResolvedValue({
+      id: PROFILE_ID,
+      userId: USER_ID,
+    });
+    txMock.clinic.findUnique.mockResolvedValue({
+      timezone: 'America/Sao_Paulo',
+    });
+    txMock.availabilityException.findFirst.mockResolvedValue(null);
+    txMock.availability.findMany.mockResolvedValue([availabilityRange]);
+    txMock.appointment.findFirst.mockResolvedValue(null);
+    txMock.appointment.update.mockResolvedValue(createdAppointment());
+
+    service = new AppointmentsService(
+      prismaMock as never,
+      calendarIntegrationsMock as never,
+      auditLogMock as never,
+      createPatientResolverMock() as never,
+    );
+  });
+
+  describe('updateAppointment on closed records and PATCH clears', () => {
+    it.each([AppointmentStatus.CANCELED, AppointmentStatus.COMPLETED])(
+      'refuses to edit a %s appointment and writes nothing',
+      async (status) => {
+        txMock.appointment.findFirst.mockResolvedValueOnce(
+          existingAppointment({ status }),
+        );
+
+        await expect(
+          service.updateAppointment(
+            CLINIC_ID,
+            USER_ID,
+            UserRole.OWNER,
+            APPOINTMENT_ID,
+            { notes: 'Nova observação' },
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(txMock.$executeRaw).not.toHaveBeenCalled();
+        expect(txMock.appointment.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('still edits a NO_SHOW appointment (it can be rescheduled)', async () => {
+      txMock.appointment.findFirst
+        .mockResolvedValueOnce(
+          existingAppointment({ status: AppointmentStatus.NO_SHOW }),
+        )
+        .mockResolvedValueOnce(null);
+
+      await service.updateAppointment(
+        CLINIC_ID,
+        USER_ID,
+        UserRole.OWNER,
+        APPOINTMENT_ID,
+        { startTime: '10:00' },
+      );
+
+      expect(txMock.appointment.update).toHaveBeenCalled();
+    });
+
+    it('clears the service, e-mail, notes and estimate when null is sent', async () => {
+      txMock.appointment.findFirst
+        .mockResolvedValueOnce(
+          existingAppointment({
+            serviceId: SERVICE_ID,
+            service: { id: SERVICE_ID, durationMinutes: 45 },
+            durationMinutes: 45,
+            patientEmail: 'ana@example.test',
+          }),
+        )
+        .mockResolvedValueOnce(null);
+
+      await service.updateAppointment(
+        CLINIC_ID,
+        USER_ID,
+        UserRole.OWNER,
+        APPOINTMENT_ID,
+        {
+          serviceId: null,
+          patientEmail: null,
+          notes: null,
+          estimatedAmountCents: null,
+        },
+      );
+
+      const data = txMock.appointment.update.mock.calls[0][0].data as Record<
+        string,
+        unknown
+      >;
+      expect(data).toMatchObject({
+        serviceId: null,
+        patientEmail: null,
+        notes: null,
+        estimatedAmountCents: null,
+        // Removing the service keeps the appointment's own duration.
+        durationMinutes: 45,
+      });
+      expect(txMock.service.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('leaves optional fields untouched when they are absent', async () => {
+      txMock.appointment.findFirst
+        .mockResolvedValueOnce(existingAppointment())
+        .mockResolvedValueOnce(null);
+
+      await service.updateAppointment(
+        CLINIC_ID,
+        USER_ID,
+        UserRole.OWNER,
+        APPOINTMENT_ID,
+        { patientName: 'Ana' },
+      );
+
+      const data = txMock.appointment.update.mock.calls[0][0].data as Record<
+        string,
+        unknown
+      >;
+      expect(data.serviceId).toBeUndefined();
+      expect(data.patientEmail).toBeUndefined();
+      expect(data.notes).toBeUndefined();
+      expect(data.estimatedAmountCents).toBeUndefined();
+    });
+  });
+
+  describe('updateAppointmentPayment clears', () => {
+    const financialTransaction = {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      upsert: jest.fn(),
+    };
+
+    beforeEach(() => {
+      Object.assign(txMock, { financialTransaction });
+      financialTransaction.findFirst.mockResolvedValue(null);
+      prismaMock.appointment.findFirst.mockResolvedValue({
+        id: APPOINTMENT_ID,
+        clinicId: CLINIC_ID,
+        serviceId: null,
+        profileId: PROFILE_ID,
+        patientName: 'Paciente',
+        service: null,
+        profile: { id: PROFILE_ID },
+      });
+    });
+
+    function writtenPaymentData() {
+      return txMock.appointment.update.mock.calls[0][0].data as Record<
+        string,
+        unknown
+      >;
+    }
+
+    it('keeps the stored estimate and method when they are absent', async () => {
+      await service.updateAppointmentPayment(
+        CLINIC_ID,
+        USER_ID,
+        APPOINTMENT_ID,
+        { paymentStatus: AppointmentPaymentStatus.REFUNDED },
+      );
+
+      expect(writtenPaymentData().estimatedAmountCents).toBeUndefined();
+      expect(writtenPaymentData().paymentMethod).toBeUndefined();
+    });
+
+    it('clears the estimate and method when null is sent', async () => {
+      await service.updateAppointmentPayment(
+        CLINIC_ID,
+        USER_ID,
+        APPOINTMENT_ID,
+        {
+          paymentStatus: AppointmentPaymentStatus.REFUNDED,
+          estimatedAmountCents: null,
+          paymentMethod: null,
+        },
+      );
+
+      expect(writtenPaymentData()).toMatchObject({
+        estimatedAmountCents: null,
+        paymentMethod: null,
+      });
+    });
+
+    it('drops the method when the charge goes back to pending', async () => {
+      await service.updateAppointmentPayment(
+        CLINIC_ID,
+        USER_ID,
+        APPOINTMENT_ID,
+        {
+          paymentStatus: AppointmentPaymentStatus.PAYMENT_PENDING,
+          paymentMethod: 'PIX',
+        },
+      );
+
+      expect(writtenPaymentData()).toMatchObject({
+        paymentMethod: null,
+        paidAmountCents: null,
+      });
+    });
+
+    it.each([
+      AppointmentPaymentStatus.PAYMENT_PENDING,
+      AppointmentPaymentStatus.CANCELED,
+    ])(
+      'stores no settlement metadata for %s even when the payload carries stale values',
+      async (paymentStatus) => {
+        await service.updateAppointmentPayment(
+          CLINIC_ID,
+          USER_ID,
+          APPOINTMENT_ID,
+          {
+            paymentStatus,
+            paidAmountCents: 15000,
+            paymentMethod: 'PIX',
+            paymentDate: '2026-06-10',
+          },
+        );
+
+        expect(writtenPaymentData()).toMatchObject({
+          paidAmountCents: null,
+          paymentMethod: null,
+          paymentDate: null,
+        });
+      },
+    );
+
+    it('keeps the payment date for a settled charge', async () => {
+      await service.updateAppointmentPayment(
+        CLINIC_ID,
+        USER_ID,
+        APPOINTMENT_ID,
+        {
+          paymentStatus: AppointmentPaymentStatus.PAID,
+          paidAmountCents: 15000,
+          paymentDate: '2026-06-10',
+        },
+      );
+
+      expect(writtenPaymentData().paymentDate).toEqual(new Date('2026-06-10'));
     });
   });
 });

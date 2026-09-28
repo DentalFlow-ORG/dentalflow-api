@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -10,21 +11,31 @@ import {
   Min,
 } from 'class-validator';
 import {
+  blankToNull,
+  normalizePhone,
+} from '../../../common/utils/transform.helpers';
+import { BR_PHONE_DIGITS_PATTERN } from '../../../common/validators/br-field-patterns';
+import {
   IsCalendarDate,
   IsClockTime,
+  IsOptionalButNotNull,
   IsSafeId,
   MAX_CENTS_AMOUNT,
   MAX_ID_LENGTH,
 } from '../../../common/validators/input-validation.decorators';
 
-const phonePattern = /^\D*(?:\d\D*){10,11}$/;
-
+/**
+ * PATCH contract: an absent field is left unchanged. `null` clears the
+ * optional fields serviceId, patientEmail, notes and estimatedAmountCents
+ * (a blank email or note clears too). Required snapshot fields — patient name
+ * and phone — and the schedule fields cannot be nulled.
+ */
 export class UpdateAppointmentDto {
   @IsOptional()
   @IsString()
   @MaxLength(MAX_ID_LENGTH)
   @IsSafeId()
-  serviceId?: string;
+  serviceId?: string | null;
 
   @IsOptional()
   @IsString()
@@ -32,50 +43,51 @@ export class UpdateAppointmentDto {
   @IsSafeId()
   patientUserId?: string;
 
-  @IsOptional()
+  @IsOptionalButNotNull()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
+  @IsNotEmpty({ message: 'Informe o nome do paciente.' })
   @MaxLength(100)
   patientName?: string;
 
+  @Transform(({ value }: { value: unknown }) => blankToNull(value))
   @IsOptional()
-  @IsEmail()
+  @IsEmail({}, { message: 'Informe um e-mail válido.' })
   @MaxLength(254)
-  patientEmail?: string;
+  patientEmail?: string | null;
 
-  @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  // Stored as digits only; masked input is normalized first (see create DTO).
+  @IsOptionalButNotNull()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @Matches(phonePattern, {
-    message: 'Informe um telefone com WhatsApp valido.',
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
+    message: 'Informe um telefone com WhatsApp válido.',
   })
-  @MaxLength(20)
   patientPhone?: string;
 
-  @IsOptional()
+  @IsOptionalButNotNull()
   @IsString()
   @IsCalendarDate()
   appointmentDate?: string;
 
-  @IsOptional()
+  @IsOptionalButNotNull()
   @IsString()
   @IsClockTime()
   startTime?: string;
 
-  @IsOptional()
+  @IsOptionalButNotNull()
   @IsInt()
   @Min(5)
   @Max(480)
   durationMinutes?: number;
 
+  @Transform(({ value }: { value: unknown }) => blankToNull(value))
   @IsOptional()
   @IsString()
   @MaxLength(2000)
-  notes?: string;
+  notes?: string | null;
 
   @IsOptional()
   @IsString()
@@ -86,5 +98,5 @@ export class UpdateAppointmentDto {
   @IsInt()
   @Min(0)
   @Max(MAX_CENTS_AMOUNT)
-  estimatedAmountCents?: number;
+  estimatedAmountCents?: number | null;
 }

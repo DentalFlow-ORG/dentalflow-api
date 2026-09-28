@@ -286,11 +286,21 @@ export class AppointmentsService {
         userId,
         existing.profile.userId,
       );
+      // Canceled and completed appointments are closed records: editing or
+      // rescheduling them would rewrite history (and reopen a finished slot).
+      if (existing.status === 'CANCELED' || existing.status === 'COMPLETED') {
+        throw new BadRequestException(
+          existing.status === 'CANCELED'
+            ? 'Consultas canceladas não podem ser editadas.'
+            : 'Consultas concluídas não podem ser editadas.',
+        );
+      }
 
       if (dto.patientUserId) {
         await this.assertPatientUser(dto.patientUserId, tx);
       }
 
+      // `null` removes the service; the appointment keeps its current duration.
       const service = dto.serviceId
         ? await this.assertServiceInProfile(
             clinicId,
@@ -298,7 +308,9 @@ export class AppointmentsService {
             dto.serviceId,
             tx,
           )
-        : existing.service;
+        : dto.serviceId === null
+          ? null
+          : existing.service;
       const durationMinutes =
         dto.durationMinutes ??
         service?.durationMinutes ??
@@ -365,7 +377,7 @@ export class AppointmentsService {
               : undefined,
           notes: dto.notes,
           patientNotes: dto.patientNotes,
-          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
+          estimatedAmountCents: dto.estimatedAmountCents,
         },
         include: APPOINTMENT_INCLUDE,
       });
@@ -507,20 +519,25 @@ export class AppointmentsService {
       );
     }
 
+    // A pending or canceled charge is not settled, so no settlement metadata
+    // survives it: paid amount, payment date and method are all cleared
+    // regardless of what the payload carries (product decision, Pass 2).
+    const isUnsettled =
+      dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING ||
+      dto.paymentStatus === AppointmentPaymentStatus.CANCELED;
+
     await this.prisma.$transaction(async (tx) => {
       // 1. Update appointment payment fields
       await tx.appointment.update({
         where: { id: appointmentId },
         data: {
           paymentStatus: dto.paymentStatus,
-          estimatedAmountCents: dto.estimatedAmountCents ?? undefined,
-          paidAmountCents:
-            dto.paymentStatus === AppointmentPaymentStatus.PAYMENT_PENDING ||
-            dto.paymentStatus === AppointmentPaymentStatus.CANCELED
-              ? null
-              : (dto.paidAmountCents ?? null),
-          paymentMethod: dto.paymentMethod ?? null,
-          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
+          estimatedAmountCents: dto.estimatedAmountCents,
+          paidAmountCents: isUnsettled ? null : (dto.paidAmountCents ?? null),
+          // Otherwise null clears the method and an absent field keeps it.
+          paymentMethod: isUnsettled ? null : dto.paymentMethod,
+          paymentDate:
+            !isUnsettled && dto.paymentDate ? new Date(dto.paymentDate) : null,
           paymentNotes: dto.paymentNotes ?? null,
         },
       });

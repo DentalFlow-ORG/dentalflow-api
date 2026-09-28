@@ -17,8 +17,8 @@ import {
   MAX_CENTS_AMOUNT,
   MAX_ID_LENGTH,
 } from '../../../common/validators/input-validation.decorators';
-
-const phonePattern = /^\D*(?:\d\D*){10,11}$/;
+import { normalizePhone } from '../../../common/utils/transform.helpers';
+import { BR_PHONE_DIGITS_PATTERN } from '../../../common/validators/br-field-patterns';
 
 export class CreateAppointmentDto {
   @IsString()
@@ -43,8 +43,8 @@ export class CreateAppointmentDto {
    * Stable clinical identity of the person being booked.
    *
    * Sent when the operator picked an existing patient. When it is absent the
-   * booking falls back to the legacy contact-matching path, which reuses a
-   * patient only if exactly one matches and otherwise records a new one.
+   * booking creates a new Patient. Contacts are attributes, never identity:
+   * no existing Patient is inferred from name, email or phone.
    */
   @IsOptional()
   @IsString()
@@ -65,15 +65,14 @@ export class CreateAppointmentDto {
   @MaxLength(254)
   patientEmail?: string;
 
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  // Masked input is accepted and stored as digits only (DDD + number), the
+  // same canonical form as user and clinic phones. Formatting is presentation.
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @IsString()
-  @IsNotEmpty({ message: 'Informe um telefone com WhatsApp valido.' })
-  @Matches(phonePattern, {
-    message: 'Informe um telefone com WhatsApp valido.',
+  @IsNotEmpty({ message: 'Informe um telefone com WhatsApp válido.' })
+  @Matches(BR_PHONE_DIGITS_PATTERN, {
+    message: 'Informe um telefone com WhatsApp válido.',
   })
-  @MaxLength(20)
   patientPhone!: string;
 
   @IsString()

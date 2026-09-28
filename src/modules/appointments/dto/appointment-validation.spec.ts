@@ -12,7 +12,9 @@ import { CancelAppointmentDto } from './cancel-appointment.dto';
 import { CreateAppointmentDto } from './create-appointment.dto';
 import { CreateAvailabilityDto } from './create-availability.dto';
 import { GetAvailableSlotsDto } from './get-available-slots.dto';
+import { UpdateAppointmentDto } from './update-appointment.dto';
 import { UpdateAppointmentPaymentDto } from './update-appointment-payment.dto';
+import { UpdateAvailabilityExceptionDto } from './update-availability-exception.dto';
 
 async function validateDto<T extends object>(
   cls: new () => T,
@@ -47,6 +49,51 @@ describe('appointments DTO validation', () => {
       true,
     );
     expect(query.some((error) => error.property === 'serviceId')).toBe(true);
+  });
+
+  // Appointment phones are stored as digits only (DDD + number), like user and
+  // clinic phones; the mask is presentation. The API stays tolerant of masked
+  // input and normalizes it.
+  describe('patient phone normalization', () => {
+    const base = {
+      profileId: 'profile_1',
+      patientName: 'Paciente',
+      appointmentDate: '2026-05-22',
+      startTime: '09:00',
+    };
+
+    it.each([
+      ['(11) 99999-8888', '11999998888'],
+      ['11 99999 8888', '11999998888'],
+      ['(61) 3333-4444', '6133334444'],
+      ['11999998888', '11999998888'],
+      ['+55 11 99999-8888', '11999998888'],
+    ])('stores %j as %j on create and update', async (input, digits) => {
+      const created = plainToInstance(CreateAppointmentDto, {
+        ...base,
+        patientPhone: input,
+      });
+      const updated = plainToInstance(UpdateAppointmentDto, {
+        patientPhone: input,
+      });
+      expect(await validate(created)).toEqual([]);
+      expect(await validate(updated)).toEqual([]);
+      expect(created.patientPhone).toBe(digits);
+      expect(updated.patientPhone).toBe(digits);
+    });
+
+    it.each(['1199999', '(11) 99999-88881', '+44 11 99999-8888', 'abc'])(
+      'rejects %j, which is not a 10–11 digit Brazilian number',
+      async (input) => {
+        const errors = await validateDto(CreateAppointmentDto, {
+          ...base,
+          patientPhone: input,
+        });
+        expect(errors.some((error) => error.property === 'patientPhone')).toBe(
+          true,
+        );
+      },
+    );
   });
 
   it('rejects invalid time shape and range', async () => {
@@ -142,5 +189,80 @@ describe('appointments DTO validation', () => {
     expect(
       overlongReason.some((error) => error.property === 'cancellationReason'),
     ).toBe(true);
+  });
+
+  describe('UpdateAppointmentDto PATCH contract', () => {
+    it.each(['serviceId', 'patientEmail', 'notes', 'estimatedAmountCents'])(
+      'accepts null to clear %s',
+      async (field) => {
+        const errors = await validateDto(UpdateAppointmentDto, {
+          [field]: null,
+        });
+        expect(errors).toHaveLength(0);
+      },
+    );
+
+    it('turns a blank e-mail or note into null', async () => {
+      const dto = plainToInstance(UpdateAppointmentDto, {
+        patientEmail: '  ',
+        notes: '',
+      });
+      expect(await validate(dto)).toHaveLength(0);
+      expect(dto.patientEmail).toBeNull();
+      expect(dto.notes).toBeNull();
+    });
+
+    it.each([
+      'patientName',
+      'patientPhone',
+      'appointmentDate',
+      'startTime',
+      'durationMinutes',
+    ])('refuses null for %s', async (field) => {
+      const errors = await validateDto(UpdateAppointmentDto, {
+        [field]: null,
+      });
+      expect(errors.some((error) => error.property === field)).toBe(true);
+    });
+
+    it('refuses a blank patient name', async () => {
+      const errors = await validateDto(UpdateAppointmentDto, {
+        patientName: '   ',
+      });
+      expect(errors.some((error) => error.property === 'patientName')).toBe(
+        true,
+      );
+    });
+  });
+
+  describe('UpdateAppointmentPaymentDto clears', () => {
+    it('accepts null for the estimate and the payment method', async () => {
+      const errors = await validateDto(UpdateAppointmentPaymentDto, {
+        paymentStatus: AppointmentPaymentStatus.PAYMENT_PENDING,
+        estimatedAmountCents: null,
+        paymentMethod: null,
+      });
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('UpdateAvailabilityExceptionDto', () => {
+    it('clears the reason with null or a blank string', async () => {
+      const fromBlank = plainToInstance(UpdateAvailabilityExceptionDto, {
+        reason: '  ',
+      });
+      expect(await validate(fromBlank)).toHaveLength(0);
+      expect(fromBlank.reason).toBeNull();
+      expect(
+        await validateDto(UpdateAvailabilityExceptionDto, { reason: null }),
+      ).toHaveLength(0);
+    });
+
+    it('refuses null for isDayOff', async () => {
+      const errors = await validateDto(UpdateAvailabilityExceptionDto, {
+        isDayOff: null,
+      });
+      expect(errors.some((error) => error.property === 'isDayOff')).toBe(true);
+    });
   });
 });

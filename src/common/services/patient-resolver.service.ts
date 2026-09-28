@@ -6,6 +6,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PatientIdentityService } from './patient-identity.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toCanonicalBrazilianPhone } from '../utils/transform.helpers';
 import {
   isEmailIdentifier,
   patientIdentityFilter,
@@ -169,7 +170,12 @@ export class PatientResolverService {
         clinicId,
         name: normalizePatientName(data.name) ?? data.name,
         email: normalizePatientEmail(data.email),
-        phone: data.phone ?? null,
+        // Digits only, like appointment/user/clinic phones. A value that is not
+        // a recognisable Brazilian number is kept as given rather than lost.
+        // The phone is a contact attribute, never an identity key.
+        phone: data.phone
+          ? (toCanonicalBrazilianPhone(data.phone) ?? data.phone)
+          : null,
       },
     });
   }

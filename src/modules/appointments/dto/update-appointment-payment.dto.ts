@@ -30,7 +30,8 @@ export class UpdateAppointmentPaymentDto {
   @IsInt({ message: 'Valor previsto deve ser um numero inteiro em centavos.' })
   @Min(0, { message: 'Valor previsto nao pode ser negativo.' })
   @Max(MAX_CENTS_AMOUNT)
-  estimatedAmountCents?: number;
+  // `null` clears the estimate; absent leaves it unchanged.
+  estimatedAmountCents?: number | null;
 
   @ValidateIf(
     (dto: UpdateAppointmentPaymentDto) =>
@@ -46,7 +47,8 @@ export class UpdateAppointmentPaymentDto {
   @IsEnum(AppointmentPaymentMethod, {
     message: 'Forma de pagamento invalida.',
   })
-  paymentMethod?: AppointmentPaymentMethod;
+  // `null` clears the method; absent leaves it unchanged.
+  paymentMethod?: AppointmentPaymentMethod | null;
 
   @IsOptional()
   @IsISO8601({}, { message: 'Data de pagamento invalida.' })
